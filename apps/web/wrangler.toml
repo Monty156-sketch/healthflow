@@ -1,0 +1,12 @@
+# Cloudflare Pages deploy config for the Next.js frontend, via the OpenNext
+# adapter (needed because Cloudflare's runtime isn't plain Node.js).
+# Setup: pnpm add -D @opennextjs/cloudflare wrangler  (run inside apps/web)
+# Deploy: pnpm dlx wrangler pages deploy .open-next/assets --project-name=healthflow
+name = "healthflow-web"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".open-next/assets"
+
+[vars]
+# NEXT_PUBLIC_API_BASE is also set in the Cloudflare Pages dashboard
+# (Settings → Environment variables) to the Render API's public URL.

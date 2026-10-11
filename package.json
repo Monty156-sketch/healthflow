@@ -1,0 +1,19 @@
+{
+  "name": "healthflow",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @healthflow/web dev",
+    "dev:api": "pnpm --filter @healthflow/api dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "db:generate": "pnpm --filter @healthflow/db generate",
+    "db:migrate": "pnpm --filter @healthflow/db migrate",
+    "db:seed": "pnpm --filter @healthflow/db seed"
+  }
+}

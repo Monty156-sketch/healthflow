@@ -1,0 +1,51 @@
+name: CI
+
+# Runs on every push and pull request. This is a gate, not a deploy step:
+# Render and Cloudflare Pages redeploy on their own when main is pushed
+# (configured in their dashboards, not here) — this workflow only has to
+# pass first.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  # A throwaway Postgres URL is enough for `prisma generate` and typecheck.
+  # Real migrations run against Neon, from a developer's machine or from
+  # the Render build step — never from this workflow.
+  DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
+  JWT_ACCESS_SECRET: "ci-only-secret-not-used-in-production"
+  JWT_REFRESH_PEPPER: "ci-only-pepper-not-used-in-production"
+  MFA_ENCRYPTION_KEY: "ci-only-32-byte-key-not-used-in-prod!"
+  WEB_ORIGIN: "http://localhost:3000"
+
+jobs:
+  lint-typecheck-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test

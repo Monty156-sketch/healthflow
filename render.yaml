@@ -1,0 +1,29 @@
+# Render "Infrastructure as Code" — connect the repo in the Render
+# dashboard and it reads this file to create the service.
+# Docs: https://render.com/docs/infrastructure-as-code
+services:
+  - type: web
+    name: healthflow-api
+    runtime: node
+    plan: free
+    rootDir: apps/api
+    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @healthflow/db generate && pnpm --filter @healthflow/api build
+    startCommand: node dist/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # set from the Neon connection string in the Render dashboard
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_PEPPER
+        generateValue: true
+      - key: MFA_ENCRYPTION_KEY
+        generateValue: true
+      - key: WEB_ORIGIN
+        sync: false # the Cloudflare Pages URL, e.g. https://healthflow.pages.dev
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

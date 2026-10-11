@@ -1,0 +1,1277 @@
+// HealthFlow — full schema, written once per decision AD1 (Part 1 of the
+// build documentation): every entity and field the later build phases need,
+// created now, so no phase after this one requires a schema migration.
+//
+// Field groupings and comments mirror Part 0 of
+// HealthFlow-Complete-Documentation.md so the two can be read side by side.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// ENUMS
+// ---------------------------------------------------------------------------
+
+enum FacilityType {
+  CHPS_COMPOUND
+  HEALTH_CENTRE
+  CLINIC
+  POLYCLINIC
+  HOSPITAL
+  PRIVATE_HOSPITAL
+}
+
+enum FacilityStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+}
+
+enum Role {
+  PLATFORM_ADMIN
+  FACILITY_ADMIN
+  ROSTER_MANAGER
+  SUPERVISOR
+  STAFF
+  DISTRICT_OFFICER
+}
+
+enum ScopeType {
+  FACILITY
+  DISTRICT
+  PLATFORM
+}
+
+enum EmploymentStatus {
+  PERMANENT
+  CONTRACT
+  NATIONAL_SERVICE
+  LOCUM
+}
+
+enum StaffStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TRANSFERRED
+  RESIGNED
+  RETIRED
+}
+
+enum RuleType {
+  STATUTORY
+  POLICY
+  LOGICAL
+  FACILITY
+  FAIRNESS
+}
+
+enum RuleBehaviour {
+  BLOCK
+  WARN
+  OPTIMISE
+}
+
+enum CycleEnforcement {
+  BLOCK
+  PREFER
+}
+
+enum RosterStatus {
+  DRAFT
+  GENERATED
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum AssignmentSource {
+  GENERATED
+  MANUAL
+  SWAP
+  COVER
+  REST_BLOCK
+}
+
+enum FindingSeverity {
+  BLOCK
+  WARN
+  INFO
+}
+
+enum FindingStatus {
+  OPEN
+  OVERRIDDEN
+  RESOLVED
+}
+
+enum DeductionBasis {
+  CALENDAR_DAYS
+  SCHEDULED_DUTY_DAYS
+  WORKING_DAYS_MON_FRI
+}
+
+enum ReturnDateSetBy {
+  IN_CHARGE
+  STAFF_CONFIRMS
+}
+
+enum LeaveRequestStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ReturnStatus {
+  NOT_DUE
+  DUE
+  CONFIRMED
+  OVERDUE
+  EXTENDED
+  RETURNED_EARLY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  EXCUSED
+  OFF_DUTY
+  ON_LEAVE
+  OFFICIAL_ASSIGNMENT
+}
+
+enum SwapType {
+  EXCHANGE
+  HANDOVER
+}
+
+enum SwapStatus {
+  REQUESTED
+  ACCEPTED
+  DECLINED
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum NotificationSeverity {
+  INFO
+  ACTION
+  URGENT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum ConsentType {
+  PHOTOGRAPH
+  CASE_STUDY
+  REFERENCE
+  MARKETING
+}
+
+enum DataSubjectRequestType {
+  ACCESS
+  CORRECTION
+  ERASURE
+  OBJECTION
+  PORTABILITY
+}
+
+enum DataSubjectRequestStatus {
+  RECEIVED
+  IN_PROGRESS
+  COMPLETED
+  REFUSED
+}
+
+enum DistrictScope {
+  COVERAGE
+  STAFFING
+  ATTENDANCE
+  COMPLIANCE
+}
+
+enum GrantStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum ErrorReportStatus {
+  NEW
+  INVESTIGATING
+  RESOLVED
+}
+
+// --- Part 5: duty ledger ---
+
+enum LedgerEntryType {
+  DEBT
+  CREDIT
+}
+
+enum LedgerStatus {
+  OPEN
+  PARTLY_SETTLED
+  SETTLED
+  WRITTEN_OFF
+  EXPIRED
+}
+
+enum LedgerReason {
+  ABSENCE_COVER
+  SWAP_HANDOVER
+  MANUAL_ADJUSTMENT
+}
+
+enum CoverProposalStatus {
+  PROPOSED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED
+}
+
+enum AcknowledgementState {
+  NOT_REQUIRED
+  AWAITING
+  CONFIRMED
+  DECLINED
+  ESCALATED
+}
+
+// --- Part 6: registration, legal, billing ---
+
+enum AccessRequestStatus {
+  NEW
+  CONTACTED
+  DEMO_SCHEDULED
+  AGREEMENT_SENT
+  PROVISIONED
+  DECLINED
+  DORMANT
+}
+
+enum AccessRequestSource {
+  LANDING_PAGE
+  PRICING_PAGE
+  CONTACT_PAGE
+  REFERRAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  WRITTEN_OFF
+}
+
+enum PaymentMethod {
+  MOBILE_MONEY
+  BANK_TRANSFER
+  CASH
+  CARD
+  OTHER
+}
+
+// --- Part 7: platform console ---
+
+enum SupportAccessLevel {
+  READ_ONLY
+  FULL
+}
+
+enum SupportSessionEndReason {
+  MANUAL
+  EXPIRED
+}
+
+enum AnnouncementSeverity {
+  INFO
+  IMPORTANT
+  MAINTENANCE
+}
+
+enum AnnouncementAudience {
+  ALL
+  SELECTED
+}
+
+// ---------------------------------------------------------------------------
+// WAVE 0 — FOUNDATION
+// ---------------------------------------------------------------------------
+
+model Facility {
+  id                         String         @id @default(cuid())
+  name                       String
+  facilityType               FacilityType
+  ghsFacilityCode            String?
+  districtId                 String?
+  district                   District?      @relation(fields: [districtId], references: [id])
+  subDistrict                String?
+  region                     String?
+  weekStartsOn                Int           @default(1) // 1 = Monday
+  referencePeriodWeeks        Int           @default(4)
+  leaveYearStartMonth         Int           @default(1)
+  allowNegativeLeaveBalance   Boolean       @default(false)
+  attendanceCutoffDays        Int           @default(7)
+  swapCutoffHours              Int          @default(24)
+  dpcRegistrationNumber       String?
+  dpcRegistrationExpiry       DateTime?
+  dataProtectionContactName   String?
+  dataProtectionContactEmail  String?
+  status                      FacilityStatus @default(TRIAL)
+  trialEndsAt                 DateTime?
+
+  // Roster Engine v2 fairness tolerances (Part 4)
+  fairnessToleranceDuties      Int    @default(1)
+  fairnessToleranceNights      Int    @default(1)
+  fairnessCarryoverMonths      Int    @default(3)
+  fairnessCarryoverDamping     Float  @default(0.5)
+
+  // Part 5: cover and ledger settings
+  autoAssignCover              Boolean @default(true)
+  maxSettlementPerMonth        Int     @default(4)
+  ledgerExpiryMonths           Int     @default(6)
+  coverAckWindowHours          Int     @default(4)
+  coverAckUrgentHours          Int     @default(1)
+
+  active                      Boolean       @default(true)
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
+
+  departments        Department[]
+  cadres              Cadre[]
+  staff               Staff[]
+  userProfiles        UserProfile[]
+  shifts              Shift[]
+  shiftRotations      ShiftRotation[]
+  constraintRules     ConstraintRule[]
+  dutyCycleRules      DutyCycleRule[]
+  rosters             Roster[]
+  leaveTypes          LeaveType[]
+  leaveEntitlements   LeaveEntitlement[]
+  leaveRequests       LeaveRequest[]
+  publicHolidays      PublicHoliday[]
+  attendance          Attendance[]
+  dutySwaps           DutySwap[]
+  notifications       Notification[]
+  invitations         StaffInvitation[]
+  consentRecords      ConsentRecord[]
+  dsrRequests         DataSubjectRequest[]
+  retentionPolicies   RetentionPolicy[]
+  privacyNotices      PrivacyNotice[]
+  breachRecords       BreachRecord[]
+  districtGrants      DistrictGrant[]
+  establishmentPosts  EstablishmentPost[]
+  auditLogs           AuditLog[]
+  errorReports        ErrorReport[]
+  dutyLedgerEntries   DutyLedgerEntry[]
+  accessCodes         FacilityAccessCode[]
+  agreementAcceptances AgreementAcceptance[]
+  subscription        Subscription?
+  invoices             Invoice[]
+  supportSessions      SupportSession[]
+  refreshTokens        RefreshToken[]
+
+  @@index([districtId])
+}
+
+model District {
+  id        String   @id @default(cuid())
+  name      String
+  region    String
+  code      String?  @unique
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  facilities     Facility[]
+  districtGrants DistrictGrant[]
+}
+
+model Department {
+  id         String    @id @default(cuid())
+  facilityId String
+  facility   Facility  @relation(fields: [facilityId], references: [id])
+  name       String
+  code       String?
+  active     Boolean   @default(true)
+  archivedAt DateTime?
+
+  staff Staff[]
+
+  @@index([facilityId])
+}
+
+model Cadre {
+  id         String    @id @default(cuid())
+  facilityId String
+  facility   Facility  @relation(fields: [facilityId], references: [id])
+  name       String
+  code       String?
+  sortOrder  Int       @default(0)
+  active     Boolean   @default(true)
+  archivedAt DateTime?
+
+  staff             Staff[]
+  establishmentPosts EstablishmentPost[]
+
+  @@index([facilityId])
+}
+
+model Staff {
+  id                   String           @id @default(cuid())
+  facilityId           String
+  facility             Facility         @relation(fields: [facilityId], references: [id])
+  staffNo              String
+  fullName             String
+  phone                String?
+  email                String?
+  cadreId              String?
+  cadre                Cadre?           @relation(fields: [cadreId], references: [id])
+  departmentId         String?
+  department           Department?      @relation(fields: [departmentId], references: [id])
+  position             String?
+  employmentStatus     EmploymentStatus @default(PERMANENT)
+  status               StaffStatus      @default(PENDING)
+  dateJoined           DateTime?
+  photoUrl             String?
+  photoConsentId       String?
+  photoConsent         ConsentRecord?   @relation("PhotoConsent", fields: [photoConsentId], references: [id])
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  excludedFromNights   Boolean          @default(false)
+  exclusionReason      String?          // operational only — never a medical reason
+  maxDutiesPerWeek     Int              @default(0) // 0 = no limit
+  archivedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  userProfile        UserProfile?
+  eligibleForShifts  Shift[]              @relation("ShiftEligibleStaff")
+  rosterAssignments  RosterAssignment[]
+  complianceFindings ComplianceFinding[]
+  leaveEntitlements  LeaveEntitlement[]
+  leaveRequests      LeaveRequest[]
+  attendance         Attendance[]
+  swapsRequested     DutySwap[]           @relation("SwapRequester")
+  swapsTargeted      DutySwap[]           @relation("SwapTarget")
+  notifications      Notification[]
+  consentRecords     ConsentRecord[]      @relation("StaffConsents")
+  dsrRequests        DataSubjectRequest[]
+  ledgerEntries      DutyLedgerEntry[]    @relation("LedgerStaff")
+  ledgerCounterparty DutyLedgerEntry[]    @relation("LedgerCounterparty")
+  coverProposals     CoverProposal[]      @relation("CoverCandidate")
+
+  @@unique([facilityId, staffNo])
+  @@index([facilityId])
+  @@index([cadreId])
+  @@index([departmentId])
+}
+
+model UserProfile {
+  id                            String    @id @default(cuid())
+  userEmail                     String    @unique
+  passwordHash                  String
+  staffId                       String?   @unique
+  staff                         Staff?    @relation(fields: [staffId], references: [id])
+  role                          Role
+  scopeType                     ScopeType
+  scopeId                       String?   // facilityId or districtId; null for platform
+  facilityId                    String?
+  facility                      Facility? @relation(fields: [facilityId], references: [id])
+  mfaEnabled                    Boolean   @default(false)
+  mfaSecretEncrypted            String?
+  recoveryCodesHashed           String[]  @default([])
+  failedAttempts                Int       @default(0)
+  lockedUntil                   DateTime?
+  lastSignInAt                  DateTime?
+  privacyNoticeVersionAccepted  String?
+  notificationPreferences       Json      @default("{}")
+  active                        Boolean   @default(true)
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@index([facilityId])
+}
+
+/// Not in the original documentation's schema — added so the 30-minute idle
+/// session and immediate revocation-on-deactivation are enforceable by a row
+/// delete/update, not just by trusting a signed JWT.
+model RefreshToken {
+  id            String      @id @default(cuid())
+  userProfileId String
+  userProfile   UserProfile @relation(fields: [userProfileId], references: [id])
+  facilityId    String?
+  facility      Facility?   @relation(fields: [facilityId], references: [id])
+  tokenHash     String      @unique
+  userAgent     String?
+  ipAddress     String?
+  createdAt     DateTime    @default(now())
+  lastUsedAt    DateTime    @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+
+  @@index([userProfileId])
+}
+
+model Shift {
+  id             String   @id @default(cuid())
+  facilityId     String
+  facility       Facility @relation(fields: [facilityId], references: [id])
+  name           String
+  code           String
+  startTime      String?  // "HH:MM" — never a timestamp (AD5)
+  endTime        String?
+  durationHours  Float    @default(0)
+  isOvernight    Boolean  @default(false)
+  isOnCall       Boolean  @default(false)
+  onCallHoursFactor Float @default(0)
+  minStaff       Int      @default(0)
+  minByCadre     Json     @default("{}")
+  colour         String?
+  countsAsDuty   Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  active         Boolean  @default(true)
+  archivedAt     DateTime?
+
+  eligibleCadreIds String[] @default([])
+  eligibleStaff    Staff[]  @relation("ShiftEligibleStaff")
+
+  rosterAssignments RosterAssignment[]
+  dutyCycleRules    DutyCycleRule[]      @relation("CycleCountingShifts")
+  rotationSequence  ShiftRotation[]      @relation("RotationSequence")
+  nextAfterRestFor  DutyCycleRule[]      @relation("NextShiftAfterRest")
+
+  @@index([facilityId])
+}
+
+model ConstraintRule {
+  id           String        @id @default(cuid())
+  facilityId   String
+  facility     Facility      @relation(fields: [facilityId], references: [id])
+  code         String        // C1..C12
+  name         String
+  ruleType     RuleType
+  thresholdValue Float?
+  unit         String?
+  behaviour    RuleBehaviour
+  overridable  Boolean       @default(true)
+  enabled      Boolean       @default(true)
+  description  String?
+
+  @@unique([facilityId, code])
+  @@index([facilityId])
+}
+
+model DutyCycleRule {
+  id                    String            @id @default(cuid())
+  facilityId            String
+  facility              Facility          @relation(fields: [facilityId], references: [id])
+  name                  String
+  countingShifts        Shift[]           @relation("CycleCountingShifts")
+  consecutiveDuties     Int
+  offDaysRequired       Int
+  offDaysConsecutive    Boolean           @default(true)
+  applicableCadreIds    String[]          @default([])
+  applicableDepartmentIds String[]        @default([])
+  enforcement           CycleEnforcement  @default(PREFER)
+  priority              Int               @default(1)
+  active                Boolean           @default(true)
+
+  // Part 4, section 2A
+  nextShiftAfterRestId  String?
+  nextShiftAfterRest    Shift?            @relation("NextShiftAfterRest", fields: [nextShiftAfterRestId], references: [id])
+  blockShiftPatternIds  String[]          @default([]) // ordered Shift ids
+
+  @@index([facilityId])
+}
+
+/// Part 4, section 2A.1
+model ShiftRotation {
+  id                      String   @id @default(cuid())
+  facilityId              String
+  facility                Facility @relation(fields: [facilityId], references: [id])
+  name                    String
+  sequence                Shift[]  @relation("RotationSequence")
+  applicableCadreIds      String[] @default([])
+  applicableDepartmentIds String[] @default([])
+  enforcement             CycleEnforcement @default(PREFER)
+  active                  Boolean  @default(true)
+
+  @@index([facilityId])
+}
+
+model Roster {
+  id                     String       @id @default(cuid())
+  facilityId             String
+  facility               Facility     @relation(fields: [facilityId], references: [id])
+  month                  Int
+  year                   Int
+  title                  String?
+  status                 RosterStatus @default(DRAFT)
+  version                Int          @default(1)
+  preparedBy             String?
+  approvedBy             String?
+  generatedAt            DateTime?
+  publishedAt            DateTime?
+  generationSeconds      Float?
+  attendanceCompleteness Float?
+  hasUnresolvedConflicts Boolean      @default(false)
+  notes                  String?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  assignments RosterAssignment[]
+  snapshots   RosterVersionSnapshot[]
+  findings    ComplianceFinding[]
+  attendance  Attendance[]
+  swaps       DutySwap[]
+
+  @@unique([facilityId, month, year])
+  @@index([facilityId])
+}
+
+model RosterAssignment {
+  id             String           @id @default(cuid())
+  rosterId       String
+  roster         Roster           @relation(fields: [rosterId], references: [id])
+  facilityId     String
+  staffId        String
+  staff          Staff            @relation(fields: [staffId], references: [id])
+  shiftId        String
+  shift          Shift            @relation(fields: [shiftId], references: [id])
+  dutyDate       DateTime         @db.Date
+  source         AssignmentSource @default(GENERATED)
+  locked         Boolean          @default(false)
+
+  // Part 5 — cover
+  isCover            Boolean              @default(false)
+  coverForStaffId    String?
+  notifiedAt         DateTime?
+  acknowledgedAt     DateTime?
+  acknowledgementState AcknowledgementState @default(NOT_REQUIRED)
+  needsReview        Boolean              @default(false)
+
+  attendance Attendance[]
+
+  @@index([rosterId])
+  @@index([staffId, dutyDate])
+}
+
+model RosterVersionSnapshot {
+  id          String   @id @default(cuid())
+  rosterId    String
+  roster      Roster   @relation(fields: [rosterId], references: [id])
+  version     Int
+  assignments Json
+  createdAt   DateTime @default(now())
+  createdBy   String?
+  reason      String?
+
+  @@index([rosterId])
+}
+
+model ComplianceFinding {
+  id                  String          @id @default(cuid())
+  rosterId            String
+  roster              Roster          @relation(fields: [rosterId], references: [id])
+  facilityId          String
+  staffId             String
+  staff               Staff           @relation(fields: [staffId], references: [id])
+  ruleCode            String // e.g. "C3" — looked up against ConstraintRule.code for this facility
+  severity            FindingSeverity
+  message             String
+  detail              Json?
+  dutyDate            DateTime?       @db.Date
+  status              FindingStatus   @default(OPEN)
+  requiresReassignment Boolean        @default(false)
+  overrideReason       String?
+  overrideBy           String?
+  overrideAt           DateTime?
+
+  @@index([rosterId])
+  @@index([staffId])
+}
+
+model LeaveType {
+  id                        String         @id @default(cuid())
+  facilityId                String
+  facility                  Facility       @relation(fields: [facilityId], references: [id])
+  name                      String
+  code                      String
+  colour                    String?
+  isPaid                    Boolean        @default(true)
+  affectsAvailability       Boolean        @default(true)
+  countsAgainstEntitlement  Boolean        @default(false)
+  deductionBasis            DeductionBasis @default(CALENDAR_DAYS)
+  maxConsecutiveDays        Int?
+  active                    Boolean        @default(true)
+  sortOrder                 Int            @default(0)
+
+  // Part 5 — absence/cover/ledger policy
+  isShortAbsence   Boolean @default(false)
+  createsDutyDebt  Boolean @default(false)
+  maxDaysForAutoCover Int  @default(3)
+  returnDateSetBy  ReturnDateSetBy @default(STAFF_CONFIRMS)
+
+  leaveEntitlements LeaveEntitlement[]
+  leaveRequests     LeaveRequest[]
+
+  @@unique([facilityId, code])
+  @@index([facilityId])
+}
+
+model LeaveEntitlement {
+  id             String    @id @default(cuid())
+  facilityId     String
+  facility       Facility  @relation(fields: [facilityId], references: [id])
+  staffId        String
+  staff          Staff     @relation(fields: [staffId], references: [id])
+  leaveTypeId    String
+  leaveType      LeaveType @relation(fields: [leaveTypeId], references: [id])
+  leaveYear      Int
+  daysEntitled   Float     @default(0)
+  daysCarriedOver Float    @default(0)
+  notes          String?
+
+  @@unique([staffId, leaveTypeId, leaveYear])
+  @@index([facilityId])
+}
+
+model LeaveRequest {
+  id                     String             @id @default(cuid())
+  facilityId             String
+  facility               Facility           @relation(fields: [facilityId], references: [id])
+  staffId                String
+  staff                  Staff              @relation(fields: [staffId], references: [id])
+  leaveTypeId            String
+  leaveType              LeaveType          @relation(fields: [leaveTypeId], references: [id])
+  startDate              DateTime           @db.Date
+  endDate                DateTime           @db.Date
+  daysDeducted           Float?
+  reason                 String?
+  status                 LeaveRequestStatus @default(DRAFT)
+  submittedAt            DateTime?
+  decidedBy              String?
+  decidedAt              DateTime?
+  decisionNote           String?
+  createdBy              String?
+  conflictsPublishedRoster Boolean          @default(false)
+
+  // Part 5 — reporting back
+  isOpenEnded          Boolean       @default(false)
+  expectedReturnDate   DateTime?     @db.Date
+  actualReturnDate     DateTime?     @db.Date
+  returnStatus         ReturnStatus  @default(NOT_DUE)
+  returnConfirmedAt    DateTime?
+  returnConfirmedBy    String?
+  extensionOfId        String?
+  extensionOf          LeaveRequest? @relation("LeaveExtension", fields: [extensionOfId], references: [id])
+  extensions           LeaveRequest[] @relation("LeaveExtension")
+
+  ledgerEntries DutyLedgerEntry[]
+
+  @@index([facilityId])
+  @@index([staffId])
+}
+
+model PublicHoliday {
+  id         String    @id @default(cuid())
+  facilityId String?   // null = national
+  facility   Facility? @relation(fields: [facilityId], references: [id])
+  date       DateTime  @db.Date
+  name       String
+  year       Int
+
+  @@index([facilityId])
+}
+
+model Attendance {
+  id                 String           @id @default(cuid())
+  facilityId         String
+  facility           Facility         @relation(fields: [facilityId], references: [id])
+  staffId            String
+  staff              Staff            @relation(fields: [staffId], references: [id])
+  rosterId           String?
+  roster             Roster?          @relation(fields: [rosterId], references: [id])
+  rosterAssignmentId String?
+  rosterAssignment   RosterAssignment? @relation(fields: [rosterAssignmentId], references: [id])
+  dutyDate           DateTime         @db.Date
+  shiftId            String?
+  status             AttendanceStatus
+  minutesLate        Int?
+  note               String?          // operational only — never medical
+  recordedBy         String?
+  recordedAt         DateTime         @default(now())
+  originalStatus      AttendanceStatus?
+  correctedBy          String?
+  correctedAt          DateTime?
+  correctionReason     String?
+  needsReview          Boolean        @default(false)
+
+  @@index([facilityId])
+  @@index([staffId, dutyDate])
+}
+
+model DutySwap {
+  id                  String     @id @default(cuid())
+  facilityId          String
+  facility            Facility   @relation(fields: [facilityId], references: [id])
+  rosterId            String
+  roster              Roster     @relation(fields: [rosterId], references: [id])
+  swapType            SwapType
+  requesterStaffId    String
+  requesterStaff      Staff      @relation("SwapRequester", fields: [requesterStaffId], references: [id])
+  requesterAssignmentId String
+  targetStaffId       String
+  targetStaff         Staff      @relation("SwapTarget", fields: [targetStaffId], references: [id])
+  targetAssignmentId  String?
+  reason              String?
+  status              SwapStatus @default(REQUESTED)
+  respondedAt         DateTime?
+  responseNote        String?
+  decidedBy           String?
+  decidedAt           DateTime?
+  decisionNote        String?
+  revalidationResult  Json?
+
+  ledgerEntries DutyLedgerEntry[]
+
+  @@index([facilityId])
+  @@index([rosterId])
+}
+
+model Notification {
+  id             String               @id @default(cuid())
+  facilityId     String
+  facility       Facility             @relation(fields: [facilityId], references: [id])
+  recipientEmail String
+  recipientStaffId String?
+  recipientStaff Staff?               @relation(fields: [recipientStaffId], references: [id])
+  type           String
+  title          String
+  body           String
+  linkUrl        String?
+  severity       NotificationSeverity @default(INFO)
+  mandatory      Boolean              @default(false)
+  read           Boolean              @default(false)
+  readAt         DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@index([facilityId])
+  @@index([recipientStaffId])
+}
+
+model StaffInvitation {
+  id         String           @id @default(cuid())
+  facilityId String
+  facility   Facility         @relation(fields: [facilityId], references: [id])
+  staffId    String?
+  email      String?
+  phone      String?
+  token      String           @unique
+  role       Role             @default(STAFF)
+  status     InvitationStatus @default(PENDING)
+  sentAt     DateTime?
+  acceptedAt DateTime?
+  expiresAt  DateTime
+
+  @@index([facilityId])
+}
+
+model ConsentRecord {
+  id          String      @id @default(cuid())
+  facilityId  String
+  facility    Facility    @relation(fields: [facilityId], references: [id])
+  staffId     String
+  staff       Staff       @relation("StaffConsents", fields: [staffId], references: [id])
+  consentType ConsentType
+  granted     Boolean     @default(false)
+  grantedAt   DateTime?
+  withdrawnAt DateTime?
+  recordedBy  String?
+  notes       String?
+
+  staffPhotos Staff[] @relation("PhotoConsent")
+
+  @@index([facilityId])
+  @@index([staffId])
+}
+
+model DataSubjectRequest {
+  id          String                   @id @default(cuid())
+  facilityId  String
+  facility    Facility                 @relation(fields: [facilityId], references: [id])
+  staffId     String
+  staff       Staff                    @relation(fields: [staffId], references: [id])
+  requestType DataSubjectRequestType
+  description String?
+  status      DataSubjectRequestStatus @default(RECEIVED)
+  receivedAt  DateTime                 @default(now())
+  dueAt       DateTime?
+  completedAt DateTime?
+  handledBy   String?
+  outcomeNote String?
+
+  @@index([facilityId])
+}
+
+model RetentionPolicy {
+  id             String   @id @default(cuid())
+  facilityId     String
+  facility       Facility @relation(fields: [facilityId], references: [id])
+  entityType     String
+  retentionMonths Int
+  basisNote      String?
+  approvedBy     String?
+  approvedAt     DateTime?
+  active         Boolean  @default(false) // unapproved until a facility admin approves it
+  lastRunAt      DateTime?
+
+  @@index([facilityId])
+}
+
+model PrivacyNotice {
+  id          String   @id @default(cuid())
+  facilityId  String
+  facility    Facility @relation(fields: [facilityId], references: [id])
+  version     String
+  body        String
+  publishedAt DateTime?
+  publishedBy String?
+
+  @@index([facilityId])
+}
+
+model BreachRecord {
+  id                   String   @id @default(cuid())
+  facilityId           String
+  facility             Facility @relation(fields: [facilityId], references: [id])
+  discoveredAt         DateTime
+  description          String
+  affectedStaffCount   Int?
+  severity             String?
+  controllerNotifiedAt DateTime?
+  dpcNotified          Boolean  @default(false)
+  dpcNotifiedAt        DateTime?
+  containment          String?
+  resolution           String?
+  recordedBy           String?
+
+  @@index([facilityId])
+}
+
+model DistrictGrant {
+  id         String        @id @default(cuid())
+  districtId String
+  district   District      @relation(fields: [districtId], references: [id])
+  facilityId String
+  facility   Facility      @relation(fields: [facilityId], references: [id])
+  scopes     DistrictScope[]
+  grantedBy  String?
+  grantedAt  DateTime      @default(now())
+  status     GrantStatus   @default(ACTIVE)
+  revokedAt  DateTime?
+
+  @@index([districtId])
+  @@index([facilityId])
+}
+
+model EstablishmentPost {
+  id            String   @id @default(cuid())
+  facilityId    String
+  facility      Facility @relation(fields: [facilityId], references: [id])
+  cadreId       String
+  cadre         Cadre    @relation(fields: [cadreId], references: [id])
+  approvedCount Int      @default(0)
+  notes         String?
+
+  @@index([facilityId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  facilityId String?
+  facility   Facility? @relation(fields: [facilityId], references: [id])
+  actorEmail String?
+  action     String
+  entityType String
+  entityId   String?
+  before     Json?
+  after      Json?
+  summary    String   // a readable sentence, never a raw record dump
+  createdAt  DateTime @default(now())
+
+  @@index([facilityId])
+  @@index([entityType, entityId])
+}
+
+model ErrorReport {
+  id                String            @id @default(cuid())
+  facilityId        String?
+  facility          Facility?         @relation(fields: [facilityId], references: [id])
+  reportedBy        String?
+  screen            String?
+  description       String
+  technicalContext  Json?
+  status            ErrorReportStatus @default(NEW)
+  createdAt         DateTime          @default(now())
+
+  @@index([facilityId])
+}
+
+// ---------------------------------------------------------------------------
+// PART 5 — LEAVE, ABSENCE, COVER AND THE DUTY LEDGER
+// ---------------------------------------------------------------------------
+
+model DutyLedgerEntry {
+  id                    String          @id @default(cuid())
+  facilityId            String
+  facility              Facility        @relation(fields: [facilityId], references: [id])
+  staffId               String
+  staff                 Staff           @relation("LedgerStaff", fields: [staffId], references: [id])
+  entryType             LedgerEntryType
+  duties                Int
+  dutiesSettled         Int             @default(0)
+  status                LedgerStatus    @default(OPEN)
+  reason                LedgerReason
+  description           String?
+  relatedLeaveRequestId String?
+  relatedLeaveRequest   LeaveRequest?   @relation(fields: [relatedLeaveRequestId], references: [id])
+  relatedSwapId         String?
+  relatedSwap           DutySwap?       @relation(fields: [relatedSwapId], references: [id])
+  counterpartyStaffId   String?
+  counterpartyStaff     Staff?          @relation("LedgerCounterparty", fields: [counterpartyStaffId], references: [id])
+  createdAt             DateTime        @default(now())
+  expiresAt             DateTime?
+  writtenOffBy          String?
+  writtenOffReason      String?
+
+  @@index([facilityId])
+  @@index([staffId])
+}
+
+model CoverProposal {
+  id                  String              @id @default(cuid())
+  facilityId          String
+  rosterAssignmentId  String
+  absentStaffId       String
+  dutyDate            DateTime            @db.Date
+  shiftId             String
+  proposedStaffId     String
+  proposedStaff       Staff               @relation("CoverCandidate", fields: [proposedStaffId], references: [id])
+  rank                Int
+  score               Float
+  reasons             Json?
+  status              CoverProposalStatus @default(PROPOSED)
+  respondedAt         DateTime?
+  declineReason       String?
+  createdAt           DateTime            @default(now())
+
+  @@index([facilityId])
+  @@index([rosterAssignmentId])
+}
+
+// ---------------------------------------------------------------------------
+// PART 6 — REGISTRATION, ACCESS CODES, LEGAL, BILLING
+// ---------------------------------------------------------------------------
+
+model FacilityAccessCode {
+  id               String    @id @default(cuid())
+  facilityId       String
+  facility         Facility  @relation(fields: [facilityId], references: [id])
+  code             String    @unique
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  expiresAt        DateTime?
+  maxUses          Int?
+  usesCount        Int       @default(0)
+  requiresApproval Boolean   @default(true)
+  active           Boolean   @default(true)
+  revokedAt        DateTime?
+  revokedBy        String?
+
+  @@index([facilityId])
+}
+
+model AgreementAcceptance {
+  id             String   @id @default(cuid())
+  facilityId     String
+  facility       Facility @relation(fields: [facilityId], references: [id])
+  documentSlug   String
+  documentVersion String
+  acceptedByName  String
+  acceptedByRole  String
+  acceptedByEmail String
+  acceptedAt      DateTime @default(now())
+  ipAddress       String?
+  userAgent       String?
+
+  @@index([facilityId])
+}
+
+model LegalDocument {
+  id                 String    @id @default(cuid())
+  slug               String    // terms | privacy | dpa | security
+  title              String
+  version             String
+  body                 String
+  effectiveDate        DateTime?
+  publishedAt          DateTime?
+  publishedBy          String?
+  summaryOfChanges     String?
+
+  @@unique([slug, version])
+}
+
+model AccessRequest {
+  id                 String               @id @default(cuid())
+  facilityName       String
+  facilityType       FacilityType?
+  district           String?
+  region             String?
+  contactName        String
+  contactRole        String?
+  contactEmail       String
+  contactPhone       String?
+  staffCountEstimate Int?
+  currentMethod      String?
+  message            String?
+  status             AccessRequestStatus  @default(NEW)
+  assignedTo         String?
+  notes              String?
+  source             AccessRequestSource  @default(LANDING_PAGE)
+  createdAt          DateTime             @default(now())
+  firstResponseAt    DateTime?
+}
+
+model Plan {
+  id              String   @id @default(cuid())
+  name            String
+  monthlyPriceGhs Float
+  setupPriceGhs   Float?
+  staffBandMin    Int?
+  staffBandMax    Int?
+  features        Json?
+  active          Boolean  @default(true)
+  sortOrder       Int      @default(0)
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String             @id @default(cuid())
+  facilityId         String             @unique
+  facility           Facility           @relation(fields: [facilityId], references: [id])
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id])
+  status             SubscriptionStatus @default(TRIAL)
+  billingCycle       BillingCycle       @default(MONTHLY)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  trialEndsAt        DateTime?
+  notes              String?
+
+  invoices Invoice[]
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  facilityId     String
+  facility       Facility      @relation(fields: [facilityId], references: [id])
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+  invoiceNumber  String        @unique
+  issuedAt       DateTime      @default(now())
+  dueAt          DateTime?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  lineItems      Json
+  subtotalGhs    Float
+  totalGhs       Float
+  status         InvoiceStatus @default(DRAFT)
+  paidAt         DateTime?
+  paymentMethod  PaymentMethod?
+  paymentReference String?
+  pdfUrl         String?
+
+  @@index([facilityId])
+}
+
+// ---------------------------------------------------------------------------
+// PART 7 — PLATFORM CONSOLE
+// ---------------------------------------------------------------------------
+
+model SupportSession {
+  id                 String                   @id @default(cuid())
+  facilityId         String
+  facility           Facility                 @relation(fields: [facilityId], references: [id])
+  platformUserEmail  String
+  reason             String
+  accessLevel        SupportAccessLevel       @default(READ_ONLY)
+  startedAt          DateTime                 @default(now())
+  expiresAt          DateTime
+  endedAt            DateTime?
+  endedReason        SupportSessionEndReason?
+
+  @@index([facilityId])
+}
+
+model Announcement {
+  id          String               @id @default(cuid())
+  title       String
+  body        String
+  severity    AnnouncementSeverity @default(INFO)
+  audience    AnnouncementAudience @default(ALL)
+  facilityIds String[]             @default([])
+  startsAt    DateTime?
+  endsAt      DateTime?
+  dismissible Boolean              @default(true)
+  publishedBy String?
+  createdAt   DateTime             @default(now())
+}
+
+model FeatureFlag {
+  id                   String   @id @default(cuid())
+  key                  String   @unique
+  description          String?
+  enabledGlobally      Boolean  @default(false)
+  enabledForFacilityIds String[] @default([])
+  updatedBy            String?
+  updatedAt            DateTime @updatedAt
+}

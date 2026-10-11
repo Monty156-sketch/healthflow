@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens — Part 2 of the build documentation's standing
+ * instructions, carried through to the public site. No gradients, no
+ * purple, borders rather than heavy shadows.
+ */
+:root {
+  --background: #f4f7f5; /* warm off-white ground */
+  --foreground: #12262b; /* petrol-black text */
+  --accent: #0e6b6b; /* the one accent colour */
+  --border: #d8e0dd;
+  --muted: #5c6b68;
+
+  --shift-morning: #b56b12;
+  --shift-afternoon: #25619f;
+  --shift-night: #463a85;
+  --shift-off-duty: #77878a;
+
+  --status-block: #9e2b2b;
+  --status-warning: #a87111;
+  --status-success: #2a7049;
+
+  --radius: 6px; /* small, consistent — never pill-shaped */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-plex-mono);
+  --radius-default: var(--radius);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0d1416;
+    --foreground: #f4f7f5;
+    --border: #1f2c2f;
+    --muted: #93a3a0;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Functional motion only: saving/saved states, skeletons, toasts — never
+   decorative scroll-triggered animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
