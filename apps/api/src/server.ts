@@ -7,6 +7,7 @@ import { pinoHttp } from "pino-http";
 import { authRouter } from "./routes/auth.js";
 import { staffRouter } from "./routes/staff.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
+import { mfaKeyFingerprint } from "./lib/crypto.js";
 
 const app = express();
 
@@ -42,4 +43,5 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 const port = Number(process.env.PORT ?? 4000);
 app.listen(port, () => {
   console.log(`HealthFlow API listening on :${port}`);
+  console.log(`MFA key fingerprint: ${mfaKeyFingerprint()}`);
 });

@@ -40,3 +40,16 @@ export function randomToken(bytes = 48): string {
 export function sha256(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
+
+/**
+ * A short, one-way label for the MFA key, printed by the API at startup and
+ * by the seed script, so you can confirm both use the same key without
+ * showing the key itself. Reveals nothing usable about the key.
+ */
+export function mfaKeyFingerprint(): string {
+  try {
+    return crypto.createHash("sha256").update(getKey()).digest("hex").slice(0, 8);
+  } catch (err) {
+    return `invalid (${(err as Error).message})`;
+  }
+}

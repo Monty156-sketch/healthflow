@@ -20,7 +20,7 @@ import {
   generateRecoveryCodes,
   hashRecoveryCodes,
 } from "../../../apps/api/src/lib/mfa";
-import { encryptSecret } from "../../../apps/api/src/lib/crypto";
+import { encryptSecret, mfaKeyFingerprint } from "../../../apps/api/src/lib/crypto";
 
 const prisma = new PrismaClient();
 
@@ -87,6 +87,7 @@ async function main() {
 
   console.log(`Seeded facility: ${facility.name} (${facility.id})`);
   console.log(`Seeded platform admin: ${ADMIN_EMAIL}`);
+  console.log(`MFA key fingerprint: ${mfaKeyFingerprint()}  (must match the one in Render's logs)`);
   console.log("");
   console.log("MFA is mandatory for PLATFORM_ADMIN. Enrol with either:");
   console.log("  TOTP secret   :", mfaSecret);
