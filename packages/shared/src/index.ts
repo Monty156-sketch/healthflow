@@ -61,3 +61,16 @@ export const DESIGN_TOKENS = {
     success: "#2A7049",
   },
 } as const;
+
+// Colours a shift can use. A fixed set, not free choice, so every chip stays
+// readable on the roster grid in light and dark mode.
+export const SHIFT_COLOURS = [
+  { value: "#b56b12", name: "Amber" },
+  { value: "#25619f", name: "Blue" },
+  { value: "#463a85", name: "Indigo" },
+  { value: "#77878a", name: "Grey" },
+  { value: "#1f6f66", name: "Teal" },
+  { value: "#9b3b52", name: "Rose" },
+  { value: "#5c6b1f", name: "Olive" },
+  { value: "#3d5a73", name: "Slate" },
+] as const;

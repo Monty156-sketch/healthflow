@@ -47,3 +47,38 @@ export interface Department {
 export interface Cadre extends Department {
   sortOrder: number;
 }
+
+export interface Shift {
+  id: string;
+  name: string;
+  code: string;
+  startTime: string | null;
+  endTime: string | null;
+  durationHours: number;
+  isOvernight: boolean;
+  isOnCall: boolean;
+  onCallHoursFactor: number;
+  onCallAdviceNote: string | null;
+  minStaff: number;
+  minByCadre: Record<string, number>;
+  eligibleCadreIds: string[];
+  colour: string | null;
+  countsAsDuty: boolean;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface Rule {
+  code: string;
+  name: string;
+  ruleType: "STATUTORY" | "POLICY" | "LOGICAL" | "FACILITY" | "FAIRNESS";
+  thresholdValue: number | null;
+  unit: string | null;
+  behaviour: "BLOCK" | "WARN" | "OPTIMISE";
+  overridable: boolean;
+  enabled: boolean;
+  description: string | null;
+  editable: { threshold: boolean; behaviour: boolean; enabled: boolean };
+  range: { min: number; max: number } | null;
+  standard: number | null;
+}

@@ -34,12 +34,12 @@ const CHIP_COLOR: Record<ChipTone, string> = {
 };
 
 /** A short code on a tinted background: never colour alone, the code carries the meaning. */
-export function GridChip({ code, tone }: { code: string; tone: ChipTone }) {
-  const c = CHIP_COLOR[tone];
+export function GridChip({ code, tone, colour }: { code: string; tone: ChipTone; colour?: string }) {
+  const c = colour ?? CHIP_COLOR[tone];
   return (
     <span
       className="figures inline-flex h-6 min-w-7 items-center justify-center rounded-[4px] px-1 text-[12px] font-semibold"
-      style={{ color: c, backgroundColor: `color-mix(in srgb, ${c} 14%, var(--surface))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c} 35%, transparent)` }}
+      style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, backgroundColor: `color-mix(in srgb, ${c} 14%, var(--surface))`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${c} 35%, transparent)` }}
     >
       {code}
     </span>
