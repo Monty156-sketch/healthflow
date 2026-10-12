@@ -269,11 +269,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
-      <ErrorCapture />
-      <OfflineBanner />
-      <div className="lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
+      <div className="no-print">
+        <ErrorCapture />
+        <OfflineBanner />
+      </div>
+      <div className="app-frame lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
         {/* Wide screens: a fixed sidebar. */}
-        <aside className="hidden border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col lg:gap-6 lg:px-4 lg:py-5">
+        <aside className="no-print hidden border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col lg:gap-6 lg:px-4 lg:py-5">
           <Brand />
           {facilityName && (
             <div>
@@ -290,7 +292,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         {/* Phones and tablets: a top bar with a menu. */}
-        <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)] lg:hidden">
+        <header className="no-print sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)] lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4">
             <Brand />
             <Button

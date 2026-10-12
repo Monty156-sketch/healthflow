@@ -106,3 +106,36 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Printing a roster: the A4 sheet staff already recognise. Only the grid and its key are printed. */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .app-frame {
+    display: block !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .print-grid {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+  }
+  .print-grid table {
+    font-size: 9px;
+  }
+  .print-grid th,
+  .print-grid td {
+    position: static !important;
+  }
+}

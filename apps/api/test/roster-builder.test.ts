@@ -119,3 +119,43 @@ describe("review, approval and publishing", () => {
     expect((await as(otherAdmin).post(`/api/facility/rosters/${id}/status`, { action: "approve" })).status).toBe(404);
   });
 });
+
+describe("versions", () => {
+  it("keeps the roster as it was before generating again, and restores any saved version", async () => {
+    const { api, id, person, shift } = await setup();
+    const day = new Date(Date.UTC(2026, 10, 5));
+    const cellOf = () => prisma.rosterAssignment.findFirstOrThrow({ where: { rosterId: id, staffId: person, dutyDate: day } });
+    await api.put(`/api/facility/rosters/${id}/cell`, { staffId: person, date: "2026-11-05", shiftId: shift("D/O"), overrideReason: "Requested a day off" });
+    const edited = (await cellOf()).shiftId;
+    expect(edited).toBe(shift("D/O"));
+
+    await api.post(`/api/facility/rosters/${id}/generate`); // locked manual duty survives
+    const list = (await api.get(`/api/facility/rosters/${id}/versions`)).body;
+    expect(list.versions).toHaveLength(1);
+    expect(list.versions[0].reason).toBe("Before generating again");
+    expect(list.current).toBe(2);
+
+    // change it again, then restore the saved version
+    await api.put(`/api/facility/rosters/${id}/cell`, { staffId: person, date: "2026-11-05", shiftId: shift("M"), overrideReason: "Covering a colleague" });
+    const restore = await api.post(`/api/facility/rosters/${id}/versions/${list.versions[0].id}/restore`);
+    expect(restore.status).toBe(200);
+    expect((await cellOf()).shiftId).toBe(edited);
+    const after = (await api.get(`/api/facility/rosters/${id}/versions`)).body;
+    expect(after.versions[0].reason).toBe(`Before restoring version ${list.versions[0].version}`);
+    expect(after.current).toBe(3);
+  });
+
+  it("will not restore into an approved roster, or from another facility", async () => {
+    const { api, id } = await setup();
+    await api.post(`/api/facility/rosters/${id}/generate`);
+    const vid = (await api.get(`/api/facility/rosters/${id}/versions`)).body.versions[0].id;
+    await api.post(`/api/facility/rosters/${id}/status`, { action: "submit" });
+    await api.post(`/api/facility/rosters/${id}/status`, { action: "approve" });
+    const locked = await api.post(`/api/facility/rosters/${id}/versions/${vid}/restore`);
+    expect(locked.status).toBe(409);
+    const other = await makeFacility("Another Clinic");
+    const { user: otherAdmin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: other.id });
+    expect((await as(otherAdmin).get(`/api/facility/rosters/${id}/versions`)).status).toBe(404);
+    expect((await as(otherAdmin).post(`/api/facility/rosters/${id}/versions/${vid}/restore`)).status).toBe(404);
+  });
+});

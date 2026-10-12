@@ -11,6 +11,7 @@ import type { RosterFinding, RosterView, Shortfall } from "@/lib/types";
 import { Button, Field, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge, Textarea } from "@/components/ui";
 import { GridChip, MonthGrid } from "@/components/MonthGrid";
 import { CellEditor } from "@/components/CellEditor";
+import { VersionsPanel } from "@/components/VersionsPanel";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 
 interface Cell {
@@ -118,6 +119,10 @@ export default function RosterPage() {
   const [editing, setEditing] = useState<{ staffId: string; date: string } | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [flow, setFlow] = useState<string | null>(null);
+  type Change = { staffId: string; date: string; from: string | null; to: string };
+  const [undo, setUndo] = useState<Change[]>([]);
+  const [redo, setRedo] = useState<Change[]>([]);
+  const [versionKey, setVersionKey] = useState(0);
 
   const shiftById = useMemo(() => new Map((data?.shifts ?? []).map((s) => [s.id, s])), [data]);
   const cells = useMemo(() => {
@@ -156,6 +161,24 @@ export default function RosterPage() {
     setPending(null);
     try {
       await api.post(`/api/facility/rosters/${id}/status`, { action });
+      reload();
+    } catch (err) {
+      setFlow(err instanceof ApiError ? ((err.body as { message?: string })?.message ?? "That did not work.") : "That did not work. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function replay(list: Change[], setList: (c: Change[]) => void, other: Change[], setOther: (c: Change[]) => void, direction: "undo" | "redo") {
+    const c = list[list.length - 1];
+    const target = direction === "undo" ? c.from : c.to;
+    if (!target) return;
+    setBusy(true);
+    setFlow(null);
+    try {
+      await api.put(`/api/facility/rosters/${id}/cell`, { staffId: c.staffId, date: c.date, shiftId: target });
+      setList(list.slice(0, -1));
+      setOther([...other, c]);
       reload();
     } catch (err) {
       setFlow(err instanceof ApiError ? ((err.body as { message?: string })?.message ?? "That did not work.") : "That did not work. Check your connection and try again.");
@@ -222,7 +245,7 @@ export default function RosterPage() {
 
   return (
     <>
-      <p className="mb-2 text-sm">
+      <p className="no-print mb-2 text-sm">
         <Link href="/roster" className="text-[var(--accent)] underline-offset-2 hover:underline">
           All rosters
         </Link>
@@ -236,15 +259,23 @@ export default function RosterPage() {
           </span>
         }
         actions={
-          canRoster &&
-          canGenerate &&
-          !confirming && (
-            <Button onClick={() => (generated ? setConfirming(true) : generate())} disabled={busy}>
-              {busy ? "Generating…" : generated ? "Generate again" : "Generate roster"}
-            </Button>
-          )
+          <span className="no-print flex flex-wrap gap-2">
+            {generated && (
+              <Button variant="secondary" onClick={() => window.print()}>
+                Print or save as PDF
+              </Button>
+            )}
+            {canRoster && canGenerate && !confirming && (
+              <Button onClick={() => (generated ? setConfirming(true) : generate())} disabled={busy}>
+                {busy ? "Generating…" : generated ? "Generate again" : "Generate roster"}
+              </Button>
+            )}
+          </span>
         }
       />
+      <p className="mb-3 hidden text-sm print:block">
+        {facility.facility.name}. {STATUS_WORD[roster.status]}, version {roster.version}.
+      </p>
 
       {confirming && (
         <div className="mb-4">
@@ -300,7 +331,7 @@ export default function RosterPage() {
           </dl>
 
           {available.length > 0 && (
-            <div className="mb-4">
+            <div className="no-print mb-4">
               {pending ? (
                 <Notice
                   tone="warning"
@@ -334,7 +365,7 @@ export default function RosterPage() {
             </div>
           )}
           {flow && (
-            <div className="mb-4">
+            <div className="no-print mb-4">
               <Notice tone="block">{flow}</Notice>
             </div>
           )}
@@ -347,11 +378,27 @@ export default function RosterPage() {
               date={editing.date}
               currentShiftId={data.assignments.find((a) => a.staffId === editing.staffId && a.date === editing.date)?.shiftId ?? null}
               shifts={data.shifts.filter((x) => x.active || !x.countsAsDuty)}
-              onDone={(saved) => {
+              onDone={(saved, change) => {
                 setEditing(null);
-                if (saved) reload();
+                if (saved) {
+                  if (change) {
+                    setUndo((u) => [...u, change]);
+                    setRedo([]);
+                  }
+                  reload();
+                }
               }}
             />
+          )}
+          {canEdit && (undo.length > 0 || redo.length > 0) && (
+            <div className="no-print mb-2 flex flex-wrap gap-2" role="group" aria-label="Undo and redo">
+              <Button variant="secondary" disabled={busy || !undo.length || !undo[undo.length - 1].from} onClick={() => replay(undo, setUndo, redo, setRedo, "undo")}>
+                Undo last change
+              </Button>
+              <Button variant="secondary" disabled={busy || !redo.length} onClick={() => replay(redo, setRedo, undo, setUndo, "redo")}>
+                Redo
+              </Button>
+            </div>
           )}
           <MonthGrid<Cell>
             year={roster.year}
@@ -407,7 +454,7 @@ export default function RosterPage() {
             </div>
           </dl>
 
-          <div className="mt-6 space-y-5">
+          <div className="no-print mt-6 space-y-5">
             <h2 className="text-lg font-semibold">Checked against the rules</h2>
             {!blocking.length && !warnings.length ? (
               <Notice tone="success">No findings. Every rule that is switched on is met.</Notice>
@@ -417,6 +464,9 @@ export default function RosterPage() {
                 <FindingList title="Warnings" items={warnings} nameOf={nameOf} />
               </>
             )}
+            <div className="no-print">
+              <VersionsPanel rosterId={roster.id} canRestore={canEdit} refreshKey={roster.version} onRestored={() => { setUndo([]); setRedo([]); reload(); }} />
+            </div>
             {accepted.length > 0 && (
               <section aria-label="Accepted with a reason">
                 <h3 className="mb-2 text-[15px] font-semibold">
