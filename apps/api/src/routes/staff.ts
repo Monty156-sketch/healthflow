@@ -13,6 +13,7 @@ export const staffRouter = Router();
 
 const deactivationStatuses = ["INACTIVE", "TRANSFERRED", "RESIGNED", "RETIRED"] as const;
 const deactivateSchema = z.object({ status: z.enum(deactivationStatuses) });
+const paramsSchema = z.object({ staffId: z.string().min(1) });
 
 staffRouter.patch(
   "/:staffId/status",
@@ -20,11 +21,14 @@ staffRouter.patch(
   requireRole("FACILITY_ADMIN", "PLATFORM_ADMIN"),
   requireFacilityScope((req) => req.body?.facilityId),
   async (req, res) => {
+    const params = paramsSchema.safeParse(req.params);
+    if (!params.success) return res.status(400).json({ error: "invalid_staff_id" });
+
     const parsed = deactivateSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
 
     const staff = await prisma.staff.findUnique({
-      where: { id: req.params.staffId },
+      where: { id: params.data.staffId },
       include: { userProfile: true },
     });
     if (!staff) return res.status(404).json({ error: "not_found" });
