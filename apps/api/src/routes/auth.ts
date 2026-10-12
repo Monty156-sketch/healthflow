@@ -30,6 +30,23 @@ import {
   ROLES_REQUIRING_MFA,
 } from "@healthflow/shared";
 
+/** The only user fields the browser ever receives. */
+function publicUser(user: {
+  id: string;
+  userEmail: string;
+  role: string;
+  scopeType: string;
+  facilityId: string | null;
+}) {
+  return {
+    id: user.id,
+    email: user.userEmail,
+    role: user.role,
+    scopeType: user.scopeType,
+    facilityId: user.facilityId,
+  };
+}
+
 export const authRouter = Router();
 
 const loginSchema = z.object({
@@ -172,16 +189,7 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
     summary: `${email} signed in.`,
   });
 
-  res.json({
-    accessToken,
-    user: {
-      id: user.id,
-      email: user.userEmail,
-      role: user.role,
-      scopeType: user.scopeType,
-      facilityId: user.facilityId,
-    },
-  });
+  res.json({ accessToken, user: publicUser(user) });
 });
 
 /** Rotates the refresh token on every use (reduces replay risk) and issues a fresh access token. */
@@ -220,7 +228,9 @@ authRouter.post("/refresh", async (req, res) => {
     facilityId: user.facilityId,
   });
 
-  res.json({ accessToken });
+  // The user is returned too: after a page reload the browser has nothing
+  // but the cookie, and needs to know who is signed in, not just a token.
+  res.json({ accessToken, user: publicUser(user) });
 });
 
 authRouter.post("/logout", async (req, res) => {

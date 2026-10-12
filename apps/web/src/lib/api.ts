@@ -43,9 +43,13 @@ async function request<T>(
     },
   });
 
-  if (res.status === 401 && retry && path !== "/api/auth/refresh") {
-    const refreshed = await tryRefresh();
-    if (refreshed) return request<T>(path, options, false);
+  // A 401 on a normal call means the 15-minute access token ran out: get a
+  // new one from the session cookie and retry once. Auth endpoints answer
+  // 401 for wrong credentials, which a refresh cannot fix.
+  if (res.status === 401 && retry && !path.startsWith("/api/auth/")) {
+    const session = await refreshSession();
+    if (session) return request<T>(path, options, false);
+    onSessionExpired?.();
   }
 
   if (!res.ok) {
@@ -57,18 +61,42 @@ async function request<T>(
   return res.json();
 }
 
-async function tryRefresh(): Promise<boolean> {
+export interface SessionUser {
+  id: string;
+  email: string;
+  role: string;
+  scopeType: string;
+  facilityId: string | null;
+}
+
+export interface Session {
+  accessToken: string;
+  user: SessionUser;
+}
+
+// Lets the auth context hear about a session the server has ended (idle
+// timeout, deactivation, sign-out elsewhere) so it can return to login.
+let onSessionExpired: (() => void) | null = null;
+export function setOnSessionExpired(handler: (() => void) | null) {
+  onSessionExpired = handler;
+}
+
+/**
+ * Trades the httpOnly session cookie for a fresh access token and the
+ * signed-in user. Returns null when there is no live session.
+ */
+async function refreshSession(): Promise<Session | null> {
   try {
     const res = await fetch(`${API_BASE}/api/auth/refresh`, {
       method: "POST",
       credentials: "include",
     });
-    if (!res.ok) return false;
-    const data = (await res.json()) as { accessToken: string };
+    if (!res.ok) return null;
+    const data = (await res.json()) as Session;
     setAccessToken(data.accessToken);
-    return true;
+    return data;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -78,5 +106,5 @@ export const api = {
     request<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
-  refreshOnLoad: tryRefresh,
+  refreshSession,
 };

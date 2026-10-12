@@ -1,56 +1,180 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { api, setAccessToken } from "./api";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+} from "react";
+import { SESSION_IDLE_TIMEOUT_MINUTES } from "@healthflow/shared";
+import { api, setAccessToken, setOnSessionExpired, type Session, type SessionUser } from "./api";
 
-export interface AuthUser {
-  id: string;
-  email: string;
-  role: string;
-  scopeType: string;
-  facilityId: string | null;
-}
+export type AuthUser = SessionUser;
 
 interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
-  login: (email: string, password: string, mfa?: { totp?: string; recoveryCode?: string }) => Promise<{ mfaRequired: boolean }>;
+  login: (
+    email: string,
+    password: string,
+    mfa?: { totp?: string; recoveryCode?: string }
+  ) => Promise<{ mfaRequired: boolean }>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const IDLE_LIMIT_MS = SESSION_IDLE_TIMEOUT_MINUTES * 60 * 1000;
+// Renew well inside the 15-minute access token and the server's 30-minute
+// idle window, but only when the person has actually done something.
+const KEEPALIVE_EVERY_MS = 10 * 60 * 1000;
+const CHECK_EVERY_MS = 30 * 1000;
+
+// Shared between tabs, so working in one tab keeps the others signed in.
+const ACTIVITY_KEY = "hf:lastActivity";
+
+function readSharedActivity(): number {
+  try {
+    return Number(localStorage.getItem(ACTIVITY_KEY)) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeSharedActivity(at: number) {
+  try {
+    localStorage.setItem(ACTIVITY_KEY, String(at));
+  } catch {
+    // Private mode or blocked storage: this tab still tracks its own activity.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // A page refresh loses the in-memory access token by design (see
-    // lib/api.ts); this silently restores it from the httpOnly refresh
-    // cookie if the 30-minute idle session hasn't lapsed.
-    api.refreshOnLoad().finally(() => setLoading(false));
+  // Set for real at sign-in and on session restore.
+  const lastActivity = useRef(0);
+  const lastRenewal = useRef(0);
+  const inFlight = useRef<Promise<Session | null> | null>(null);
+  const ending = useRef(false);
+
+  // One refresh at a time. Each refresh rotates the session cookie, so two
+  // running at once would make the second use an already-retired cookie.
+  const renew = useCallback(() => {
+    if (!inFlight.current) {
+      inFlight.current = api.refreshSession().finally(() => {
+        inFlight.current = null;
+      });
+    }
+    return inFlight.current;
   }, []);
+
+  // A full page load, not a client-side route change: it discards everything
+  // the signed-in page held in memory, and nothing else on the page can race
+  // it with its own redirect (which would drop the ?reason message).
+  const endSession = useCallback((reason: "idle" | "expired" | "signed_out") => {
+    setAccessToken(null);
+    window.location.replace(reason === "signed_out" ? "/login" : `/login?reason=${reason}`);
+  }, []);
+
+  // Restore the session after a page load or refresh.
+  useEffect(() => {
+    let cancelled = false;
+    renew().then((session) => {
+      if (cancelled) return;
+      if (session) {
+        ending.current = false;
+        setUser(session.user);
+        lastActivity.current = Date.now();
+        lastRenewal.current = Date.now();
+        writeSharedActivity(lastActivity.current);
+      }
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [renew]);
+
+  // The server ended the session (idle, deactivated, signed out elsewhere).
+  useEffect(() => {
+    setOnSessionExpired(() => endSession("expired"));
+    return () => setOnSessionExpired(null);
+  }, [endSession]);
+
+  // Track activity and enforce the idle limit while signed in.
+  useEffect(() => {
+    if (!user) return;
+
+    let lastWrite = 0;
+    const markActive = () => {
+      const now = Date.now();
+      lastActivity.current = now;
+      if (now - lastWrite > 5000) {
+        lastWrite = now;
+        writeSharedActivity(now);
+      }
+    };
+    const events = ["pointerdown", "keydown", "scroll", "touchstart", "mousemove"] as const;
+    events.forEach((e) => window.addEventListener(e, markActive, { passive: true }));
+
+    const timer = window.setInterval(async () => {
+      const now = Date.now();
+      const latest = Math.max(lastActivity.current, readSharedActivity());
+
+      if (now - latest >= IDLE_LIMIT_MS) {
+        if (ending.current) return;
+        ending.current = true;
+        await api.post("/api/auth/logout").catch(() => undefined);
+        endSession("idle");
+        return;
+      }
+
+      if (latest > lastRenewal.current && now - lastRenewal.current >= KEEPALIVE_EVERY_MS) {
+        const session = await renew();
+        if (session) {
+          lastRenewal.current = Date.now();
+        } else {
+          endSession("expired");
+        }
+      }
+    }, CHECK_EVERY_MS);
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, markActive));
+      window.clearInterval(timer);
+    };
+  }, [user, renew, endSession]);
 
   async function login(
     email: string,
     password: string,
     mfa?: { totp?: string; recoveryCode?: string }
   ) {
-    const res = await api.post<
-      { mfaRequired: true } | { accessToken: string; user: AuthUser }
-    >("/api/auth/login", { email, password, ...mfa });
+    const res = await api.post<{ mfaRequired: true } | Session>("/api/auth/login", {
+      email,
+      password,
+      ...mfa,
+    });
 
     if ("mfaRequired" in res) return { mfaRequired: true };
 
     setAccessToken(res.accessToken);
+    ending.current = false;
+    lastActivity.current = Date.now();
+    lastRenewal.current = Date.now();
+    writeSharedActivity(lastActivity.current);
     setUser(res.user);
     return { mfaRequired: false };
   }
 
   async function logout() {
-    await api.post("/api/auth/logout");
-    setAccessToken(null);
-    setUser(null);
+    await api.post("/api/auth/logout").catch(() => undefined);
+    endSession("signed_out");
   }
 
   return (

@@ -1,13 +1,34 @@
 "use client";
 
-import { useState, FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 import { Button, Card, ErrorText, Input, Label } from "@/components/ui";
 
+const SIGNED_OUT_NOTICES: Record<string, string> = {
+  idle: "You were signed out after 30 minutes without activity.",
+  expired: "Your session ended. Sign in again to continue.",
+};
+
+/** Says why the person is back on this page, when they were signed out for them. */
+function SignedOutNotice() {
+  const reason = useSearchParams().get("reason");
+  const notice = reason ? SIGNED_OUT_NOTICES[reason] : undefined;
+  if (!notice) return null;
+  return (
+    <p
+      role="status"
+      className="text-sm mb-4 rounded-md border px-3 py-2"
+      style={{ borderColor: "var(--border)", color: "var(--muted)" }}
+    >
+      {notice}
+    </p>
+  );
+}
+
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, loading } = useAuth();
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -16,6 +37,12 @@ export default function LoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Already signed in (for example, after a refresh): skip the form.
+  useEffect(() => {
+    if (!loading && user) router.replace("/dashboard");
+  }, [loading, user, router]);
+
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -68,6 +95,10 @@ export default function LoginPage() {
         <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
           HealthFlow
         </p>
+
+        <Suspense fallback={null}>
+          <SignedOutNotice />
+        </Suspense>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {!mfaRequired && (
