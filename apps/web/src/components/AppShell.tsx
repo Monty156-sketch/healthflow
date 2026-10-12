@@ -11,6 +11,7 @@ import { useResource } from "@/lib/useApi";
 import { ApiError } from "@/lib/api";
 import { ROLE } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
+import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 
 // ------------------------------------------------------------- facility context
 
@@ -62,13 +63,17 @@ export function useOptionalFacility() {
 // ------------------------------------------------------------- navigation
 
 const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+const PLATFORM = ["PLATFORM_ADMIN"];
 
 const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
+  { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/settings", label: "Facility settings", roles: ["FACILITY_ADMIN"] },
+  { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
+  { href: "/system-health", label: "System health", roles: PLATFORM },
 ];
 
 function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
@@ -170,6 +175,9 @@ function AccountBlock({
           Sign out
         </Button>
       </div>
+      <div className="flex flex-wrap">
+        <ReportProblem />
+      </div>
     </div>
   );
 }
@@ -257,6 +265,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
+      <ErrorCapture />
       <OfflineBanner />
       <div className="lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
         {/* Wide screens: a fixed sidebar. */}
@@ -269,7 +278,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           )}
           <nav aria-label="Main">
-            <NavLinks role={data ? role : ""} />
+            <NavLinks role={role} />
           </nav>
           <div className="mt-auto">
             <AccountBlock name={name} role={role} onSignOut={logout} />
@@ -293,7 +302,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <div id="mobile-menu" className="border-t border-[var(--border)] px-4 pt-3 pb-4">
               {facilityName && <p className="px-3 pb-2 text-sm text-[var(--muted)]">{facilityName}</p>}
               <nav aria-label="Main">
-                <NavLinks role={data ? role : ""} onNavigate={() => setMenuOpen(false)} />
+                <NavLinks role={role} onNavigate={() => setMenuOpen(false)} />
               </nav>
               <div className="mt-3">
                 <AccountBlock name={name} role={role} onSignOut={logout} onNavigate={() => setMenuOpen(false)} />
@@ -309,7 +318,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
               </div>
             )}
-            {ctx || pathname === "/account" ? children : <NoFacilityNotice role={role} />}
+            {ctx || pathname === "/account" || (role === "PLATFORM_ADMIN" && pathname === "/system-health") ? children : <NoFacilityNotice role={role} />}
           </div>
         </main>
       </div>

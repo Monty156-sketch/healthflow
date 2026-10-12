@@ -23,7 +23,16 @@ export interface Staff {
   excludedFromNights: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
-  account: { role: string; active: boolean; lastSignInAt: string | null; mfaEnabled: boolean } | null;
+  account: {
+    role: string;
+    active: boolean;
+    lastSignInAt: string | null;
+    mfaEnabled: boolean;
+    privacyNoticeVersionAccepted?: string | null;
+  } | null;
+  hasPhoto?: boolean;
+  /** Only on the detail record. */
+  photo?: string | null;
   updatedAt: string;
 }
 

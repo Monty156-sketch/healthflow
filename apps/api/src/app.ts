@@ -8,6 +8,8 @@ import { pinoHttp } from "pino-http";
 import { authRouter } from "./routes/auth.js";
 import { accountRouter } from "./routes/account.js";
 import { facilityRouter } from "./routes/facility/index.js";
+import { invitationRouter } from "./routes/invitations.js";
+import { errorReportRouter, platformRouter, recordServerError } from "./routes/errors.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 export function createApp() {
@@ -37,13 +39,22 @@ export function createApp() {
   app.use("/api/auth/account", accountRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/facility", facilityRouter);
+  app.use("/api/invitations", invitationRouter);
+  app.use("/api/errors", errorReportRouter);
+  app.use("/api/platform", platformRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
 
   // Express 5 routes async errors here. Log the detail, never send it.
   app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    // A malformed or oversized request body is the sender's mistake, not ours.
+    const status = (err as Error & { status?: number }).status;
+    if (status === 400 || status === 413) {
+      return res.status(status).json({ error: status === 413 ? "too_large" : "invalid_body" });
+    }
     if (req.log) req.log.error(err);
     else console.error(err);
+    void recordServerError(req, err);
     res.status(500).json({ error: "internal_error" });
   });
 
