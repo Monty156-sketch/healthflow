@@ -32,7 +32,8 @@ export interface GenerateInput {
 
 export interface Shortfall {
   day: number;
-  shiftId: string;
+  /** Null when the day as a whole needs more people than exist, whichever shifts they work. */
+  shiftId: string | null;
   cadreId: string | null;
   required: number;
   available: number;
@@ -205,8 +206,7 @@ export function generate(input: GenerateInput): GenerateResult {
     }
     if (needTotal > idle && !shortfalls.length) {
       // Enough people for each shift on its own, but not for all the shifts at once.
-      const first = slots[0];
-      if (first) shortfalls.push({ day, shiftId: first.shift.id, cadreId: null, required: needTotal, available: idle });
+      shortfalls.push({ day, shiftId: null, cadreId: null, required: needTotal, available: idle });
     }
     // Hardest first; then nights, which have the tightest rest limits; cadre slots before open ones; then shift order.
     slots.sort((a, b) => a.scarcity - b.scarcity || Number(b.shift.isOvernight) - Number(a.shift.isOvernight) || (a.cadreId ? 0 : 1) - (b.cadreId ? 0 : 1) || a.order - b.order);

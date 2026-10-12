@@ -3,7 +3,8 @@ import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js"
 
 beforeEach(resetDatabase);
 
-async function setup(staffCount = 18) {
+// The admin has a staff record too, so a facility set up with n nurses has n + 1 people to roster.
+async function setup(staffCount = 17) {
   const facility = await makeFacility("Sombo Health Centre");
   const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Kofi Bawa" } });
   const api = as(admin);
@@ -37,7 +38,7 @@ describe("rosters", () => {
     expect(gen.body.summary.unfilled).toBe(0);
     expect(gen.body.summary.blocks).toBe(0);
 
-    // 18 people x 30 days, every cell holding something, Off Duty included.
+    // 18 people x 30 days (17 nurses and the admin), every cell holding something, Off Duty included.
     expect(await prisma.rosterAssignment.count({ where: { rosterId: id } })).toBe(18 * 30);
     const view = (await api.get(`/api/facility/rosters/${id}`)).body;
     expect(view.staff).toHaveLength(18);
@@ -90,7 +91,7 @@ describe("rosters", () => {
     const gen = await api.post(`/api/facility/rosters/${id}/generate`);
     expect(gen.status).toBe(409);
     expect(gen.body.error).toBe("not_feasible");
-    expect(gen.body.shortfalls[0].sentence).toMatch(/^Morning on 1 November needs 3 in total, and only 2 people are available\.$/);
+    expect(gen.body.shortfalls[0].sentence).toBe("On 1 November the shifts need 7 people between them, and only 3 people are available.");
     expect(await prisma.rosterAssignment.count({ where: { rosterId: id } })).toBe(0);
   });
 

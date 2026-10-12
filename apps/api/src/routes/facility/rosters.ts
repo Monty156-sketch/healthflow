@@ -102,14 +102,14 @@ async function loadEngineData(facilityId: string, rosterId: string, year: number
 
 type Data = Awaited<ReturnType<typeof loadEngineData>>;
 
-function sayShortfall(s: Shortfall, d: Data): { date: string; shift: string; cadre: string | null; required: number; available: number; sentence: string } {
-  const shift = d.shiftName.get(s.shiftId) ?? "A shift";
+function sayShortfall(s: Shortfall, d: Data): { date: string; shift: string | null; cadre: string | null; required: number; available: number; sentence: string } {
+  const shift = s.shiftId ? d.shiftName.get(s.shiftId) ?? "A shift" : null;
   const cadre = s.cadreId ? d.cadreNames[s.cadreId] ?? null : null;
-  const who = cadre ? `from ${cadre}` : "in total";
-  return {
-    date: isoOf(s.day), shift, cadre, required: s.required, available: s.available,
-    sentence: `${shift} on ${sayDay(s.day)} needs ${s.required} ${who}, and only ${s.available} ${s.available === 1 ? "person is" : "people are"} available.`,
-  };
+  const are = `${s.available} ${s.available === 1 ? "person is" : "people are"} available`;
+  const sentence = shift
+    ? `${shift} on ${sayDay(s.day)} needs ${s.required} ${cadre ? `from ${cadre}` : "in total"}, and only ${are}.`
+    : `On ${sayDay(s.day)} the shifts need ${s.required} people between them, and only ${are}.`;
+  return { date: isoOf(s.day), shift, cadre, required: s.required, available: s.available, sentence };
 }
 
 function findingRow(rosterId: string, facilityId: string, f: Finding): Prisma.ComplianceFindingCreateManyInput {
