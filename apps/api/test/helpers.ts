@@ -92,13 +92,23 @@ export function tokenFor(user: {
 }
 
 /** An authenticated request helper bound to one person. */
-export function as(user: Parameters<typeof tokenFor>[0]) {
-  const auth = `Bearer ${tokenFor(user)}`;
+export function as(user: Parameters<typeof tokenFor>[0], cookie?: string) {
+  return withToken(tokenFor(user), cookie);
+}
+
+/** Requests carrying an access token (and optionally the session cookie). */
+export function withToken(token: string, cookie?: string) {
+  const auth = `Bearer ${token}`;
+  const prep = (r: request.Test) => {
+    r.set("Authorization", auth).set("X-Forwarded-For", freshIp());
+    if (cookie) r.set("Cookie", cookie);
+    return r;
+  };
   return {
-    get: (url: string) => request(app).get(url).set("Authorization", auth),
-    post: (url: string, body?: object) => request(app).post(url).set("Authorization", auth).send(body ?? {}),
-    patch: (url: string, body?: object) => request(app).patch(url).set("Authorization", auth).send(body ?? {}),
-    delete: (url: string) => request(app).delete(url).set("Authorization", auth),
+    get: (url: string) => prep(request(app).get(url)),
+    post: (url: string, body?: object) => prep(request(app).post(url)).send(body ?? {}),
+    patch: (url: string, body?: object) => prep(request(app).patch(url)).send(body ?? {}),
+    delete: (url: string) => prep(request(app).delete(url)),
   };
 }
 
@@ -111,4 +121,23 @@ export function freshIp() {
 
 export function totp(secret: string) {
   return authenticator.generate(secret);
+}
+
+/** The session cookie from a response, ready to send back. */
+export function cookieFrom(res: { headers: Record<string, unknown> }): string {
+  const raw = res.headers["set-cookie"] as string[] | undefined;
+  const c = raw?.find((v) => v.startsWith("hf_refresh=") && !v.startsWith("hf_refresh=;"));
+  if (!c) throw new Error("no session cookie set");
+  return c.split(";")[0];
+}
+
+/** Signs in through the real endpoint; returns the access token and session cookie. */
+export async function signIn(email: string, password: string, extra: Record<string, string> = {}, userAgent = "test-agent") {
+  const res = await request(app)
+    .post("/api/auth/login")
+    .set("X-Forwarded-For", freshIp())
+    .set("User-Agent", userAgent)
+    .send({ email, password, ...extra });
+  if (res.status !== 200 || !res.body.accessToken) throw new Error(`sign-in failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return { accessToken: res.body.accessToken as string, cookie: cookieFrom(res) };
 }

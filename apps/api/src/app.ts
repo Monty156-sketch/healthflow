@@ -6,6 +6,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
 import { authRouter } from "./routes/auth.js";
+import { accountRouter } from "./routes/account.js";
 import { facilityRouter } from "./routes/facility/index.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
@@ -31,6 +32,9 @@ export function createApp() {
   // Pinged by the keep-awake workflow so the free Render instance stays warm.
   app.get("/health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
+  // Under /api/auth because the session cookie is scoped to that path, and
+  // the account routes need it to tell this device from the others.
+  app.use("/api/auth/account", accountRouter);
   app.use("/api/auth", authRouter);
   app.use("/api/facility", facilityRouter);
 
