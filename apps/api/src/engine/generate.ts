@@ -65,6 +65,12 @@ const LOOKBACK = 14;
  * It must outweigh that charge for the roster to read as a roster.
  */
 const BLOCK_REWARD = 14;
+const REST_BROKEN = 50;
+/** Coming back from a rest on the wrong shift, and on the right one (spec 2A.3). */
+const WRONG_AFTER_REST = 15;
+const RIGHT_AFTER_REST = 4;
+/** Out of the order a rule sets for its block. The spec says 3; a little more is needed for the order to read clearly. */
+const OFF_PATTERN = 8;
 const HARD_CODES = ["C2", "C3", "C5", "C6", "C7", "C8"];
 
 function mulberry32(seed: number) {
@@ -83,9 +89,40 @@ function mulberry32(seed: number) {
 interface RunState {
   runs: Map<string, number>;
   rest: Map<number, "BLOCK" | "PREFER">;
+  /** Set when a rest block starts: what the first duty back must be, and from which day the rest is over. */
+  back?: { shiftId: string; enforcement: "BLOCK" | "PREFER"; firedDay: number; restEnds: number };
 }
 
 const freshState = (): RunState => ({ runs: new Map(), rest: new Map() });
+
+/** What a duty on this day would cost this person under their cycle rules. hard > 0 means it breaks a rule set to Block. */
+function dutyCheck(st: RunState, rules: ECycleRule[], day: number, shift: EShift): { hard: number; soft: number } {
+  let hard = 0;
+  let soft = 0;
+  const rest = st.rest.get(day);
+  if (rest === "BLOCK") hard++;
+  else if (rest === "PREFER") soft += REST_BROKEN;
+  const back = st.back;
+  if (back && day > back.restEnds) {
+    if (shift.id !== back.shiftId) {
+      if (back.enforcement === "BLOCK") hard++;
+      else soft += WRONG_AFTER_REST;
+    } else {
+      soft -= RIGHT_AFTER_REST;
+    }
+  }
+  for (const r of rules) {
+    const pattern = r.blockShiftPatternIds ?? [];
+    if (!pattern.length || !r.countingShiftIds.includes(shift.id) || !pattern.includes(shift.id)) continue;
+    const expected = pattern[(st.runs.get(r.id) ?? 0) % pattern.length];
+    if (shift.id !== expected) {
+      if (r.enforcement === "BLOCK") hard++;
+      else soft += OFF_PATTERN;
+    }
+    break; // the highest-priority rule that orders this shift decides
+  }
+  return { hard, soft };
+}
 
 /** One day's effect on a person's runs. `shift` is null on an off day. */
 function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift | null) {
@@ -93,6 +130,7 @@ function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift |
     for (const r of rules) st.runs.set(r.id, 0);
     return;
   }
+  if (st.back && day > st.back.firedDay) st.back = undefined; // the first duty since the rule fired has now happened
   const fired: ECycleRule[] = [];
   for (const r of rules) {
     if (r.countingShiftIds.includes(shift.id)) {
@@ -110,6 +148,9 @@ function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift |
       if (!st.rest.has(day + i) || winner.enforcement === "BLOCK") st.rest.set(day + i, winner.enforcement);
     }
     for (const r of fired) st.runs.set(r.id, 0);
+    st.back = winner.nextShiftAfterRestId
+      ? { shiftId: winner.nextShiftAfterRestId, enforcement: winner.enforcement, firedDay: day, restEnds: day + winner.offDaysRequired }
+      : undefined;
   }
 }
 
@@ -323,8 +364,7 @@ export function generate(input: GenerateInput): GenerateResult {
     const st = state.get(s.id)!;
     let run = 0;
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
-    const rest = st.rest.get(day) === "PREFER" ? 50 : 0;
-    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + rest;
+    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run;
   };
 
   const generated: GeneratedCell[] = [];
@@ -335,8 +375,9 @@ export function generate(input: GenerateInput): GenerateResult {
       for (const s of staff) {
         if (slot.cadreId && s.cadreId !== slot.cadreId) continue;
         if (hardReason(s, slot.shift, day)) continue;
-        if (state.get(s.id)!.rest.get(day) === "BLOCK") continue;
-        const sc = score(s, slot.shift, day);
+        const check = dutyCheck(state.get(s.id)!, cycleRules.get(s.id)!, day, slot.shift);
+        if (check.hard) continue;
+        const sc = score(s, slot.shift, day) + check.soft;
         if (!best || sc < best.score) best = { s, score: sc }; // staff are already in staff-number order, so ties keep the earlier number
       }
       if (best) {
@@ -353,6 +394,26 @@ export function generate(input: GenerateInput): GenerateResult {
   }
 
   // ---- Step 5: local search
+  /** Walks a person's month under their cycle rules and totals what breaks. */
+  const scan = (s: EStaff): { hard: number; soft: number } => {
+    const mine = by.get(s.id)!;
+    const st = freshState();
+    const rules = cycleRules.get(s.id)!;
+    let hard = 0;
+    let soft = 0;
+    for (let d = period.startDay - LOOKBACK; d <= period.endDay; d++) {
+      const sid = mine.get(d);
+      const shift = sid ? shiftById.get(sid)! : null;
+      if (shift && d >= period.startDay) {
+        const c = dutyCheck(st, rules, d, shift);
+        hard += c.hard;
+        soft += c.soft;
+      }
+      advance(st, rules, d, shift);
+    }
+    return { hard, soft };
+  };
+
   const cost = (s: EStaff): number => {
     const mine = by.get(s.id)!;
     let nights = 0;
@@ -367,15 +428,8 @@ export function generate(input: GenerateInput): GenerateResult {
       hours += hoursOf(sh);
       if (mine.has(d + 1)) pairs++;
     }
-    let preferBroken = 0;
-    const st = freshState();
-    const rules = cycleRules.get(s.id)!;
-    for (let d = period.startDay - LOOKBACK; d <= period.endDay; d++) {
-      const sid = mine.get(d);
-      if (sid && d >= period.startDay && st.rest.get(d) === "PREFER") preferBroken++;
-      advance(st, rules, d, sid ? shiftById.get(sid)! : null);
-    }
-    return nightWeight * nights * nights + 4 * special * special + 2 * (hours / 40) * (hours / 40) - BLOCK_REWARD * pairs + 50 * preferBroken;
+    const { soft } = scan(s);
+    return nightWeight * nights * nights + 4 * special * special + 2 * (hours / 40) * (hours / 40) - BLOCK_REWARD * pairs + soft;
   };
 
   const violations = (s: EStaff): number => {
@@ -393,15 +447,8 @@ export function generate(input: GenerateInput): GenerateResult {
       for (const [d] of mine) if (d >= period.startDay && d <= period.endDay) perWeek.set(week(d), (perWeek.get(week(d)) ?? 0) + 1);
       for (const n of perWeek.values()) if (n > s.maxDutiesPerWeek) violationsCount++;
     }
-    // Off blocks that must not be broken.
-    const st = freshState();
-    const rules = cycleRules.get(s.id)!;
-    for (let d = period.startDay - LOOKBACK; d <= period.endDay; d++) {
-      const sid = mine.get(d);
-      if (sid && d >= period.startDay && st.rest.get(d) === "BLOCK") n++;
-      advance(st, rules, d, sid ? shiftById.get(sid)! : null);
-    }
-    return n + violationsCount;
+    // Off blocks, the shift after a rest, and block orders that are set to Block.
+    return n + violationsCount + scan(s).hard;
   };
 
   const lockedKeys = new Set(input.locked.map((l) => `${l.staffId}:${l.day}`));

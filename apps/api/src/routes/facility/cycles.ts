@@ -32,6 +32,8 @@ function present(r: RuleRow) {
     applicableDepartmentIds: r.applicableDepartmentIds,
     enforcement: r.enforcement,
     priority: r.priority,
+    nextShiftAfterRestId: r.nextShiftAfterRestId,
+    blockShiftPatternIds: r.blockShiftPatternIds,
     active: r.active,
   };
 }
@@ -43,11 +45,14 @@ async function ensureSeeded(facilityId: string) {
   if (!shifts.length) return;
   const night = shifts.filter((s) => s.isOvernight);
   const day = shifts.filter((s) => !s.isOvernight && !s.isOnCall);
+  const named = (w: string) => day.find((x) => x.name.toLowerCase().includes(w));
+  const afternoon = named("afternoon");
+  const morning = named("morning");
   const seeds = [
-    { name: "4 nights on, 3 off", shifts: night, n: 4, m: 3 },
-    { name: "5 days on, 2 off", shifts: day, n: 5, m: 2 },
+    { name: "4 nights on, 3 off", shifts: night, n: 4, m: 3, after: afternoon?.id ?? null, pattern: [] as string[] },
+    { name: "4 days on, 1 off", shifts: day, n: 4, m: 1, after: null, pattern: afternoon && morning ? [afternoon.id, morning.id] : [] },
     // Closes the gap between the two: days followed by nights break both runs.
-    { name: "6 duties on, 2 off", shifts: [...day, ...night], n: 6, m: 2 },
+    { name: "6 duties on, 2 off", shifts: [...day, ...night], n: 6, m: 2, after: null, pattern: [] as string[] },
   ].filter((s) => s.shifts.length > 0);
   let priority = 1;
   for (const s of seeds) {
@@ -59,6 +64,8 @@ async function ensureSeeded(facilityId: string) {
         offDaysRequired: s.m,
         enforcement: "PREFER",
         priority: priority++,
+        nextShiftAfterRestId: s.after,
+        blockShiftPatternIds: s.pattern,
         countingShifts: { connect: s.shifts.map((x) => ({ id: x.id })) },
       },
     });
@@ -86,6 +93,8 @@ const cycleInput = z.object({
   applicableCadreIds: z.array(z.string()).default([]),
   applicableDepartmentIds: z.array(z.string()).default([]),
   enforcement: z.enum(["BLOCK", "PREFER"]),
+  nextShiftAfterRestId: z.string().nullable().default(null),
+  blockShiftPatternIds: z.array(z.string()).max(14, "At most 14 steps.").default([]),
   priority: z.number().int("Use a whole number.").min(1, "At least 1.").max(99).optional(),
   /** Needed to switch a rule to Block: the facility has chosen which it would rather live with. */
   confirmBlock: z.boolean().optional(),
@@ -103,6 +112,10 @@ async function validate(
 
   const shifts = await prisma.shift.findMany({ where: { facilityId, id: { in: input.countingShiftIds }, countsAsDuty: true }, select: { id: true } });
   if (shifts.length !== new Set(input.countingShiftIds).size) fields.countingShiftIds = "One of the shifts is not a duty shift in your facility.";
+  const ownDuty = async (ids: string[]) =>
+    (await prisma.shift.count({ where: { facilityId, id: { in: [...new Set(ids)] }, countsAsDuty: true, active: true } })) === new Set(ids).size;
+  if (input.nextShiftAfterRestId && !(await ownDuty([input.nextShiftAfterRestId]))) fields.nextShiftAfterRestId = "That is not a duty shift in your facility.";
+  if (input.blockShiftPatternIds.length && !(await ownDuty(input.blockShiftPatternIds))) fields.blockShiftPatternIds = "One of the shifts is not a duty shift in your facility.";
   if (input.applicableCadreIds.length) {
     const n = await prisma.cadre.count({ where: { facilityId, id: { in: input.applicableCadreIds } } });
     if (n !== new Set(input.applicableCadreIds).size) fields.applicableCadreIds = "One of the cadres is not in your facility.";
@@ -158,6 +171,8 @@ cyclesRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       applicableDepartmentIds: input.applicableDepartmentIds,
       enforcement: input.enforcement,
       priority,
+      nextShiftAfterRestId: input.nextShiftAfterRestId,
+      blockShiftPatternIds: input.blockShiftPatternIds,
       countingShifts: { connect: input.countingShiftIds.map((id) => ({ id })) },
     },
     include: { countingShifts: { select: { id: true, code: true } } },
@@ -192,6 +207,8 @@ cyclesRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       applicableDepartmentIds: input.applicableDepartmentIds,
       enforcement: input.enforcement,
       priority,
+      nextShiftAfterRestId: input.nextShiftAfterRestId,
+      blockShiftPatternIds: input.blockShiftPatternIds,
       countingShifts: { set: input.countingShiftIds.map((id) => ({ id })) },
     },
     include: { countingShifts: { select: { id: true, code: true } } },

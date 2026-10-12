@@ -55,6 +55,10 @@ export interface ECycleRule {
   departmentIds: string[];
   enforcement: "BLOCK" | "PREFER";
   priority: number;
+  /** When this rule's rest block ends, the first duty back must be this shift. */
+  nextShiftAfterRestId?: string | null;
+  /** The order shifts take within a block, repeating until the block ends. */
+  blockShiftPatternIds?: string[];
 }
 
 export interface ERule {
