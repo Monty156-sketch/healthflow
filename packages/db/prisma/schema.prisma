@@ -561,6 +561,7 @@ model Shift {
   isOvernight    Boolean  @default(false)
   isOnCall       Boolean  @default(false)
   onCallHoursFactor Float @default(0)
+  onCallAdviceNote  String? // what advice the on-call factor is based on
   minStaff       Int      @default(0)
   minByCadre     Json     @default("{}")
   colour         String?

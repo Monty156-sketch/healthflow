@@ -70,6 +70,8 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
+  { href: "/shifts", label: "Shifts", roles: READ_ROLES },
+  { href: "/rules", label: "Compliance rules", roles: READ_ROLES },
   { href: "/settings", label: "Facility settings", roles: ["FACILITY_ADMIN"] },
   { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
