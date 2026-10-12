@@ -99,7 +99,20 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
     }
     let mfaOk = false;
     if (totp && user.mfaSecretEncrypted) {
-      mfaOk = verifyTotp(decryptSecret(user.mfaSecretEncrypted), totp);
+      let secret: string;
+      try {
+        secret = decryptSecret(user.mfaSecretEncrypted);
+      } catch {
+        // Only happens when this server's MFA_ENCRYPTION_KEY differs from
+        // the key the secret was encrypted with (e.g. seeded with another
+        // .env). Say so plainly in the logs instead of a bare stack trace.
+        req.log?.error(
+          { userId: user.id },
+          "MFA secret could not be decrypted: MFA_ENCRYPTION_KEY does not match the key used when this user's MFA was set up"
+        );
+        return res.status(500).json({ error: "mfa_key_mismatch" });
+      }
+      mfaOk = verifyTotp(secret, totp);
     } else if (recoveryCode) {
       const result = await consumeRecoveryCode(user.recoveryCodesHashed, recoveryCode);
       mfaOk = result.matched;

@@ -52,7 +52,15 @@ async function main() {
     },
   });
 
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "New_Day156";
+  // No fallback: a default password committed to git is a password anyone
+  // reading the repo knows.
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminPassword || adminPassword.length < 12) {
+    throw new Error(
+      "Set SEED_ADMIN_PASSWORD in packages/db/.env (at least 12 characters). " +
+        "This becomes the admin's password in the database."
+    );
+  }
   const adminPasswordHash = await hashPassword(adminPassword);
 
   const mfaSecret = generateMfaSecret();
@@ -85,12 +93,10 @@ async function main() {
   console.log("  otpauth URL   :", otpauthUrl(mfaSecret, ADMIN_EMAIL));
   console.log("  Recovery codes:", recoveryCodes.join(" "));
   console.log("");
-
-  if (!process.env.SEED_ADMIN_PASSWORD) {
-    console.warn(
-      "WARNING: SEED_ADMIN_PASSWORD not set — using the development fallback."
-    );
-  }
+  console.log(
+    "Every seed run replaces the MFA secret: delete any older HealthFlow " +
+      "entry in your authenticator app and add this one."
+  );
 }
 
 main()

@@ -29,7 +29,11 @@ export default function LoginPage() {
         router.push("/dashboard");
       }
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.status >= 500) {
+        // A server fault is not a credentials problem; saying "incorrect
+        // password" here sends people chasing the wrong thing.
+        setError("The server had a problem signing you in. Try again in a minute.");
+      } else if (err instanceof ApiError) {
         if (err.message === "account_locked") {
           setError("Too many failed attempts. Try again in a few minutes.");
         } else if (err.message === "invalid_mfa") {
