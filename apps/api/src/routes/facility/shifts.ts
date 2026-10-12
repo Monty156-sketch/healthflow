@@ -66,7 +66,7 @@ function present(s: ShiftRow) {
 }
 
 /** Every facility has exactly one Off Duty shift; the roster fills blanks with it. */
-async function ensureOffDuty(facilityId: string) {
+export async function ensureOffDuty(facilityId: string) {
   const exists = await prisma.shift.findFirst({ where: { facilityId, countsAsDuty: false }, select: { id: true } });
   if (exists) return;
   await prisma.shift.create({

@@ -109,3 +109,46 @@ export interface CapacityRow {
   staffNeeded: number;
   suggestion: { consecutiveDuties: number; offDaysRequired: number } | null;
 }
+
+export interface RosterSummary {
+  id: string;
+  year: number;
+  month: number;
+  label: string;
+  status: "DRAFT" | "GENERATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
+  version: number;
+  generatedAt: string | null;
+  generationSeconds: number | null;
+  duties: number;
+  blocks: number;
+  warnings: number;
+  unfilled: number;
+}
+
+export interface RosterFinding {
+  id: string;
+  ruleCode: string;
+  severity: "BLOCK" | "WARN" | "INFO";
+  message: string;
+  staffId: string | null;
+  date: string | null;
+  status: "OPEN" | "OVERRIDDEN" | "RESOLVED";
+}
+
+export interface RosterView {
+  roster: Omit<RosterSummary, "duties" | "blocks" | "warnings" | "unfilled">;
+  summary: { duties: number; blocks: number; warnings: number; unfilled: number };
+  staff: { id: string; name: string; staffNo: string; cadreCode: string | null; cadreName: string | null; cadreOrder: number; departmentName: string | null }[];
+  shifts: { id: string; code: string; name: string; colour: string | null; countsAsDuty: boolean; isOvernight: boolean; active: boolean }[];
+  assignments: { staffId: string; shiftId: string; date: string; source: string; locked: boolean }[];
+  findings: RosterFinding[];
+}
+
+export interface Shortfall {
+  date: string;
+  shift: string;
+  cadre: string | null;
+  required: number;
+  available: number;
+  sentence: string;
+}
