@@ -2,7 +2,9 @@
 // OpenNext adapter. Reference: https://opennext.js.org/cloudflare
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "healthflow-web",
+
+  // Must match the Worker's name in the Cloudflare dashboard.
+  "name": "healthflow",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -11,15 +13,6 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-
-  // Lets the worker call itself for cache revalidation. The service name
-  // must match "name" above.
-  "services": [
-    {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "healthflow-web"
-    }
-  ],
 
   // Public, non-secret settings. PROXY_SHARED_SECRET is NOT here: it is set
   // as a secret in the Cloudflare dashboard so it never lands in git.

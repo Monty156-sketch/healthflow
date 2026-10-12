@@ -137,12 +137,12 @@ the server-side code the `/api` proxy needs. Both live under the same
 
 1. In the Cloudflare dashboard: **Workers & Pages → Create → Import a
    repository**, pick this repo, and set:
-   - **Project name**: `healthflow-web` (must match `name` in `wrangler.jsonc`)
+   - **Project name**: `healthflow` (must match `name` in `apps/web/wrangler.jsonc`)
    - **Root directory**: leave as `/` (the repo root, where the lockfile is)
    - **Build command**: `pnpm --filter @healthflow/web cf:build`
    - **Deploy command**: `pnpm --filter @healthflow/web cf:deploy`
 2. Deploy. Cloudflare gives you a URL like
-   `https://healthflow-web.YOUR-SUBDOMAIN.workers.dev`.
+   `https://healthflow.YOUR-SUBDOMAIN.workers.dev`.
 3. Open the Worker → **Settings → Variables and Secrets → Add**, type
    **Secret**, name `PROXY_SHARED_SECRET`, same value as on Render.
 4. Back on Render, set `WEB_ORIGIN` to the workers.dev URL.
