@@ -111,6 +111,15 @@ reaches a facility only through a logged, time-limited support session,
 which arrives with the platform console. Use the facility admin account for
 the facility screens.
 
+### Email (optional for now)
+
+Password-reset emails are sent through [Resend](https://resend.com) when
+`RESEND_API_KEY` and `EMAIL_FROM` are set on the API (Render). Without them,
+"Forgot your password?" still answers normally but sends nothing, and the
+person asks their facility admin, who can create a one-use reset link from
+the staff member's page. Resend's free plan covers this volume; it needs a
+domain you own to send from.
+
 ### Tests
 
 `pnpm --filter @healthflow/api test` runs the API's integration tests. They
