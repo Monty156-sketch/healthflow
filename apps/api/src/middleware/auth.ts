@@ -40,14 +40,17 @@ export function requireRole(...roles: AccessTokenPayload["role"][]) {
 
 /**
  * Resolves which facility IDs the caller may act on, mirroring the spec's
- * `resolveScope`. A platform admin gets `"all"`; a district officer gets
- * every facility with an active, non-revoked DistrictGrant; a facility-
- * scoped user gets exactly their own facility.
+ * `resolveScope`. A district officer gets every facility with an active
+ * DistrictGrant; a facility-scoped user gets exactly their own facility.
+ *
+ * A platform admin gets none. Per the spec (Part 3, 7.5) PS Tech sees a
+ * facility's data only through a logged, time-limited support session
+ * (Wave 7), never by standing access.
  */
 export async function resolveFacilityScope(
   auth: AccessTokenPayload
 ): Promise<string[] | "all"> {
-  if (auth.scopeType === "PLATFORM") return "all";
+  if (auth.scopeType === "PLATFORM") return [];
 
   if (auth.scopeType === "DISTRICT") {
     const grants = await prisma.districtGrant.findMany({
