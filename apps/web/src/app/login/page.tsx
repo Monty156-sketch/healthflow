@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, type Session } from "@/lib/api";
 import { Button, Card, ErrorText, Field, Input, Notice } from "@/components/ui";
+import { LegalLinks } from "@/components/LegalLinks";
 import { AuthenticatorSetup, RecoveryCodes, type PendingAuthenticator } from "@/components/TwoStep";
 
 const NOTICES: Record<string, { tone: "neutral" | "success"; text: string }> = {
@@ -131,7 +132,7 @@ export default function LoginPage() {
   const wide = stage === "enrol" || stage === "codes";
 
   return (
-    <main id="main" className="flex min-h-screen items-center justify-center px-4 py-10">
+    <main id="main" className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <Card className={`w-full ${wide ? "max-w-lg" : "max-w-sm"}`}>
         <p className="mb-4 flex items-center gap-2 font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -238,6 +239,7 @@ export default function LoginPage() {
           </>
         )}
       </Card>
+      <LegalLinks className="mt-4" />
     </main>
   );
 }
