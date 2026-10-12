@@ -53,8 +53,13 @@ services:
       - key: MFA_ENCRYPTION_KEY
         sync: false
 
-      # The Cloudflare Pages URL, no trailing slash.
+      # The frontend's URL, no trailing slash.
       - key: WEB_ORIGIN
+        sync: false
+
+      # Shared with the frontend so the API can trust the visitor IP it
+      # forwards. Same value in Render and in Cloudflare.
+      - key: PROXY_SHARED_SECRET
         sync: false
 
       # Email. Can stay empty until email sending is built.

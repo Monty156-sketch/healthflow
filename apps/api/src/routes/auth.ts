@@ -22,6 +22,7 @@ import {
 import { encryptSecret, decryptSecret } from "../lib/crypto.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { authAttemptLimiter } from "../middleware/rateLimit.js";
+import { clientIp } from "../lib/clientIp.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
   LOCKOUT_AFTER_FAILED_ATTEMPTS,
@@ -144,7 +145,7 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
     userProfileId: user.id,
     facilityId: user.facilityId,
     userAgent: req.headers["user-agent"],
-    ipAddress: req.ip,
+    ipAddress: clientIp(req),
   });
 
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
@@ -193,7 +194,7 @@ authRouter.post("/refresh", async (req, res) => {
     userProfileId: user.id,
     facilityId: user.facilityId,
     userAgent: req.headers["user-agent"],
-    ipAddress: req.ip,
+    ipAddress: clientIp(req),
   });
   res.cookie(REFRESH_COOKIE_NAME, refreshToken, refreshCookieOptions());
 

@@ -14,7 +14,9 @@ export function getAccessToken() {
   return accessToken;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:4000";
+// Same origin on purpose: /api/* is forwarded to the Express API by
+// src/app/api/[...path]/route.ts, which keeps the session cookie first-party.
+const API_BASE = "";
 
 export class ApiError extends Error {
   status: number;
