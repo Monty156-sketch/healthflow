@@ -60,8 +60,4 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: |
-          set +e
-          pnpm test > /tmp/t.log 2>&1; code=$?
-          grep -E "FAIL|AssertionError|Error:|expected|→" /tmp/t.log | head -30 | while read -r l; do echo "::error::$(echo "$l" | cut -c1-300)"; done
-          exit $code
+        run: pnpm test

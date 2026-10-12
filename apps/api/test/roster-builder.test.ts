@@ -38,7 +38,7 @@ describe("editing a duty", () => {
     expect(row).toMatchObject({ source: "MANUAL", locked: true });
     expect(await prisma.rosterAssignment.count({ where: { rosterId: id, staffId: person, dutyDate: new Date(Date.UTC(2026, 10, 5)) } })).toBe(1);
     const log = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "roster_cell_changed" } });
-    expect(log?.summary).toMatch(/^Kofi Bawa changed Nurse 2 on 5 November 2026 in the November 2026 roster from .+ to Off Duty/);
+    expect(log?.summary).toMatch(/^Kofi Bawa changed Nurse 2 on 5 November in the November 2026 roster from .+ to Off Duty/);
   });
 
   it("stops a change that breaks a blocking rule unless the manager gives a reason", async () => {
