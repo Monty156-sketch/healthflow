@@ -24,17 +24,33 @@ async function shiftsNeedingMidwives(api: ReturnType<typeof as>, midwifeId: stri
 }
 
 describe("duty cycle rules", () => {
+  it("saves the shift after a rest and the block order, and rejects shifts from elsewhere", async () => {
+    const { api, midwife } = await setup();
+    const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
+    const base = { name: "Custom", countingShiftIds: [n.id], consecutiveDuties: 3, offDaysRequired: 2, offDaysConsecutive: true, applicableCadreIds: [], applicableDepartmentIds: [], enforcement: "PREFER" };
+    const ok = await api.post("/api/facility/cycles", { ...base, nextShiftAfterRestId: a.id, blockShiftPatternIds: [a.id, m.id, a.id] });
+    expect(ok.status).toBe(201);
+    expect(ok.body.rule.nextShiftAfterRestId).toBe(a.id);
+    expect(ok.body.rule.blockShiftPatternIds).toEqual([a.id, m.id, a.id]);
+    const bad = await api.post("/api/facility/cycles", { ...base, name: "Bad", nextShiftAfterRestId: "nope" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.fields.nextShiftAfterRestId).toBeTruthy();
+  });
+
   it("seeds the three starting rules, all preferring, with the right counting shifts", async () => {
     const { api, midwife } = await setup();
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
     const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
     const { rules } = (await api.get("/api/facility/cycles")).body;
-    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "5 days on, 2 off", "6 duties on, 2 off"]);
+    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 1 off", "6 duties on, 2 off"]);
     expect(rules.every((r: { enforcement: string }) => r.enforcement === "PREFER")).toBe(true);
     expect(rules[0].countingShiftIds).toEqual([n.id]);
     expect(rules[1].countingShiftIds.sort()).toEqual([a.id, m.id].sort());
     expect(rules[2].countingShiftIds).toHaveLength(3);
     expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2, 3]);
+    // the night rule sends people back on Afternoon; the day rule alternates Afternoon, Morning
+    expect(rules[0].nextShiftAfterRestId).toBe(m.id);
+    expect(rules[1].blockShiftPatternIds).toEqual([m.id, a.id]);
     // reading again does not seed twice
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(3);
   });
@@ -117,7 +133,7 @@ describe("capacity check", () => {
     const rules = (await api4.get("/api/facility/cycles")).body.rules;
     await api4.patch(`/api/facility/cycles/${rules[0].id}/active`, { active: false });
     const after = (await api4.get("/api/facility/cycles/capacity?month=2026-10")).body.cadres.find((c: { cadreId: string }) => c.cadreId === mw4.id);
-    expect(after.rule.name).toBe("5 days on, 2 off");
+    expect(after.rule.name).toBe("6 duties on, 2 off");
   });
 
   it("only counts active staff", async () => {

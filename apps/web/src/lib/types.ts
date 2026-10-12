@@ -94,6 +94,8 @@ export interface CycleRule {
   applicableDepartmentIds: string[];
   enforcement: "BLOCK" | "PREFER";
   priority: number;
+  nextShiftAfterRestId: string | null;
+  blockShiftPatternIds: string[];
   active: boolean;
 }
 

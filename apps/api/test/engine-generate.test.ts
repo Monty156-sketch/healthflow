@@ -174,3 +174,77 @@ describe("speed", () => {
     expect(seconds).toBeLessThan(30);
   });
 });
+
+describe("what follows a rest, and the order inside a block", () => {
+  const withOrder = (enforcement: "BLOCK" | "PREFER", order = true) => [
+    { ...cycle("r2", "2 nights on, 2 off", ["N"], 2, 2, 1, enforcement), nextShiftAfterRestId: order ? "M" : null },
+    { ...cycle("r1", "4 days on, 1 off", ["A", "M"], 4, 1, 2, "PREFER"), blockShiftPatternIds: order ? ["M", "A"] : [] },
+    cycle("r3", "6 duties on, 2 off", ["A", "M", "N"], 6, 2, 3),
+  ];
+  const sequence = (r: ReturnType<typeof generate>, id: string) =>
+    Array.from({ length: 30 }, (_, i) => r.cells.find((c) => c.staffId === id && c.day === day(i + 1))?.shiftId ?? "?");
+  const ids = base().staff.map((s) => s.id);
+
+  it("brings people back from a night rest on the shift the rule names", () => {
+    const r = generate(base({ cycles: withOrder("BLOCK") }));
+    let seen = 0;
+    for (const id of ids) {
+      const seq = sequence(r, id);
+      for (let i = 2; i < seq.length; i++) {
+        if (seq[i - 2] !== "N" || seq[i - 1] !== "N" || seq[i] !== "D/O") continue;
+        let j = i;
+        while (j < seq.length && seq[j] === "D/O") j++;
+        if (j < seq.length && j - i >= 2) {
+          seen++;
+          expect(seq[j], `${id} came back from nights on ${seq[j]}`).toBe("M");
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(3);
+  });
+
+  it("alternates Afternoon and Morning inside a day block more often than without the order", () => {
+    const share = (order: boolean) => {
+      const r = generate(base({ cycles: withOrder("PREFER", order) }));
+      let pairs = 0;
+      let alternating = 0;
+      for (const id of ids) {
+        const seq = sequence(r, id);
+        for (let i = 1; i < seq.length; i++) {
+          const day2 = (x: string) => x === "A" || x === "M";
+          if (day2(seq[i - 1]) && day2(seq[i])) {
+            pairs++;
+            if (seq[i - 1] !== seq[i]) alternating++;
+          }
+        }
+      }
+      return alternating / pairs;
+    };
+    expect(share(true)).toBeGreaterThan(share(false) + 0.1);
+  });
+
+  it("does not make the spread of duties worse", () => {
+    const spread = (order: boolean) => {
+      const r = generate(base({ cycles: withOrder("PREFER", order) }));
+      const duties = ids.map((id) => sequence(r, id).filter((x) => x !== "D/O" && x !== "?").length);
+      return Math.max(...duties) - Math.min(...duties);
+    };
+    expect(spread(true)).toBeLessThanOrEqual(spread(false) + 2);
+  });
+
+  it("leaves a slot unfilled rather than break a Block return shift", () => {
+    const history: EAssignment[] = [2, 1].map((back) => ({ staffId: "staff_01", shiftId: "N", day: day(1) - back }));
+    const input = base({
+      staff: [1, 2, 3].map((n) => person(n)),
+      shifts: [{ ...A, minStaff: 1 }, { ...M, minStaff: 0 }, { ...N, minStaff: 0 }, OFF],
+      cycles: [{ ...cycle("r2", "2 nights on, 2 off", ["N"], 2, 2, 1, "BLOCK"), nextShiftAfterRestId: "M" }],
+      leave: [2, 3].map((n) => ({ staffId: `staff_0${n}`, startDay: day(1), endDay: day(10) })),
+      history,
+    });
+    const r = generate(input);
+    const mine = (d: number) => r.cells.find((c) => c.staffId === "staff_01" && c.day === day(d))?.shiftId;
+    expect([1, 2].map(mine)).toEqual(["D/O", "D/O"]);
+    expect(mine(3)).not.toBe("A");
+    expect(r.unfilled.some((u) => u.day === day(3))).toBe(true);
+  });
+});

@@ -78,6 +78,7 @@ async function loadEngineData(facilityId: string, rosterId: string, year: number
   const cycles: ECycleRule[] = cycleRows.map((c) => ({
     id: c.id, name: c.name, countingShiftIds: c.countingShifts.map((s) => s.id), consecutiveDuties: c.consecutiveDuties, offDaysRequired: c.offDaysRequired,
     cadreIds: c.applicableCadreIds, departmentIds: c.applicableDepartmentIds, enforcement: c.enforcement, priority: c.priority,
+    nextShiftAfterRestId: c.nextShiftAfterRestId, blockShiftPatternIds: c.blockShiftPatternIds,
   }));
   const leave = leaveRows.map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: dayFromDate(l.endDate) }));
   const toAssignment = (a: { staffId: string; shiftId: string; dutyDate: Date; locked?: boolean }): EAssignment => ({ staffId: a.staffId, shiftId: a.shiftId, day: dayFromDate(a.dutyDate), locked: a.locked });
