@@ -161,7 +161,7 @@ describe("inviting by email", () => {
     expect((await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("ACTIVE");
     const after = (await api.get("/api/facility/invitations")).body.invitations.find((i: { email: string }) => i.email === "yaw@sombo.test");
     expect(after.status).toBe("joined");
-    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "staff_created" } });
+    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "staff_created", entityId: staff.id } });
     expect(audit?.summary).toMatch(/added Yaw Mensah \(staff no\. TBC-\d+\) to the staff list while inviting them\./);
   });
 

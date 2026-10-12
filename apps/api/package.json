@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "lint": "eslint src",
-    "test": "vitest run --reporter=default --reporter=github-actions"
+    "test": "vitest run"
   },
   "dependencies": {
     "@healthflow/db": "workspace:*",
