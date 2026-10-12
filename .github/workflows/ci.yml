@@ -60,4 +60,10 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        shell: bash
+        run: |
+          set +e
+          pnpm test 2>&1 | tee test.log
+          code=${PIPESTATUS[0]}
+          grep -E "AssertionError|Error:|FAIL" test.log | sed 's/\x1b\[[0-9;]*m//g' | head -25 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+          exit $code
