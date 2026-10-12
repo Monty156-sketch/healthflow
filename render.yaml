@@ -20,14 +20,16 @@ services:
         - render.yaml
 
     # Database changes are applied here, on every deploy, before the new API
-    # starts, so a new version never runs against an old schema.
+    # starts, so a new version never runs against an old schema. Migrations
+    # use Neon's direct connection (the pooled one cannot hold the lock
+    # Prisma takes while migrating), so "-pooler" is removed for that step.
     # pnpm is run through npx so nothing is written to Render's read-only
     # system folders. NODE_ENV=development on the install step only, so
     # build tools in devDependencies (Prisma CLI, TypeScript) are installed.
     buildCommand: >-
       NODE_ENV=development npx --yes pnpm@10.28.0 install --frozen-lockfile &&
       npx --yes pnpm@10.28.0 --filter @healthflow/db generate &&
-      npx --yes pnpm@10.28.0 --filter @healthflow/db migrate:deploy &&
+      DATABASE_URL="$(echo "$DATABASE_URL" | sed 's/-pooler//')" npx --yes pnpm@10.28.0 --filter @healthflow/db migrate:deploy &&
       npx --yes pnpm@10.28.0 --filter @healthflow/api build
 
     startCommand: node apps/api/dist/server.js
