@@ -32,7 +32,9 @@ export function createApp() {
   app.use(apiLimiter);
 
   // Pinged by the keep-awake workflow so the free Render instance stays warm.
-  app.get("/health", (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+  app.get("/health", (_req, res) =>
+    res.json({ ok: true, commit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null, time: new Date().toISOString() })
+  );
 
   // Under /api/auth because the session cookie is scoped to that path, and
   // the account routes need it to tell this device from the others.

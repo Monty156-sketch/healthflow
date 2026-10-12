@@ -178,6 +178,7 @@ function AccountBlock({
       <div className="flex flex-wrap">
         <ReportProblem />
       </div>
+      <p className="figures mt-2 text-[12px] text-[var(--muted)]">Build {process.env.NEXT_PUBLIC_BUILD}</p>
     </div>
   );
 }

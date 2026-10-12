@@ -1,0 +1,100 @@
+name: Deploy and verify
+
+# Runs when main changes (a merged pull request).
+#
+# Render rebuilds the API by itself (it applies database migrations as part
+# of its build). This workflow:
+#   1. deploys the web app to Cloudflare, when the two Cloudflare secrets
+#      below are set (skipped, with a clear message, when they are not);
+#   2. waits, then checks that the live web app and the live API are running
+#      THIS commit, and fails loudly if they are not.
+#
+# Repository settings > Secrets and variables > Actions:
+#   Secrets:   CLOUDFLARE_API_TOKEN  (template "Edit Cloudflare Workers"),
+#              CLOUDFLARE_ACCOUNT_ID, PROXY_SHARED_SECRET is NOT needed here
+#   Variables: RENDER_API_URL (already set), WEB_URL (optional)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-web:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for Cloudflare credentials
+        id: creds
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "have=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Cloudflare secrets set. Not deploying the web app from here; relying on Cloudflare's own build for this repository."
+          fi
+      - uses: pnpm/action-setup@v4
+        if: steps.creds.outputs.have == 'true'
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        if: steps.creds.outputs.have == 'true'
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - name: Install
+        if: steps.creds.outputs.have == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Build and deploy to Cloudflare
+        if: steps.creds.outputs.have == 'true'
+        run: pnpm --filter @healthflow/web cf:deploy
+
+  verify:
+    needs: deploy-web
+    if: always()
+    runs-on: ubuntu-latest
+    env:
+      WEB_URL: ${{ vars.WEB_URL || 'https://healthflow.muslimfroko05.workers.dev' }}
+      API_URL: ${{ vars.RENDER_API_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Did this change touch the API?
+        id: api
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^(apps/api/|packages/|package.json|pnpm-lock.yaml|render.yaml)'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Wait for the live web app to run this commit
+        run: |
+          want="${GITHUB_SHA:0:7}"
+          for i in $(seq 1 40); do
+            got=$(curl -fsS "$WEB_URL/version" 2>/dev/null | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            echo "web: live=$got want=$want"
+            [ "$got" = "$want" ] && exit 0
+            sleep 30
+          done
+          echo "::error::The live web app is not running commit $want after 20 minutes. Check the Cloudflare build for this repository."
+          exit 1
+      - name: Wait for the live API to run this commit
+        if: steps.api.outputs.changed == 'true'
+        run: |
+          want="${GITHUB_SHA:0:7}"
+          for i in $(seq 1 40); do
+            got=$(curl -fsS "$API_URL/health" 2>/dev/null | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+            echo "api: live=$got want=$want"
+            [ "$got" = "$want" ] && exit 0
+            sleep 30
+          done
+          echo "::error::The live API is not running commit $want after 20 minutes. Check the Render deploy and its build log."
+          exit 1
