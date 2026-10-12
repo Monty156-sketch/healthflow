@@ -34,6 +34,18 @@ export default function LoginPage() {
           setError("Too many failed attempts. Try again in a few minutes.");
         } else if (err.message === "invalid_mfa") {
           setError("That code didn't match. Check the time on your phone and try again.");
+          setTotp("");
+        } else if (
+          err.message === "mfa_required" ||
+          err.message === "mfa_setup_required"
+        ) {
+          // The API rejects password-only sign-in for roles where MFA is
+          // mandatory. That rejection is the cue to ask for the code, not
+          // a credentials failure.
+          setMfaRequired(true);
+          setError(null);
+        } else if (err.message === "account_inactive") {
+          setError("This account is not active. Contact your administrator.");
         } else {
           setError("Incorrect email or password.");
         }

@@ -8,7 +8,7 @@
     "generate": "prisma generate",
     "migrate": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "seed": "tsx seed.ts",
+    "seed": "tsx prisma/seed.ts",
     "studio": "prisma studio"
   },
   "dependencies": {

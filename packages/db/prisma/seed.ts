@@ -1,19 +1,47 @@
 /**
- * Seeds one facility (Sombo Health Centre, from the build documentation's
- * own fixture) with a platform admin account, so Phase 0 can be checked
- * end to end: sign up is not required to prove the pipeline works.
+ * Seeds one facility (Sombo Health Centre) with a platform admin account,
+ * MFA secret and recovery codes, so Phase 0 can be checked end to end.
+ *
+ * PLATFORM_ADMIN is in ROLES_REQUIRING_MFA, so the admin must be seeded
+ * with MFA already enrolled or login returns 403 mfa_setup_required.
+ *
+ * Requires in packages/db/.env:
+ *   DATABASE_URL
+ *   MFA_ENCRYPTION_KEY   (must match apps/api/.env exactly)
+ *   SEED_ADMIN_PASSWORD
  *
  * Run with: pnpm db:seed
  */
 import { PrismaClient, Role, ScopeType, FacilityType } from "../generated/client";
 import { hashPassword } from "../../../apps/api/src/lib/password";
+import {
+  generateMfaSecret,
+  otpauthUrl,
+  generateRecoveryCodes,
+  hashRecoveryCodes,
+} from "../../../apps/api/src/lib/mfa";
+import { encryptSecret } from "../../../apps/api/src/lib/crypto";
 
 const prisma = new PrismaClient();
 
+const ADMIN_EMAIL = "admin@healthflow.app";
+
 async function main() {
+  if (!process.env.MFA_ENCRYPTION_KEY) {
+    throw new Error(
+      "MFA_ENCRYPTION_KEY is not set. Add it to packages/db/.env with the " +
+        "same value as apps/api/.env, or the seeded MFA secret will not decrypt."
+    );
+  }
+
   const facility = await prisma.facility.upsert({
     where: { id: "sombo-health-centre" },
-    update: {},
+    update: {
+      name: "Sombo Health Centre",
+      facilityType: FacilityType.HEALTH_CENTRE,
+      region: "Upper West",
+      subDistrict: "Nadowli-Kaleo",
+    },
     create: {
       id: "sombo-health-centre",
       name: "Sombo Health Centre",
@@ -24,27 +52,45 @@ async function main() {
     },
   });
 
-  const adminPasswordHash = await hashPassword(
-    process.env.SEED_ADMIN_PASSWORD ?? "ChangeMeNow!2026"
-  );
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "New_Day156";
+  const adminPasswordHash = await hashPassword(adminPassword);
+
+  const mfaSecret = generateMfaSecret();
+  const recoveryCodes = generateRecoveryCodes();
+  const recoveryCodesHashed = await hashRecoveryCodes(recoveryCodes);
+
+  const adminFields = {
+    passwordHash: adminPasswordHash,
+    role: Role.PLATFORM_ADMIN,
+    scopeType: ScopeType.PLATFORM,
+    active: true,
+    mfaEnabled: true,
+    mfaSecretEncrypted: encryptSecret(mfaSecret),
+    recoveryCodesHashed,
+    failedAttempts: 0,
+    lockedUntil: null,
+  };
 
   await prisma.userProfile.upsert({
-    where: { userEmail: "admin@healthflow.app" },
-    update: {},
-    create: {
-      userEmail: "admin@healthflow.app",
-      passwordHash: adminPasswordHash,
-      role: Role.PLATFORM_ADMIN,
-      scopeType: ScopeType.PLATFORM,
-      active: true,
-    },
+    where: { userEmail: ADMIN_EMAIL },
+    update: adminFields,
+    create: { userEmail: ADMIN_EMAIL, ...adminFields },
   });
 
   console.log(`Seeded facility: ${facility.name} (${facility.id})`);
-  console.log("Seeded platform admin: admin@healthflow.app");
-  console.log(
-    "Password is SEED_ADMIN_PASSWORD if set, else the placeholder in this file — change it immediately after first sign-in."
-  );
+  console.log(`Seeded platform admin: ${ADMIN_EMAIL}`);
+  console.log("");
+  console.log("MFA is mandatory for PLATFORM_ADMIN. Enrol with either:");
+  console.log("  TOTP secret   :", mfaSecret);
+  console.log("  otpauth URL   :", otpauthUrl(mfaSecret, ADMIN_EMAIL));
+  console.log("  Recovery codes:", recoveryCodes.join(" "));
+  console.log("");
+
+  if (!process.env.SEED_ADMIN_PASSWORD) {
+    console.warn(
+      "WARNING: SEED_ADMIN_PASSWORD not set — using the development fallback."
+    );
+  }
 }
 
 main()
