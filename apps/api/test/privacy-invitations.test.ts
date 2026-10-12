@@ -65,11 +65,11 @@ describe("invitations", () => {
     const second = await api.post(`/api/facility/staff/${staff.id}/invite`, { role: "SUPERVISOR" });
     expect((await request(app).get(`/api/invitations/check?token=${tokenOf(first.body.url)}`)).body.status).toBe("invalid");
     const check = await request(app).get(`/api/invitations/check?token=${tokenOf(second.body.url)}`);
-    expect(check.body).toMatchObject({ status: "ok", fullName: "Abena Dery", email: "abena@sombo.test", role: "SUPERVISOR", mfaRequired: false });
+    expect(check.body).toMatchObject({ status: "ok", fullName: "Abena Dery", email: "abena@sombo.test", role: "SUPERVISOR", mfaRequired: true });
     expect(check.body.notice.version).toBe("1");
   });
 
-  it("accepting records the notice version, sets the password and signs in", async () => {
+  it("accepting records the notice version, sets the password, then sets up the access code before signing in", async () => {
     const { api, staff, facility } = await setup();
     await publishNotice(api);
     const token = tokenOf((await api.post(`/api/facility/staff/${staff.id}/invite`, { role: "STAFF" })).body.url);
@@ -81,12 +81,30 @@ describe("invitations", () => {
 
     const ok = await pub("/api/invitations/accept", { token, password: NEW_PASSWORD, acceptedNoticeVersion: "1" });
     expect(ok.status).toBe(200);
-    expect(ok.body.next).toBe("signed_in");
-    cookieFrom(ok);
+    expect(ok.body.next).toBe("mfa_setup");
+    expect(ok.headers["set-cookie"]).toBeUndefined();
+    const start = await pub("/api/auth/mfa/enrol/start", { enrolmentToken: ok.body.enrolmentToken });
+    const finish = await pub("/api/auth/mfa/enrol/finish", {
+      enrolmentToken: ok.body.enrolmentToken,
+      setupToken: start.body.setupToken,
+      totp: totp(start.body.secret),
+    });
+    expect(finish.status).toBe(200);
+    cookieFrom(finish);
+    expect(finish.body.recoveryCodes.length).toBeGreaterThan(0);
+
     const profile = await prisma.userProfile.findUniqueOrThrow({ where: { userEmail: "abena@sombo.test" } });
     expect(profile.privacyNoticeVersionAccepted).toBe("1");
     expect(profile.staffId).toBe(staff.id);
     expect(profile.facilityId).toBe(facility.id);
+    expect(profile.mfaEnabled).toBe(true);
+
+    // From now on sign-in needs the email, the password and the code.
+    const noCode = await pub("/api/auth/login", { email: "abena@sombo.test", password: NEW_PASSWORD });
+    expect(noCode.body.mfaRequired).toBe(true);
+    const withCode = await pub("/api/auth/login", { email: "abena@sombo.test", password: NEW_PASSWORD, totp: totp(start.body.secret) });
+    expect(withCode.status).toBe(200);
+    expect(withCode.body.accessToken).toBeTruthy();
 
     const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "invitation_accepted" } });
     expect(audit?.summary).toBe(
@@ -119,6 +137,80 @@ describe("invitations", () => {
     expect((await request(app).get(`/api/invitations/check?token=${token}`)).body.status).toBe("expired");
     const res = await pub("/api/invitations/accept", { token, password: NEW_PASSWORD, acceptedNoticeVersion: "1" });
     expect(res.body.error).toBe("invitation_expired");
+  });
+});
+
+describe("inviting by email", () => {
+  it("adds the person to the staff list as pending, and they become active when they join", async () => {
+    const { api, facility } = await setup();
+    await publishNotice(api);
+    const res = await api.post("/api/facility/invitations", { fullName: "Yaw Mensah", email: "Yaw@Sombo.test", role: "SUPERVISOR" });
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("Yaw Mensah");
+    const staff = await prisma.staff.findUniqueOrThrow({ where: { id: res.body.staffId } });
+    expect(staff).toMatchObject({ email: "yaw@sombo.test", status: "PENDING", fullName: "Yaw Mensah" });
+    expect(staff.staffNo).toMatch(/^TBC-/);
+
+    const list = await api.get("/api/facility/invitations");
+    const row = list.body.invitations.find((i: { email: string }) => i.email === "yaw@sombo.test");
+    expect(row).toMatchObject({ status: "waiting", fullName: "Yaw Mensah", role: "SUPERVISOR" });
+
+    const token = tokenOf(res.body.url);
+    const accepted = await pub("/api/invitations/accept", { token, password: NEW_PASSWORD, acceptedNoticeVersion: "1" });
+    expect(accepted.body.next).toBe("mfa_setup");
+    expect((await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("ACTIVE");
+    const after = (await api.get("/api/facility/invitations")).body.invitations.find((i: { email: string }) => i.email === "yaw@sombo.test");
+    expect(after.status).toBe("joined");
+    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "staff_created", entityId: staff.id } });
+    expect(audit?.summary).toMatch(/added Yaw Mensah \(staff no\. TBC-\d+\) to the staff list while inviting them\./);
+  });
+
+  it("uses an existing staff record when the email is already on the list", async () => {
+    const { api, staff } = await setup();
+    await publishNotice(api);
+    const res = await api.post("/api/facility/invitations", { fullName: "Whoever", email: "ABENA@sombo.test", role: "STAFF" });
+    expect(res.status).toBe(201);
+    expect(res.body.staffId).toBe(staff.id);
+    expect(await prisma.staff.count({ where: { email: "abena@sombo.test" } })).toBe(1);
+  });
+
+  it("leaves nothing behind when it cannot be sent, and checks the email and staff number", async () => {
+    const { api, facility } = await setup();
+    const before = await prisma.staff.count({ where: { facilityId: facility.id } });
+    const blocked = await api.post("/api/facility/invitations", { fullName: "Yaw Mensah", email: "yaw@sombo.test", role: "STAFF" });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.message).toMatch(/Publish your facility's privacy notice first/);
+    expect(await prisma.staff.count({ where: { facilityId: facility.id } })).toBe(before);
+
+    await publishNotice(api);
+    const bad = await api.post("/api/facility/invitations", { fullName: "", email: "not-an-email", role: "STAFF" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.fields.email).toMatch(/valid email/);
+    expect(bad.body.fields.fullName).toBe("Full name is required.");
+    const dup = await api.post("/api/facility/invitations", { fullName: "Yaw Mensah", email: "yaw@sombo.test", role: "STAFF", staffNo: "S1" });
+    expect(dup.body.fields.staffNo).toMatch(/already has this staff number/);
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
+    const taken = await api.post("/api/facility/invitations", { fullName: "Someone", email: user.userEmail, role: "STAFF" });
+    expect(taken.status).toBe(409);
+  });
+
+  it("can send a new link or cancel, and only admins can invite", async () => {
+    const { api, facility } = await setup();
+    await publishNotice(api);
+    const first = await api.post("/api/facility/invitations", { fullName: "Yaw Mensah", email: "yaw@sombo.test", role: "STAFF" });
+    const id = (await api.get("/api/facility/invitations")).body.invitations[0].id;
+    const again = await api.post(`/api/facility/invitations/${id}/resend`);
+    expect(again.status).toBe(201);
+    expect((await request(app).get(`/api/invitations/check?token=${tokenOf(first.body.url)}`)).body.status).toBe("invalid");
+    expect((await request(app).get(`/api/invitations/check?token=${tokenOf(again.body.url)}`)).body.status).toBe("ok");
+
+    const pending = (await api.get("/api/facility/invitations")).body.invitations.find((i: { status: string }) => i.status === "waiting");
+    expect((await api.post(`/api/facility/invitations/${pending.id}/revoke`)).status).toBe(200);
+    expect((await request(app).get(`/api/invitations/check?token=${tokenOf(again.body.url)}`)).body.status).toBe("invalid");
+
+    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    expect((await as(user).post("/api/facility/invitations", { fullName: "A B", email: "ab@sombo.test", role: "STAFF" })).status).toBe(403);
+    expect((await as(user).get("/api/facility/invitations")).status).toBe(403);
   });
 });
 
