@@ -1,132 +1,134 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useFacility } from "@/components/AppShell";
+import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS } from "@/lib/format";
-import type { Staff } from "@/lib/types";
-import { Button, Checkbox, EmptyState, Loading, LoadError, Notice, PageHeader, Select } from "@/components/ui";
-import { ChipTone, GridChip, MonthGrid } from "@/components/MonthGrid";
+import type { RosterSummary } from "@/lib/types";
+import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
+import { Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll } from "@/components/ui";
 
-type Sample = { code: string; tone: ChipTone; word: string };
-
-const PATTERN: Sample[] = [
-  { code: "M", tone: "morning", word: "Morning" },
-  { code: "M", tone: "morning", word: "Morning" },
-  { code: "A", tone: "afternoon", word: "Afternoon" },
-  { code: "A", tone: "afternoon", word: "Afternoon" },
-  { code: "N", tone: "night", word: "Night" },
-  { code: "N", tone: "night", word: "Night" },
-  { code: "O", tone: "off", word: "Off duty" },
-  { code: "O", tone: "off", word: "Off duty" },
-];
-
-/** Sample duties only: a fixed pattern offset per person, so the grid has something to show. */
-function sampleFor(index: number, day: number): Sample {
-  return PATTERN[(day + index * 3) % PATTERN.length];
-}
-
-export default function RosterPage() {
+function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [sample, setSample] = useState(false);
-  const { data, error, reload } = useResource<{ staff: Staff[] }>("/api/facility/staff?show=current");
+  const next = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
+  const [year, setYear] = useState(next.getUTCFullYear());
+  const [month, setMonth] = useState(next.getUTCMonth() + 1);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const years = Array.from({ length: 4 }, (_, i) => now.getFullYear() - 1 + i);
 
-  const rows = useMemo(
-    () =>
-      (data?.staff ?? []).map((s) => ({
-        id: s.id,
-        name: s.fullName,
-        cadreCode: s.cadre?.code ?? s.cadre?.name ?? null,
-        cadreName: s.cadre?.name ?? null,
-        departmentName: s.department?.name ?? null,
-      })),
-    [data]
-  );
-  const indexOf = useMemo(() => new Map(rows.map((r, i) => [r.id, i])), [rows]);
-
-  function step(delta: number) {
-    const d = new Date(Date.UTC(year, month - 1 + delta, 1));
-    setYear(d.getUTCFullYear());
-    setMonth(d.getUTCMonth() + 1);
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setProblem(null);
+    try {
+      const res = await api.post<{ roster: { id: string } }>("/api/facility/rosters", { year, month });
+      onCreated(res.roster.id);
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { message?: string; id?: string }) : undefined;
+      if (body?.id) return onCreated(body.id);
+      setProblem(body?.message ?? "The roster could not be started. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  if (error && !data) return <LoadError onRetry={reload} />;
-  if (!data) return <Loading label="Loading staff" />;
+  return (
+    <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
+      <div>
+        <label htmlFor="new-month" className="mb-1 block text-sm font-medium">
+          Month
+        </label>
+        <Select id="new-month" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
+          {MONTHS.map((m, i) => (
+            <option key={m} value={i + 1}>
+              {m}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div>
+        <label htmlFor="new-year" className="mb-1 block text-sm font-medium">
+          Year
+        </label>
+        <Select id="new-year" value={year} onChange={(e) => setYear(Number(e.target.value))}>
+          {years.map((y) => (
+            <option key={y}>{y}</option>
+          ))}
+        </Select>
+      </div>
+      <Button type="submit" disabled={busy}>
+        {busy ? "Starting…" : "Start roster"}
+      </Button>
+      {problem && (
+        <div className="basis-full">
+          <Notice tone="block">{problem}</Notice>
+        </div>
+      )}
+    </form>
+  );
+}
 
-  const years = Array.from({ length: 5 }, (_, i) => now.getFullYear() - 1 + i);
-  const day = (iso: string) => Number(iso.slice(8, 10));
+export default function RosterListPage() {
+  const facility = useFacility();
+  const canRoster = ["FACILITY_ADMIN", "ROSTER_MANAGER"].includes(facility.me.role);
+  const router = useRouter();
+  const { data, error, reload } = useResource<{ rosters: RosterSummary[] }>("/api/facility/rosters");
+
+  if (error && !data) return <LoadError onRetry={reload} />;
+  if (!data) return <Loading label="Loading rosters" />;
+
+  const go = (id: string) => router.push(`/roster/${id}`);
 
   return (
     <>
-      <PageHeader title="Roster" description="Everyone on the staff list, by department and cadre, for one month." />
-      <div className="mb-4 flex flex-wrap items-end gap-2">
-        <Button variant="secondary" onClick={() => step(-1)} aria-label="Previous month">
-          Previous
-        </Button>
-        <div>
-          <label htmlFor="r-month" className="sr-only">
-            Month
-          </label>
-          <Select id="r-month" value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-            {MONTHS.map((m, i) => (
-              <option key={m} value={i + 1}>
-                {m}
-              </option>
-            ))}
-          </Select>
+      <PageHeader title="Roster" description="One roster for each month. Start a month, generate it, and check it against the rules." />
+      {canRoster && (
+        <div className="mb-6">
+          <Panel title="Start a month">
+            <StartRoster onCreated={go} />
+          </Panel>
         </div>
-        <div>
-          <label htmlFor="r-year" className="sr-only">
-            Year
-          </label>
-          <Select id="r-year" value={year} onChange={(e) => setYear(Number(e.target.value))}>
-            {years.map((y) => (
-              <option key={y}>{y}</option>
-            ))}
-          </Select>
-        </div>
-        <Button variant="secondary" onClick={() => step(1)} aria-label="Next month">
-          Next
-        </Button>
-      </div>
-
-      {rows.length === 0 ? (
-        <EmptyState title="No staff yet">Add staff first. They appear here, ready to be rostered.</EmptyState>
+      )}
+      {data.rosters.length === 0 ? (
+        <EmptyState title="No rosters yet">{canRoster ? "Start the first month above. Set up your shifts and duty cycles first if you have not." : "Nothing has been planned yet."}</EmptyState>
       ) : (
-        <>
-          <div className="mb-3">
-            {sample ? (
-              <Notice tone="warning">
-                Sample duties. These are invented to show how the grid will look. They are not saved and are not anyone&apos;s real roster.
-              </Notice>
-            ) : (
-              <Notice>No duties have been planned for {MONTHS[month - 1]} {year}. Building rosters arrives in the next phase.</Notice>
-            )}
-          </div>
-          <div className="mb-3">
-            <Checkbox label="Show sample duties" hint="Switch off to see the real, empty month." checked={sample} onChange={setSample} />
-          </div>
-          <MonthGrid<Sample>
-            year={year}
-            month={month}
-            staff={rows}
-            caption={`${MONTHS[month - 1]} ${year} roster${sample ? ", with sample duties" : ""}`}
-            cellData={sample ? (id, iso) => sampleFor(indexOf.get(id) ?? 0, day(iso)) : undefined}
-            renderCell={(d) => <GridChip code={d.code} tone={d.tone} />}
-            describeCell={(d) => d.word}
-          />
-          <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
-            {[PATTERN[0], PATTERN[2], PATTERN[4], PATTERN[6]].map((p) => (
-              <div key={p.code} className="flex items-center gap-2">
-                <dt>
-                  <GridChip code={p.code} tone={p.tone} />
-                </dt>
-                <dd>{p.word}</dd>
-              </div>
-            ))}
-          </dl>
-        </>
+        <TableScroll label="Rosters">
+          <table className="w-full min-w-[40rem] text-left text-[15px]">
+            <caption className="sr-only">Rosters, newest first</caption>
+            <thead className="border-b border-[var(--border)] text-sm text-[var(--muted)]">
+              <tr>
+                <th scope="col" className="px-4 py-2 font-medium">Month</th>
+                <th scope="col" className="px-4 py-2 font-medium">Status</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Duties</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Unfilled</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Blocking</th>
+                <th scope="col" className="px-4 py-2 text-right font-medium">Warnings</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rosters.map((r) => (
+                <tr key={r.id} className="border-b border-[var(--border)] last:border-b-0">
+                  <th scope="row" className="px-4 py-3 font-medium">
+                    <Link href={`/roster/${r.id}`} className="text-[var(--accent)] underline-offset-2 hover:underline">
+                      {r.label}
+                    </Link>
+                  </th>
+                  <td className="px-4 py-3">
+                    <StatusBadge tone={statusTone(r.status)}>{STATUS_WORD[r.status]}</StatusBadge>
+                  </td>
+                  <td className="figures px-4 py-3 text-right">{r.duties}</td>
+                  <td className="figures px-4 py-3 text-right">{r.unfilled}</td>
+                  <td className="figures px-4 py-3 text-right">{r.blocks}</td>
+                  <td className="figures px-4 py-3 text-right">{r.warnings}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </TableScroll>
       )}
     </>
   );

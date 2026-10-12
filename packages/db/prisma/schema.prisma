@@ -712,8 +712,8 @@ model ComplianceFinding {
   rosterId            String
   roster              Roster          @relation(fields: [rosterId], references: [id])
   facilityId          String
-  staffId             String
-  staff               Staff           @relation(fields: [staffId], references: [id])
+  staffId             String? // empty for findings about a shift rather than a person, such as short staffing
+  staff               Staff?          @relation(fields: [staffId], references: [id])
   ruleCode            String // e.g. "C3" — looked up against ConstraintRule.code for this facility
   severity            FindingSeverity
   message             String
