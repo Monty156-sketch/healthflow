@@ -9,7 +9,7 @@ import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
-import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { ensureRules } from "./rules.js";
 import { ensureOffDuty } from "./shifts.js";
 import { generate, type Shortfall } from "../../engine/generate.js";
@@ -121,6 +121,27 @@ function findingRow(rosterId: string, facilityId: string, f: Finding): Prisma.Co
   };
 }
 
+const findingKey = (f: { ruleCode: string; staffId: string | null; dutyDate?: Date | null; day?: number | null }) =>
+  `${f.ruleCode}|${f.staffId ?? ""}|${f.dutyDate ? Math.floor(f.dutyDate.getTime() / 86_400_000) : f.day ?? ""}`;
+
+/**
+ * Replaces a roster's findings with a fresh set, carrying over any that a
+ * manager has already overridden with a reason, so re-checking does not
+ * silently bring back a finding someone accepted.
+ */
+async function storeFindings(tx: Prisma.TransactionClient, rosterId: string, facilityId: string, findings: Finding[]) {
+  const kept = await tx.complianceFinding.findMany({ where: { rosterId, status: "OVERRIDDEN" } });
+  const overrides = new Map(kept.map((k) => [findingKey(k), k]));
+  await tx.complianceFinding.deleteMany({ where: { rosterId } });
+  await tx.complianceFinding.createMany({
+    data: findings.map((f) => {
+      const row = findingRow(rosterId, facilityId, f);
+      const o = overrides.get(findingKey(f));
+      return o ? { ...row, status: "OVERRIDDEN" as const, overrideReason: o.overrideReason, overrideBy: o.overrideBy, overrideAt: o.overrideAt } : row;
+    }),
+  });
+}
+
 // ------------------------------------------------------------- list, create, read
 
 async function summaryOf(rosterId: string) {
@@ -195,6 +216,7 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
     findings: findings.map((f) => ({
       id: f.id, ruleCode: f.ruleCode, severity: f.severity, message: f.message, staffId: f.staffId,
       date: f.dutyDate ? f.dutyDate.toISOString().slice(0, 10) : null, status: f.status,
+      overrideReason: f.overrideReason, overrideBy: f.overrideBy,
     })),
   });
 });
@@ -236,12 +258,11 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   const blocking = result.findings.filter((f) => f.severity === "BLOCK").length;
   await prisma.$transaction(
     async (tx) => {
-      await tx.complianceFinding.deleteMany({ where: { rosterId: roster.id } });
       await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, locked: false } });
       await tx.rosterAssignment.createMany({
         data: result.cells.map((c) => ({ rosterId: roster.id, facilityId: who.facilityId, staffId: c.staffId, shiftId: c.shiftId, dutyDate: dateFromDay(c.day), source: c.source })),
       });
-      await tx.complianceFinding.createMany({ data: result.findings.map((f) => findingRow(roster.id, who.facilityId, f)) });
+      await storeFindings(tx, roster.id, who.facilityId, result.findings);
       await tx.roster.update({
         where: { id: roster.id },
         data: { status: "GENERATED", generatedAt: new Date(), generationSeconds: seconds, hasUnresolvedConflicts: blocking > 0, preparedBy: who.email },
@@ -270,10 +291,187 @@ rostersRouter.post("/:id/validate", allowRoles(...ROSTER_ROLES), async (req, res
     weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames,
   });
   const blocking = findings.filter((f) => f.severity === "BLOCK").length;
-  await prisma.$transaction([
-    prisma.complianceFinding.deleteMany({ where: { rosterId: roster.id } }),
-    prisma.complianceFinding.createMany({ data: findings.map((f) => findingRow(roster.id, who.facilityId, f)) }),
-    prisma.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: blocking > 0 } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await storeFindings(tx, roster.id, who.facilityId, findings);
+    await tx.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: blocking > 0 } });
+  });
   res.json({ summary: await summaryOf(roster.id) });
+});
+
+// ------------------------------------------------------------- editing one duty
+
+const EDITABLE = ["GENERATED", "UNDER_REVIEW"];
+
+const cellInput = z.object({
+  staffId: z.string().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date."),
+  shiftId: z.string().min(1),
+  overrideReason: z.string().trim().max(500).optional(),
+});
+
+function checkOf(data: Data, assignments: EAssignment[]) {
+  return evaluateCompliance(data.rules, {
+    staff: data.staff, shifts: data.shifts, assignments: [...data.history, ...assignments], leave: data.leave, period: data.period,
+    weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames,
+  });
+}
+
+rostersRouter.put("/:id/cell", allowRoles(...ROSTER_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!EDITABLE.includes(roster.status)) {
+    return res.status(409).json({
+      error: "roster_locked",
+      message: roster.status === "DRAFT" ? "Generate the roster before changing duties." : `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}, so duties cannot be changed. Reopen it first.`,
+    });
+  }
+  const input = parseOr400(cellInput, req.body, res);
+  if (!input) return;
+
+  const day = dayFromDate(new Date(`${input.date}T00:00:00Z`));
+  const first = dayOf(roster.year, roster.month, 1);
+  if (!(day >= first && day < first + daysInMonth(roster.year, roster.month))) {
+    return res.status(400).json({ error: "invalid_input", fields: { date: `That date is not in ${monthName(roster)}.` } });
+  }
+  const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
+  const person = data.staff.find((p) => p.id === input.staffId);
+  const shift = data.shifts.find((x) => x.id === input.shiftId);
+  if (!person) return res.status(404).json({ error: "not_found", message: "That person is not an active member of staff here." });
+  if (!shift) return res.status(404).json({ error: "not_found", message: "That shift is not one of your facility's shifts." });
+  if (shift.countsAsDuty === false && shift.id !== data.offShiftId) return res.status(400).json({ error: "invalid_input", fields: { shiftId: "That shift cannot be assigned." } });
+
+  const before = checkOf(data, data.current);
+  const next = [...data.current.filter((a) => !(a.staffId === person.id && a.day === day)), { staffId: person.id, shiftId: shift.id, day, locked: true }];
+  const after = checkOf(data, next);
+  const had = new Set(before.map((f) => findingKey(f)));
+  const added = after.filter((f) => f.severity === "BLOCK" && !had.has(findingKey(f)));
+
+  if (added.length && !input.overrideReason) {
+    return res.status(409).json({
+      error: "blocks_rule",
+      message: `${shift.name} for ${person.name} on ${sayDay(day)} breaks a rule that is set to block.`,
+      findings: added.map((f) => ({ ruleCode: f.ruleCode, message: f.message })),
+    });
+  }
+  if (added.length && (input.overrideReason?.length ?? 0) < 10) {
+    return res.status(400).json({ error: "invalid_input", fields: { overrideReason: "Give a reason of at least a few words." } });
+  }
+
+  const previous = data.current.find((a) => a.staffId === person.id && a.day === day);
+  const blocking = after.filter((f) => f.severity === "BLOCK").length;
+  await prisma.$transaction(async (tx) => {
+    await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, staffId: person.id, dutyDate: dateFromDay(day) } });
+    await tx.rosterAssignment.create({
+      data: { rosterId: roster.id, facilityId: who.facilityId, staffId: person.id, shiftId: shift.id, dutyDate: dateFromDay(day), source: "MANUAL", locked: true },
+    });
+    await storeFindings(tx, roster.id, who.facilityId, after);
+    if (added.length) {
+      const keys = new Set(added.map((f) => findingKey(f)));
+      const rows = await tx.complianceFinding.findMany({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
+      const ids = rows.filter((r) => keys.has(findingKey(r))).map((r) => r.id);
+      await tx.complianceFinding.updateMany({
+        where: { id: { in: ids } },
+        data: { status: "OVERRIDDEN", overrideReason: input.overrideReason, overrideBy: who.email, overrideAt: new Date() },
+      });
+    }
+    await tx.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: blocking - added.length > 0 } });
+  });
+  const was = previous ? data.shiftName.get(previous.shiftId) ?? "a shift" : "nothing";
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_cell_changed", entityType: "Roster", entityId: roster.id,
+    before: { shiftId: previous?.shiftId ?? null }, after: { shiftId: shift.id },
+    summary: `${who.displayName} changed ${person.name} on ${sayDay(day)} in the ${monthName(roster)} roster from ${was} to ${shift.name}${
+      added.length ? `, overriding ${added.map((f) => f.ruleCode).join(", ")}: ${input.overrideReason}` : ""
+    }.`,
+  });
+  res.json({ summary: await summaryOf(roster.id) });
+});
+
+// ------------------------------------------------------------- overriding a finding
+
+rostersRouter.post("/:id/findings/:findingId/override", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ reason: z.string().trim().min(10, "Give a reason of at least a few words.").max(500) }), req.body, res);
+  if (!input) return;
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!EDITABLE.includes(roster.status)) return res.status(409).json({ error: "roster_locked", message: "Reopen the roster before overriding a finding." });
+  const finding = await prisma.complianceFinding.findFirst({ where: { id: String(req.params.findingId), rosterId: roster.id } });
+  if (!finding) return res.status(404).json({ error: "not_found" });
+  if (finding.status !== "OPEN") return res.status(409).json({ error: "not_open", message: "That finding is already dealt with." });
+  await prisma.complianceFinding.update({ where: { id: finding.id }, data: { status: "OVERRIDDEN", overrideReason: input.reason, overrideBy: who.email, overrideAt: new Date() } });
+  const open = await prisma.complianceFinding.count({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
+  await prisma.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: open > 0 } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_finding_overridden", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} accepted the ${finding.ruleCode} finding "${finding.message}" in the ${monthName(roster)} roster. Reason: ${input.reason}`,
+  });
+  res.json({ summary: await summaryOf(roster.id) });
+});
+
+// ------------------------------------------------------------- review, approval, publishing
+
+const STATUS_SAY: Record<string, string> = {
+  DRAFT: "a draft", GENERATED: "generated", UNDER_REVIEW: "in review", APPROVED: "approved", PUBLISHED: "published", ARCHIVED: "archived",
+};
+
+/** from -> to, with who may make the move. */
+const MOVES: Record<string, { from: string[]; to: "GENERATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED"; roles: readonly string[]; word: string }> = {
+  submit: { from: ["GENERATED"], to: "UNDER_REVIEW", roles: ROSTER_ROLES, word: "sent for review" },
+  return: { from: ["UNDER_REVIEW"], to: "GENERATED", roles: ADMIN_ROLES, word: "returned for changes" },
+  approve: { from: ["UNDER_REVIEW"], to: "APPROVED", roles: ADMIN_ROLES, word: "approved" },
+  reopen: { from: ["APPROVED"], to: "GENERATED", roles: ADMIN_ROLES, word: "reopened" },
+  publish: { from: ["APPROVED"], to: "PUBLISHED", roles: ADMIN_ROLES, word: "published" },
+  archive: { from: ["PUBLISHED"], to: "ARCHIVED", roles: ADMIN_ROLES, word: "archived" },
+};
+
+rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ action: z.enum(["submit", "return", "approve", "reopen", "publish", "archive"]), note: z.string().trim().max(500).optional() }), req.body, res);
+  if (!input) return;
+  const move = MOVES[input.action];
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!move.roles.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "Only a facility admin can do that." });
+  if (!move.from.includes(roster.status)) {
+    return res.status(409).json({ error: "wrong_status", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}, so it cannot be ${move.word}.` });
+  }
+  if (input.action === "approve" || input.action === "publish") {
+    const open = await prisma.complianceFinding.count({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
+    if (open > 0) {
+      return res.status(409).json({
+        error: "open_blocks",
+        message: `The roster still has ${open} blocking ${open === 1 ? "finding" : "findings"}. Fix ${open === 1 ? "it" : "them"} by changing duties, or accept ${open === 1 ? "it" : "each"} with a reason, then try again.`,
+      });
+    }
+  }
+  const snapshot = ["approve", "publish"].includes(input.action);
+  const version = snapshot ? roster.version + 1 : roster.version;
+  await prisma.$transaction(async (tx) => {
+    if (snapshot) {
+      const rows = await tx.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true, source: true, locked: true } });
+      await tx.rosterVersionSnapshot.create({
+        data: {
+          rosterId: roster.id, version, createdBy: who.email, reason: `${move.word[0].toUpperCase()}${move.word.slice(1)}${input.note ? `: ${input.note}` : ""}`,
+          assignments: rows.map((a) => ({ ...a, dutyDate: a.dutyDate.toISOString().slice(0, 10) })),
+        },
+      });
+    }
+    await tx.roster.update({
+      where: { id: roster.id },
+      data: {
+        status: move.to, version,
+        ...(input.action === "approve" ? { approvedBy: who.email } : {}),
+        ...(input.action === "reopen" ? { approvedBy: null } : {}),
+        ...(input.action === "publish" ? { publishedAt: new Date() } : {}),
+      },
+    });
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: `roster_${input.action}`, entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} ${move.word} the ${monthName(roster)} roster${input.note ? `. Note: ${input.note}` : ""}.`,
+  });
+  const fresh = await prisma.roster.findUniqueOrThrow({ where: { id: roster.id } });
+  res.json({ roster: presentRoster(fresh), summary: await summaryOf(roster.id) });
 });
