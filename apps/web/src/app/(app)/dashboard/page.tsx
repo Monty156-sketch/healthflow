@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useFacility } from "@/components/AppShell";
+import { useFacility, useOptionalFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
 import { FACILITY_TYPE, showDateTime } from "@/lib/format";
 import { PageHeader, Panel, StatusBadge } from "@/components/ui";
@@ -100,6 +100,12 @@ function RecentActivity() {
 }
 
 export default function OverviewPage() {
+  const ctx = useOptionalFacility();
+  if (!ctx) return null; // the shell shows NoFacilityNotice instead
+  return <FacilityOverview />;
+}
+
+function FacilityOverview() {
   const { facility, isAdmin } = useFacility();
   const place = [facility.subDistrict, facility.region].filter(Boolean).join(", ");
   return (

@@ -28,6 +28,15 @@ export class ApiError extends Error {
   }
 }
 
+const NO_REFRESH = [
+  "/api/auth/login",
+  "/api/auth/refresh",
+  "/api/auth/logout",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/mfa/enrol",
+];
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -44,9 +53,9 @@ async function request<T>(
   });
 
   // A 401 on a normal call means the 15-minute access token ran out: get a
-  // new one from the session cookie and retry once. Auth endpoints answer
-  // 401 for wrong credentials, which a refresh cannot fix.
-  if (res.status === 401 && retry && !path.startsWith("/api/auth/")) {
+  // new one from the session cookie and retry once. The sign-in endpoints
+  // answer 401 for wrong credentials, which a refresh cannot fix.
+  if (res.status === 401 && retry && !NO_REFRESH.some((p) => path.startsWith(p))) {
     const session = await refreshSession();
     if (session) return request<T>(path, options, false);
     onSessionExpired?.();

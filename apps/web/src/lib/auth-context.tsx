@@ -23,6 +23,7 @@ interface AuthContextValue {
     mfa?: { totp?: string; recoveryCode?: string }
   ) => Promise<{ mfaRequired: boolean }>;
   logout: () => Promise<void>;
+  adoptSession: (session: Session) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -162,14 +163,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     if ("mfaRequired" in res) return { mfaRequired: true };
+    adoptSession(res);
+    return { mfaRequired: false };
+  }
 
-    setAccessToken(res.accessToken);
+  /** Starts using a session the server just issued (sign-in, or sign-in after setup). */
+  function adoptSession(session: Session) {
+    setAccessToken(session.accessToken);
     ending.current = false;
     lastActivity.current = Date.now();
     lastRenewal.current = Date.now();
     writeSharedActivity(lastActivity.current);
-    setUser(res.user);
-    return { mfaRequired: false };
+    setUser(session.user);
   }
 
   async function logout() {
@@ -178,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, adoptSession }}>
       {children}
     </AuthContext.Provider>
   );

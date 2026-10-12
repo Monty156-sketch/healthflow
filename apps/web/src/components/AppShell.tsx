@@ -47,10 +47,16 @@ interface FacilityContextValue extends FacilityResponse {
 
 const FacilityContext = createContext<FacilityContextValue | null>(null);
 
+/** For facility screens: the signed-in person's facility. */
 export function useFacility() {
   const ctx = useContext(FacilityContext);
-  if (!ctx) throw new Error("useFacility must be used inside AppShell");
+  if (!ctx) throw new Error("useFacility is only for facility screens");
   return ctx;
+}
+
+/** Null for people without facility screens (platform admins, staff). */
+export function useOptionalFacility() {
+  return useContext(FacilityContext);
 }
 
 // ------------------------------------------------------------- navigation
@@ -130,22 +136,46 @@ function Brand() {
   );
 }
 
-function AccountBlock({ name, role, onSignOut }: { name: string; role: string; onSignOut: () => void }) {
+function AccountBlock({
+  name,
+  role,
+  onSignOut,
+  onNavigate,
+}: {
+  name: string;
+  role: string;
+  onSignOut: () => void;
+  onNavigate?: () => void;
+}) {
+  const pathname = usePathname();
+  const current = pathname === "/account";
   return (
     <div className="border-t border-[var(--border)] pt-3">
       <p className="truncate text-sm font-medium" title={name}>
         {name}
       </p>
       <p className="text-sm text-[var(--muted)]">{ROLE[role] ?? role}</p>
-      <Button variant="quiet" className="-ml-3 mt-1" onClick={onSignOut}>
-        Sign out
-      </Button>
+      <div className="mt-1 flex flex-wrap gap-x-1">
+        <Link
+          href="/account"
+          onClick={onNavigate}
+          aria-current={current ? "page" : undefined}
+          className={`-ml-3 inline-flex min-h-11 items-center rounded-[var(--radius)] px-3 text-sm font-medium text-[var(--accent-text)] hover:bg-[var(--accent-soft)] ${
+            current ? "bg-[var(--accent-soft)]" : ""
+          }`}
+        >
+          My account
+        </Link>
+        <Button variant="quiet" onClick={onSignOut}>
+          Sign out
+        </Button>
+      </div>
     </div>
   );
 }
 
-/** Shown to signed-in people who have no facility screens yet. */
-function NoFacilityAccess({ role, onSignOut }: { role: string; onSignOut: () => void }) {
+/** Shown on the home screen to signed-in people who have no facility screens yet. */
+export function NoFacilityNotice({ role }: { role: string }) {
   const message =
     role === "PLATFORM_ADMIN"
       ? "You are signed in as a platform admin. Facility data is reached only through a logged support session, which arrives with the platform console in a later phase."
@@ -153,14 +183,15 @@ function NoFacilityAccess({ role, onSignOut }: { role: string; onSignOut: () => 
         ? "Your own screens, such as today's duty and your roster, arrive in a later phase."
         : "This account has no facility screens yet.";
   return (
-    <main id="main" className="mx-auto max-w-xl px-4 py-16">
-      <Brand />
-      <h1 className="mt-6 text-[22px] font-semibold">Signed in</h1>
-      <p className="mt-2 text-[var(--muted)]">{message}</p>
-      <Button variant="secondary" className="mt-6" onClick={onSignOut}>
-        Sign out
-      </Button>
-    </main>
+    <>
+      <h1 className="text-[22px] font-semibold">Signed in</h1>
+      <p className="mt-2 max-w-[60ch] text-[var(--muted)]">{message}</p>
+      <p className="mt-4">
+        <Link href="/account" className="inline-flex min-h-11 items-center font-medium text-[var(--accent-text)] underline-offset-4 hover:underline">
+          Manage your account and sign-in security
+        </Link>
+      </p>
+    </>
   );
 }
 
@@ -191,19 +222,18 @@ export function AppShell({ children }: { children: ReactNode }) {
       </main>
     );
   }
-  if (!facilityRole) return <NoFacilityAccess role={user.role} onSignOut={logout} />;
 
-  if (resource.error && !resource.data) {
-    if (resource.error instanceof ApiError && resource.error.status === 403) {
-      return <NoFacilityAccess role={user.role} onSignOut={logout} />;
+  if (facilityRole && resource.error && !resource.data) {
+    const denied = resource.error instanceof ApiError && resource.error.status === 403;
+    if (!denied) {
+      return (
+        <main id="main" className="mx-auto max-w-xl px-4 py-16">
+          <LoadError message="Your facility could not be loaded. Check your connection and try again." onRetry={resource.reload} />
+        </main>
+      );
     }
-    return (
-      <main id="main" className="mx-auto max-w-xl px-4 py-16">
-        <LoadError message="Your facility could not be loaded. Check your connection and try again." onRetry={resource.reload} />
-      </main>
-    );
   }
-  if (!resource.data) {
+  if (facilityRole && !resource.data && !resource.error) {
     return (
       <main id="main" className="px-4">
         <Loading label="Loading your facility" />
@@ -211,12 +241,13 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const ctx: FacilityContextValue = {
-    ...resource.data,
-    isAdmin: resource.data.me.role === "FACILITY_ADMIN",
-    reload: resource.reload,
-  };
-  const { facility, me } = resource.data;
+  const data = facilityRole ? resource.data : null;
+  const ctx: FacilityContextValue | null = data
+    ? { ...data, isAdmin: data.me.role === "FACILITY_ADMIN", reload: resource.reload }
+    : null;
+  const role = data?.me.role ?? user.role;
+  const name = data?.me.displayName ?? user.email;
+  const facilityName = data?.facility.name;
 
   return (
     <FacilityContext.Provider value={ctx}>
@@ -231,15 +262,17 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Wide screens: a fixed sidebar. */}
         <aside className="hidden border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col lg:gap-6 lg:px-4 lg:py-5">
           <Brand />
-          <div>
-            <p className="px-3 text-sm text-[var(--muted)]">Facility</p>
-            <p className="px-3 font-medium leading-snug">{facility.name}</p>
-          </div>
+          {facilityName && (
+            <div>
+              <p className="px-3 text-sm text-[var(--muted)]">Facility</p>
+              <p className="px-3 font-medium leading-snug">{facilityName}</p>
+            </div>
+          )}
           <nav aria-label="Main">
-            <NavLinks role={me.role} />
+            <NavLinks role={data ? role : ""} />
           </nav>
           <div className="mt-auto">
-            <AccountBlock name={me.displayName} role={me.role} onSignOut={logout} />
+            <AccountBlock name={name} role={role} onSignOut={logout} />
           </div>
         </aside>
 
@@ -258,12 +291,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           {menuOpen && (
             <div id="mobile-menu" className="border-t border-[var(--border)] px-4 pt-3 pb-4">
-              <p className="px-3 pb-2 text-sm text-[var(--muted)]">{facility.name}</p>
+              {facilityName && <p className="px-3 pb-2 text-sm text-[var(--muted)]">{facilityName}</p>}
               <nav aria-label="Main">
-                <NavLinks role={me.role} onNavigate={() => setMenuOpen(false)} />
+                <NavLinks role={data ? role : ""} onNavigate={() => setMenuOpen(false)} />
               </nav>
               <div className="mt-3">
-                <AccountBlock name={me.displayName} role={me.role} onSignOut={logout} />
+                <AccountBlock name={name} role={role} onSignOut={logout} onNavigate={() => setMenuOpen(false)} />
               </div>
             </div>
           )}
@@ -271,12 +304,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <main id="main" className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
           <div className="mx-auto max-w-[72rem]">
-            {facility.status === "SUSPENDED" && (
+            {data?.facility.status === "SUSPENDED" && (
               <div className="mb-4">
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
               </div>
             )}
-            {children}
+            {ctx || pathname === "/account" ? children : <NoFacilityNotice role={role} />}
           </div>
         </main>
       </div>

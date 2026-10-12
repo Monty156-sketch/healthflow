@@ -24,6 +24,8 @@ import {
   listSentence,
 } from "../../lib/labels.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { makeResetToken, RESET_LINK_MINUTES } from "../../lib/signedTokens.js";
+import { appUrl } from "../../lib/email.js";
 
 export const staffRouter = Router();
 
@@ -409,4 +411,41 @@ staffRouter.patch("/:id/status", allowRoles(...ADMIN_ROLES), async (req, res) =>
 
   const s = await prisma.staff.findUniqueOrThrow({ where: { id: existing.id }, include: staffInclude });
   res.json({ staff: present(s) });
+});
+
+// ---------------------------------------------------------------- reset link
+
+/**
+ * For staff who cannot receive email (Part 3, 0.3): the admin gets a one-use
+ * link, valid 60 minutes, to hand over in person or by message. It is
+ * written to the audit log. Admins reset their own password from their
+ * account screen instead.
+ */
+staffRouter.post("/:id/reset-link", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const s = await prisma.staff.findFirst({
+    where: { id: String(req.params.id), facilityId: who.facilityId },
+    include: { userProfile: { select: { id: true, active: true, passwordHash: true } } },
+  });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  if (!s.userProfile) {
+    return res.status(409).json({ error: "no_account", message: `${s.fullName} has no HealthFlow account yet.` });
+  }
+  if (!s.userProfile.active) {
+    return res.status(409).json({ error: "account_disabled", message: `${s.fullName}'s account is disabled, so a reset link cannot be issued.` });
+  }
+  if (s.userProfile.id === who.userId) {
+    return res.status(409).json({ error: "own_account", message: "Change your own password from My account." });
+  }
+
+  const { token, expiresAt } = makeResetToken(s.userProfile.id, s.userProfile.passwordHash);
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "password_reset_link_issued",
+    entityType: "Staff",
+    entityId: s.id,
+    summary: `${who.displayName} issued a password reset link for ${s.fullName}, valid for ${RESET_LINK_MINUTES} minutes.`,
+  });
+  res.json({ url: appUrl(`/reset-password?token=${encodeURIComponent(token)}`), expiresAt });
 });

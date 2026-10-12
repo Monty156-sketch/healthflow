@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useCallback, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { StaffForm } from "@/components/StaffForm";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useResource, useSave } from "@/lib/useApi";
 import { EMPLOYMENT, LEAVING_STATUSES, ROLE, STAFF_STATUS, showDate, showDateTime } from "@/lib/format";
 import type { Staff } from "@/lib/types";
@@ -138,6 +138,73 @@ function StatusPanel({ s, onChanged }: { s: Staff; onChanged: (s: Staff) => void
   );
 }
 
+/** A one-use reset link for a staff member who cannot receive email. */
+function ResetLink({ s }: { s: Staff }) {
+  const { isAdmin } = useFacility();
+  const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  if (!isAdmin || !s.account?.active) return null;
+
+  async function create() {
+    setProblem(null);
+    setBusy(true);
+    try {
+      setLink(await api.post<{ url: string; expiresAt: string }>(`/api/facility/staff/${s.id}/reset-link`));
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { message?: string }) : undefined;
+      setProblem(body?.message ?? "The link could not be created. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 border-t border-[var(--border)] pt-4">
+      {!link ? (
+        <>
+          <p className="text-sm text-[var(--muted)]">
+            Forgotten password and no email? Create a link they can open to choose a new one.
+          </p>
+          <Button variant="secondary" className="mt-2" disabled={busy} onClick={create}>
+            {busy ? "Creating…" : "Create password reset link"}
+          </Button>
+          {problem && (
+            <div className="mt-2">
+              <Notice tone="block">{problem}</Notice>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium">Reset link for {s.fullName.split(" ")[0]}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">
+            Give it to them in person or by private message. It works once, until{" "}
+            <span className="figures">{showDateTime(link.expiresAt)}</span>. This has been recorded in the audit log.
+          </p>
+          <p className="figures mt-2 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--background)] p-2 text-[13px] break-all select-all">
+            {link.url}
+          </p>
+          <Button variant="secondary" className="mt-2" onClick={copy}>
+            {copied ? "Copied" : "Copy link"}
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AccountPanel({ s }: { s: Staff }) {
   if (!s.account) {
     return (
@@ -170,6 +237,7 @@ function AccountPanel({ s }: { s: Staff }) {
           <dd className="figures">{s.account.lastSignInAt ? showDateTime(s.account.lastSignInAt) : "Never"}</dd>
         </div>
       </dl>
+      <ResetLink s={s} />
     </Panel>
   );
 }
