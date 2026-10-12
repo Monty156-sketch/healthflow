@@ -1,14 +1,27 @@
 /**
- * Seeds one facility (Sombo Health Centre) with a platform admin account,
- * MFA secret and recovery codes, so Phase 0 can be checked end to end.
+ * Creates what HealthFlow needs to be usable, and leaves alone anything
+ * that already exists, so running it again is safe:
  *
- * PLATFORM_ADMIN is in ROLES_REQUIRING_MFA, so the admin must be seeded
- * with MFA already enrolled or login returns 403 mfa_setup_required.
+ *   - the Sombo Health Centre facility
+ *   - the platform admin (PS Tech)
+ *   - a facility admin for Sombo, linked to a staff record, if
+ *     SEED_FACILITY_ADMIN_EMAIL is set (until invitations exist, this is how
+ *     the first facility admin gets an account)
  *
- * Requires in packages/db/.env:
+ * A new account is created with two-step sign-in already enrolled, and its
+ * authenticator secret and recovery codes are printed once. An existing
+ * account keeps its password and authenticator, unless its email is listed
+ * in SEED_RESET_ACCOUNTS.
+ *
+ * packages/db/.env:
  *   DATABASE_URL
- *   MFA_ENCRYPTION_KEY   (must match apps/api/.env exactly)
- *   SEED_ADMIN_PASSWORD
+ *   MFA_ENCRYPTION_KEY            same value as the live API (compare fingerprints)
+ *   SEED_ADMIN_PASSWORD           platform admin, only used when creating or resetting
+ *   SEED_FACILITY_ADMIN_EMAIL     optional
+ *   SEED_FACILITY_ADMIN_NAME      their full name, as it should appear in audit entries
+ *   SEED_FACILITY_ADMIN_PASSWORD  only used when creating or resetting
+ *   SEED_FACILITY_ADMIN_STAFF_NO  optional, defaults to FA-001
+ *   SEED_RESET_ACCOUNTS           optional, comma-separated emails to reset
  *
  * Run with: pnpm db:seed
  */
@@ -39,26 +52,124 @@ if (keyBefore && keyBefore !== process.env.MFA_ENCRYPTION_KEY) {
 
 const prisma = new PrismaClient();
 
-const ADMIN_EMAIL = "admin@healthflow.app";
+const PLATFORM_ADMIN_EMAIL = "admin@healthflow.app";
+const FACILITY_ID = "sombo-health-centre";
+
+const resetList = new Set(
+  (process.env.SEED_RESET_ACCOUNTS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+function requirePassword(envName: string, who: string): string {
+  const value = process.env[envName];
+  if (!value || value.length < 12) {
+    throw new Error(`Set ${envName} in packages/db/.env (at least 12 characters). It becomes ${who}'s password.`);
+  }
+  return value;
+}
+
+/** Fresh password hash plus a newly enrolled authenticator, printed once. */
+async function credentials(email: string, password: string) {
+  const mfaSecret = generateMfaSecret();
+  const recoveryCodes = generateRecoveryCodes();
+  return {
+    fields: {
+      passwordHash: await hashPassword(password),
+      mfaEnabled: true,
+      mfaSecretEncrypted: encryptSecret(mfaSecret),
+      recoveryCodesHashed: await hashRecoveryCodes(recoveryCodes),
+      failedAttempts: 0,
+      lockedUntil: null,
+      active: true,
+    },
+    print() {
+      console.log(`  Add to your authenticator app (time-based):`);
+      console.log(`    Account : ${email}`);
+      console.log(`    Key     : ${mfaSecret}`);
+      console.log(`    or URL  : ${otpauthUrl(mfaSecret, email)}`);
+      console.log(`  Recovery codes (each works once; store them safely, never share them):`);
+      console.log(`    ${recoveryCodes.join(" ")}`);
+    },
+  };
+}
+
+async function ensurePlatformAdmin() {
+  const email = PLATFORM_ADMIN_EMAIL;
+  const existing = await prisma.userProfile.findUnique({ where: { userEmail: email } });
+  if (existing && !resetList.has(email)) {
+    console.log(`Platform admin ${email}: already exists, left unchanged.`);
+    return;
+  }
+  const creds = await credentials(email, requirePassword("SEED_ADMIN_PASSWORD", "the platform admin"));
+  await prisma.userProfile.upsert({
+    where: { userEmail: email },
+    update: creds.fields,
+    create: { userEmail: email, role: Role.PLATFORM_ADMIN, scopeType: ScopeType.PLATFORM, ...creds.fields },
+  });
+  console.log(`Platform admin ${email}: ${existing ? "password and authenticator reset" : "created"}.`);
+  creds.print();
+}
+
+async function ensureFacilityAdmin() {
+  const email = process.env.SEED_FACILITY_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!email) {
+    console.log("Facility admin: SEED_FACILITY_ADMIN_EMAIL not set, skipped.");
+    return;
+  }
+  const existing = await prisma.userProfile.findUnique({ where: { userEmail: email } });
+  if (existing && !resetList.has(email)) {
+    console.log(`Facility admin ${email}: already exists, left unchanged.`);
+    return;
+  }
+
+  const name = process.env.SEED_FACILITY_ADMIN_NAME?.trim();
+  if (!name) throw new Error("Set SEED_FACILITY_ADMIN_NAME: the facility admin's full name, as audit entries will show it.");
+  const creds = await credentials(email, requirePassword("SEED_FACILITY_ADMIN_PASSWORD", "the facility admin"));
+
+  // Link them to a staff record so audit sentences can name them.
+  let staffId = existing?.staffId ?? null;
+  if (!staffId) {
+    const staffNo = process.env.SEED_FACILITY_ADMIN_STAFF_NO?.trim() || "FA-001";
+    const staff = await prisma.staff.upsert({
+      where: { facilityId_staffNo: { facilityId: FACILITY_ID, staffNo } },
+      update: {},
+      create: { facilityId: FACILITY_ID, staffNo, fullName: name, email, status: "ACTIVE" },
+    });
+    staffId = staff.id;
+  }
+
+  await prisma.userProfile.upsert({
+    where: { userEmail: email },
+    update: creds.fields,
+    create: {
+      userEmail: email,
+      role: Role.FACILITY_ADMIN,
+      scopeType: ScopeType.FACILITY,
+      scopeId: FACILITY_ID,
+      facilityId: FACILITY_ID,
+      staffId,
+      ...creds.fields,
+    },
+  });
+  console.log(`Facility admin ${email} (${name}): ${existing ? "password and authenticator reset" : "created"}.`);
+  creds.print();
+}
 
 async function main() {
   if (!process.env.MFA_ENCRYPTION_KEY) {
-    throw new Error(
-      "MFA_ENCRYPTION_KEY is not set. Add it to packages/db/.env with the " +
-        "same value as apps/api/.env, or the seeded MFA secret will not decrypt."
-    );
+    throw new Error("MFA_ENCRYPTION_KEY is not set in packages/db/.env. Use the same value as the live API.");
   }
+  console.log(`MFA key fingerprint: ${mfaKeyFingerprint()}  (must match the one in Render's logs)`);
+  console.log("");
 
+  // Created once; never overwritten, because its details are edited in the app.
   const facility = await prisma.facility.upsert({
-    where: { id: "sombo-health-centre" },
-    update: {
-      name: "Sombo Health Centre",
-      facilityType: FacilityType.HEALTH_CENTRE,
-      region: "Upper West",
-      subDistrict: "Nadowli-Kaleo",
-    },
+    where: { id: FACILITY_ID },
+    update: {},
     create: {
-      id: "sombo-health-centre",
+      id: FACILITY_ID,
       name: "Sombo Health Centre",
       facilityType: FacilityType.HEALTH_CENTRE,
       region: "Upper West",
@@ -66,58 +177,15 @@ async function main() {
       status: "TRIAL",
     },
   });
+  console.log(`Facility: ${facility.name}`);
 
-  // No fallback: a default password committed to git is a password anyone
-  // reading the repo knows.
-  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
-  if (!adminPassword || adminPassword.length < 12) {
-    throw new Error(
-      "Set SEED_ADMIN_PASSWORD in packages/db/.env (at least 12 characters). " +
-        "This becomes the admin's password in the database."
-    );
-  }
-  const adminPasswordHash = await hashPassword(adminPassword);
-
-  const mfaSecret = generateMfaSecret();
-  const recoveryCodes = generateRecoveryCodes();
-  const recoveryCodesHashed = await hashRecoveryCodes(recoveryCodes);
-
-  const adminFields = {
-    passwordHash: adminPasswordHash,
-    role: Role.PLATFORM_ADMIN,
-    scopeType: ScopeType.PLATFORM,
-    active: true,
-    mfaEnabled: true,
-    mfaSecretEncrypted: encryptSecret(mfaSecret),
-    recoveryCodesHashed,
-    failedAttempts: 0,
-    lockedUntil: null,
-  };
-
-  await prisma.userProfile.upsert({
-    where: { userEmail: ADMIN_EMAIL },
-    update: adminFields,
-    create: { userEmail: ADMIN_EMAIL, ...adminFields },
-  });
-
-  console.log(`Seeded facility: ${facility.name} (${facility.id})`);
-  console.log(`Seeded platform admin: ${ADMIN_EMAIL}`);
-  console.log(`MFA key fingerprint: ${mfaKeyFingerprint()}  (must match the one in Render's logs)`);
-  console.log("");
-  console.log("MFA is mandatory for PLATFORM_ADMIN. Enrol with either:");
-  console.log("  TOTP secret   :", mfaSecret);
-  console.log("  otpauth URL   :", otpauthUrl(mfaSecret, ADMIN_EMAIL));
-  console.log("  Recovery codes:", recoveryCodes.join(" "));
-  console.log("");
-  console.log(
-    "Every seed run replaces the MFA secret: delete any older HealthFlow " +
-      "entry in your authenticator app and add this one."
-  );
+  await ensurePlatformAdmin();
+  await ensureFacilityAdmin();
 }
 
 main()
   .catch((err) => {
-    console.error(err);
+    console.error(err instanceof Error ? err.message : err);
     process.exit(1);
   })
   .finally(async () => {

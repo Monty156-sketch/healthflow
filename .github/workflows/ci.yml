@@ -1,28 +1,37 @@
 name: CI
 
-# Runs on every push and pull request. This is a gate, not a deploy step:
-# Render and Cloudflare Pages redeploy on their own when main is pushed
-# (configured in their dashboards, not here) — this workflow only has to
-# pass first.
+# Runs on every push and pull request. Render and Cloudflare redeploy on
+# their own when main changes; this workflow is the check that the code
+# works: lint, typecheck, and the API's integration tests against a real,
+# throwaway Postgres database (never Neon).
 
 on:
   push:
     branches: [main]
   pull_request:
 
-env:
-  # A throwaway Postgres URL is enough for `prisma generate` and typecheck.
-  # Real migrations run against Neon, from a developer's machine or from
-  # the Render build step — never from this workflow.
-  DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
-  JWT_ACCESS_SECRET: "ci-only-secret-not-used-in-production"
-  JWT_REFRESH_PEPPER: "ci-only-pepper-not-used-in-production"
-  MFA_ENCRYPTION_KEY: "ci-only-32-byte-key-not-used-in-prod!"
-  WEB_ORIGIN: "http://localhost:3000"
-
 jobs:
   lint-typecheck-test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: healthflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/healthflow_test"
+
     steps:
       - uses: actions/checkout@v4
 
@@ -40,6 +49,9 @@ jobs:
 
       - name: Generate Prisma client
         run: pnpm db:generate
+
+      - name: Create the test database tables
+        run: pnpm --filter @healthflow/db migrate:deploy
 
       - name: Lint
         run: pnpm lint
