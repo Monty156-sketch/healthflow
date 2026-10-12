@@ -83,14 +83,40 @@ cp apps/web/.env.example apps/web/.env
 
 pnpm db:generate     # generates the Prisma client
 pnpm db:migrate      # creates the tables in your Neon database
-pnpm db:seed         # creates one facility + one platform admin to log in with
+pnpm db:seed         # creates the facility and the first accounts (see below)
 
 pnpm dev:api         # http://localhost:4000
 pnpm dev:web         # http://localhost:3000
 ```
 
-`pnpm db:seed` prints the admin login it creates — use that to sign in at
-`/login` on the web app.
+### Accounts from the seed script
+
+`pnpm db:seed` creates what is missing and leaves everything else alone, so
+it is safe to run again. Set these in `packages/db/.env`:
+
+| Setting | What it does |
+|---|---|
+| `MFA_ENCRYPTION_KEY` | Must be the live API's key. The seed prints a fingerprint; it must match the one in Render's logs. |
+| `SEED_ADMIN_PASSWORD` | Password for the platform admin (`admin@healthflow.app`), used only when that account is created or reset. |
+| `SEED_FACILITY_ADMIN_EMAIL` | Creates a facility admin for Sombo, the account that uses the facility screens. |
+| `SEED_FACILITY_ADMIN_NAME` | Their full name, as audit entries will show it. |
+| `SEED_FACILITY_ADMIN_PASSWORD` | Their password, used only when the account is created or reset. |
+| `SEED_RESET_ACCOUNTS` | Optional, comma-separated emails whose password and authenticator should be replaced. |
+
+A new account gets two-step sign-in already set up: the seed prints its
+authenticator key and recovery codes once. Keep the recovery codes private.
+
+The platform admin does not see facility data. Under the spec, PS Tech
+reaches a facility only through a logged, time-limited support session,
+which arrives with the platform console. Use the facility admin account for
+the facility screens.
+
+### Tests
+
+`pnpm --filter @healthflow/api test` runs the API's integration tests. They
+need `DATABASE_URL` pointing at a disposable Postgres database, never Neon:
+each test empties the database. CI runs them against a fresh Postgres on
+every push.
 
 ## Connecting the three free services
 
