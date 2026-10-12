@@ -7,7 +7,7 @@ services:
     runtime: node
     plan: free
     rootDir: apps/api
-    buildCommand: cd ../.. && npm install -g pnpm && pnpm install --frozen-lockfile && pnpm --filter @healthflow/db generate && pnpm --filter @healthflow/api build
+    buildCommand: cd ../.. && corepack enable && corepack prepare pnpm@10.28.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @healthflow/db generate && pnpm --filter @healthflow/api build
     startCommand: node dist/server.js
     healthCheckPath: /health
     envVars:
