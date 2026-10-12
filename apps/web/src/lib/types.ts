@@ -135,6 +135,8 @@ export interface RosterFinding {
   staffId: string | null;
   date: string | null;
   status: "OPEN" | "OVERRIDDEN" | "RESOLVED";
+  overrideReason?: string | null;
+  overrideBy?: string | null;
 }
 
 export interface RosterView {

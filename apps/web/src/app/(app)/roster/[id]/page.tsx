@@ -8,8 +8,9 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS, showDate } from "@/lib/format";
 import type { RosterFinding, RosterView, Shortfall } from "@/lib/types";
-import { Button, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge } from "@/components/ui";
+import { Button, Field, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge, Textarea } from "@/components/ui";
 import { GridChip, MonthGrid } from "@/components/MonthGrid";
+import { CellEditor } from "@/components/CellEditor";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 
 interface Cell {
@@ -22,8 +23,22 @@ interface Cell {
 
 const SHOWN = 40;
 
-function FindingList({ title, items, nameOf }: { title: string; items: RosterFinding[]; nameOf: (id: string | null) => string }) {
+function FindingList({
+  title,
+  items,
+  nameOf,
+  onOverride,
+}: {
+  title: string;
+  items: RosterFinding[];
+  nameOf: (id: string | null) => string;
+  onOverride?: (id: string, reason: string) => Promise<string | null>;
+}) {
   const [all, setAll] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   if (!items.length) return null;
   const shown = all ? items : items.slice(0, SHOWN);
   const block = items[0].severity === "BLOCK";
@@ -45,6 +60,37 @@ function FindingList({ title, items, nameOf }: { title: string; items: RosterFin
                 {f.staffId ? `, ${nameOf(f.staffId)}` : ""}
                 {f.date ? `, ${showDate(f.date)}` : ""}
               </span>
+              {onOverride && openId !== f.id && (
+                <span className="mt-1 block">
+                  <Button variant="quiet" onClick={() => { setOpenId(f.id); setReason(""); setProblem(null); }}>
+                    Accept with a reason
+                  </Button>
+                </span>
+              )}
+              {onOverride && openId === f.id && (
+                <span className="mt-2 block max-w-xl space-y-2">
+                  <Field label="Why can this stand" hint="Kept on the roster and in the audit log." error={problem ?? undefined}>
+                    {(a) => <Textarea {...a} value={reason} onChange={(e) => setReason(e.target.value)} />}
+                  </Field>
+                  <span className="flex gap-2">
+                    <Button
+                      disabled={busy || reason.trim().length === 0}
+                      onClick={async () => {
+                        setBusy(true);
+                        const err = await onOverride(f.id, reason);
+                        setBusy(false);
+                        if (err) setProblem(err);
+                        else setOpenId(null);
+                      }}
+                    >
+                      {busy ? "Saving…" : "Accept finding"}
+                    </Button>
+                    <Button variant="secondary" onClick={() => setOpenId(null)}>
+                      Cancel
+                    </Button>
+                  </span>
+                </span>
+              )}
             </span>
           </li>
         ))}
@@ -69,6 +115,9 @@ export default function RosterPage() {
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [shortfalls, setShortfalls] = useState<{ list: Shortfall[]; more: number } | null>(null);
+  const [editing, setEditing] = useState<{ staffId: string; date: string } | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [flow, setFlow] = useState<string | null>(null);
 
   const shiftById = useMemo(() => new Map((data?.shifts ?? []).map((s) => [s.id, s])), [data]);
   const cells = useMemo(() => {
@@ -96,7 +145,57 @@ export default function RosterPage() {
 
   const { roster, summary } = data;
   const generated = roster.status !== "DRAFT";
-  const editable = roster.status === "DRAFT" || roster.status === "GENERATED";
+  const isAdmin = facility.me.role === "FACILITY_ADMIN";
+  const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
+  const canEdit = canRoster && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW");
+  const editable = canGenerate;
+
+  async function move(action: string) {
+    setBusy(true);
+    setFlow(null);
+    setPending(null);
+    try {
+      await api.post(`/api/facility/rosters/${id}/status`, { action });
+      reload();
+    } catch (err) {
+      setFlow(err instanceof ApiError ? ((err.body as { message?: string })?.message ?? "That did not work.") : "That did not work. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function override(findingId: string, reason: string): Promise<string | null> {
+    try {
+      await api.post(`/api/facility/rosters/${id}/findings/${findingId}/override`, { reason });
+      reload();
+      return null;
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { message?: string; fields?: Record<string, string> }) : undefined;
+      return body?.fields?.reason ?? body?.message ?? "That did not save. Try again.";
+    }
+  }
+
+  const ACTIONS: Record<string, { label: string; confirm?: string; admin?: boolean; quiet?: boolean }[]> = {
+    GENERATED: [{ label: "Send for review", confirm: "submit" }],
+    UNDER_REVIEW: [
+      { label: "Approve", confirm: "approve", admin: true },
+      { label: "Return for changes", confirm: "return", admin: true, quiet: true },
+    ],
+    APPROVED: [
+      { label: "Publish", confirm: "publish", admin: true },
+      { label: "Reopen for changes", confirm: "reopen", admin: true, quiet: true },
+    ],
+    PUBLISHED: [{ label: "Archive", confirm: "archive", admin: true, quiet: true }],
+  };
+  const SAYS: Record<string, string> = {
+    submit: "Sending it for review hands it to a facility admin to approve. You can still change duties while it is in review.",
+    approve: "Approving saves a version and stops further changes. A facility admin can reopen it.",
+    return: "This sends the roster back so duties can be changed again.",
+    publish: "Publishing makes this the roster staff follow and saves a version.",
+    reopen: "Reopening lets duties be changed again. Approve it again afterwards.",
+    archive: "Archiving closes the month. It stays readable.",
+  };
+  const available = (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
 
   async function generate() {
     setBusy(true);
@@ -117,6 +216,7 @@ export default function RosterPage() {
 
   const blocking = data.findings.filter((f) => f.severity === "BLOCK" && f.status === "OPEN");
   const warnings = data.findings.filter((f) => f.severity === "WARN" && f.status === "OPEN");
+  const accepted = data.findings.filter((f) => f.status === "OVERRIDDEN");
   const nameOf = (sid: string | null) => (sid ? names.get(sid) ?? "" : "");
   const legend = data.shifts.filter((s) => s.active || data.assignments.some((a) => a.shiftId === s.id));
 
@@ -137,7 +237,7 @@ export default function RosterPage() {
         }
         actions={
           canRoster &&
-          editable &&
+          canGenerate &&
           !confirming && (
             <Button onClick={() => (generated ? setConfirming(true) : generate())} disabled={busy}>
               {busy ? "Generating…" : generated ? "Generate again" : "Generate roster"}
@@ -199,6 +299,60 @@ export default function RosterPage() {
             ))}
           </dl>
 
+          {available.length > 0 && (
+            <div className="mb-4">
+              {pending ? (
+                <Notice
+                  tone="warning"
+                  action={
+                    <span className="flex gap-2">
+                      <Button onClick={() => move(pending)} disabled={busy}>
+                        {busy ? "Working…" : "Yes, continue"}
+                      </Button>
+                      <Button variant="secondary" onClick={() => setPending(null)}>
+                        Not now
+                      </Button>
+                    </span>
+                  }
+                >
+                  {SAYS[pending]}
+                </Notice>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {available.map((a) => (
+                    <Button key={a.label} variant={a.quiet ? "secondary" : "primary"} onClick={() => setPending(a.confirm!)} disabled={busy}>
+                      {a.label}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {!available.length && roster.status === "UNDER_REVIEW" && (
+            <div className="mb-4">
+              <Notice>This roster is waiting for a facility admin to approve it.</Notice>
+            </div>
+          )}
+          {flow && (
+            <div className="mb-4">
+              <Notice tone="block">{flow}</Notice>
+            </div>
+          )}
+          {editing && (
+            <CellEditor
+              key={`${editing.staffId}|${editing.date}`}
+              rosterId={roster.id}
+              staffId={editing.staffId}
+              staffName={nameOf(editing.staffId)}
+              date={editing.date}
+              currentShiftId={data.assignments.find((a) => a.staffId === editing.staffId && a.date === editing.date)?.shiftId ?? null}
+              shifts={data.shifts.filter((x) => x.active || !x.countsAsDuty)}
+              onDone={(saved) => {
+                setEditing(null);
+                if (saved) reload();
+              }}
+            />
+          )}
           <MonthGrid<Cell>
             year={roster.year}
             month={roster.month}
@@ -214,6 +368,7 @@ export default function RosterPage() {
                 <GridChip code={c.code} tone={c.off ? "off" : "neutral"} colour={c.colour ?? undefined} />
               )
             }
+            onCellClick={canEdit ? (staffId, date) => setEditing({ staffId, date }) : undefined}
             describeCell={(c) => (c.afterRun ? `${c.name}, rest after a run of duties` : c.name)}
             stripe={(staffId, iso) => {
               const s = stripes.get(`${staffId}|${iso}`);
@@ -258,13 +413,28 @@ export default function RosterPage() {
               <Notice tone="success">No findings. Every rule that is switched on is met.</Notice>
             ) : (
               <>
-                <FindingList title="Blocking" items={blocking} nameOf={nameOf} />
+                <FindingList title="Blocking" items={blocking} nameOf={nameOf} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} />
                 <FindingList title="Warnings" items={warnings} nameOf={nameOf} />
               </>
             )}
-            <p className="text-sm text-[var(--muted)]">
-              Editing a duty, review, approval and publishing arrive with the roster builder. For now you can generate, read and check the roster.
-            </p>
+            {accepted.length > 0 && (
+              <section aria-label="Accepted with a reason">
+                <h3 className="mb-2 text-[15px] font-semibold">
+                  Accepted with a reason <span className="figures font-normal text-[var(--muted)]">({accepted.length})</span>
+                </h3>
+                <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
+                  {accepted.map((f) => (
+                    <li key={f.id} className="px-4 py-3 text-[15px]">
+                      <span className="block">{f.message}</span>
+                      <span className="block text-sm text-[var(--muted)]">
+                        Rule {f.ruleCode}. Reason: {f.overrideReason}
+                        {f.overrideBy ? ` (${f.overrideBy})` : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
           </div>
         </>
       )}
