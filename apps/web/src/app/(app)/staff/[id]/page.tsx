@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useCallback, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { StaffForm } from "@/components/StaffForm";
+import { ConsentPanel, InvitePanel, type PendingInvitation } from "@/components/StaffAccess";
 import { api, ApiError } from "@/lib/api";
 import { useResource, useSave } from "@/lib/useApi";
 import { EMPLOYMENT, LEAVING_STATUSES, ROLE, STAFF_STATUS, showDate, showDateTime } from "@/lib/format";
@@ -205,16 +206,7 @@ function ResetLink({ s }: { s: Staff }) {
   );
 }
 
-function AccountPanel({ s }: { s: Staff }) {
-  if (!s.account) {
-    return (
-      <Panel title="HealthFlow account">
-        <p className="text-sm text-[var(--muted)]">
-          No account. Inviting staff to sign in arrives in the next step of this phase.
-        </p>
-      </Panel>
-    );
-  }
+function AccountPanel({ s }: { s: Staff & { account: NonNullable<Staff["account"]> } }) {
   return (
     <Panel title="HealthFlow account">
       <dl className="space-y-2 text-[15px]">
@@ -246,7 +238,7 @@ function StaffDetail() {
   const { id } = useParams<{ id: string }>();
   const justAdded = useSearchParams().get("added") === "1";
   const { isAdmin, reload: reloadFacility } = useFacility();
-  const { data, error, reload, setData } = useResource<{ staff: Staff }>(`/api/facility/staff/${id}`);
+  const { data, error, reload, setData } = useResource<{ staff: Staff; invitation: PendingInvitation | null }>(`/api/facility/staff/${id}`);
   const [editing, setEditing] = useState(false);
   const [savedNote, setSavedNote] = useState<string | null>(null);
 
@@ -300,7 +292,7 @@ function StaffDetail() {
               staff={s}
               submitLabel="Save changes"
               onSaved={(updated) => {
-                setData({ staff: updated });
+                setData({ ...data, staff: { ...updated, photo: s.photo } });
                 setEditing(false);
                 setSavedNote("Changes saved.");
                 reloadFacility();
@@ -316,11 +308,16 @@ function StaffDetail() {
             key={s.status}
             s={s}
             onChanged={(updated) => {
-              setData({ staff: updated });
+              setData({ ...data, staff: { ...updated, photo: s.photo } });
               setSavedNote(`Status changed to ${STAFF_STATUS[updated.status].label}.`);
             }}
           />
-          <AccountPanel s={s} />
+          {s.account ? (
+            <AccountPanel s={{ ...s, account: s.account }} />
+          ) : (
+            <InvitePanel s={s} invitation={data.invitation} isAdmin={isAdmin} onChanged={reload} />
+          )}
+          {isAdmin && <ConsentPanel s={s} photo={s.photo} onPhotoChanged={reload} />}
         </div>
       </div>
     </>
