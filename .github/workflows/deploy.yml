@@ -10,8 +10,9 @@ name: Deploy and verify
 #      THIS commit, and fails loudly if they are not.
 #
 # Repository settings > Secrets and variables > Actions:
-#   Secrets:   CLOUDFLARE_API_TOKEN  (template "Edit Cloudflare Workers"),
-#              CLOUDFLARE_ACCOUNT_ID, PROXY_SHARED_SECRET is NOT needed here
+#   Secrets:   RENDER_DEPLOY_HOOK_URL (makes Render deploy every merge),
+#              CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (optional: only
+#              if Cloudflare does not already build this repository itself)
 #   Variables: RENDER_API_URL (already set), WEB_URL (optional)
 
 on:
@@ -56,8 +57,24 @@ jobs:
         if: steps.creds.outputs.have == 'true'
         run: pnpm --filter @healthflow/web cf:deploy
 
+  deploy-api:
+    # Tells Render to deploy this commit, so the API does not depend on
+    # Render noticing the push by itself. Needs the RENDER_DEPLOY_HOOK_URL
+    # secret (Render > the service > Settings > Deploy Hook).
+    runs-on: ubuntu-latest
+    env:
+      HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Ask Render to deploy this commit
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK_URL is not set. Relying on Render's own auto-deploy."
+            exit 0
+          fi
+          curl -fsS -X POST "$HOOK&ref=${GITHUB_SHA}" > /dev/null && echo "Render deploy requested for ${GITHUB_SHA:0:7}"
+
   verify:
-    needs: deploy-web
+    needs: [deploy-web, deploy-api]
     if: always()
     runs-on: ubuntu-latest
     env:
