@@ -21,6 +21,21 @@ import {
   hashRecoveryCodes,
 } from "../../../apps/api/src/lib/mfa";
 import { encryptSecret, mfaKeyFingerprint } from "../../../apps/api/src/lib/crypto";
+import { config as loadEnv } from "dotenv";
+import path from "node:path";
+
+// packages/db/.env is the final word. Without override, a variable already
+// set in the shell or in Windows' environment settings silently wins over
+// the file, and the seed encrypts with a key the live API does not have.
+const ENV_FILE = path.resolve(__dirname, "../.env");
+const keyBefore = process.env.MFA_ENCRYPTION_KEY;
+loadEnv({ path: ENV_FILE, override: true });
+if (keyBefore && keyBefore !== process.env.MFA_ENCRYPTION_KEY) {
+  console.warn(
+    "WARNING: an MFA_ENCRYPTION_KEY from your system environment was overriding " +
+      `${ENV_FILE}. Using the .env value. Remove the system variable to avoid confusion.`
+  );
+}
 
 const prisma = new PrismaClient();
 

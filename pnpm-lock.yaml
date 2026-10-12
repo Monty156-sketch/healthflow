@@ -142,6 +142,9 @@ importers:
         specifier: ^6.1.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
     devDependencies:
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
       prisma:
         specifier: ^6.1.0
         version: 6.19.3(typescript@5.9.3)
