@@ -62,6 +62,7 @@ describe("duty cycle rules", () => {
   it("checks the numbers and that shifts, cadres and departments are the facility's own", async () => {
     const { api, midwife } = await setup();
     const { n } = await shiftsNeedingMidwives(api, midwife.id);
+    await api.get("/api/facility/cycles"); // seeds the three starting rules
     const base = { name: "Custom", countingShiftIds: [n.id], consecutiveDuties: 3, offDaysRequired: 2, offDaysConsecutive: true, applicableCadreIds: [], applicableDepartmentIds: [], enforcement: "PREFER" };
     expect((await api.post("/api/facility/cycles", { ...base, consecutiveDuties: 0 })).body.fields.consecutiveDuties).toBe("At least 1.");
     expect((await api.post("/api/facility/cycles", { ...base, offDaysRequired: 9 })).body.fields.offDaysRequired).toBe("At most 7.");
