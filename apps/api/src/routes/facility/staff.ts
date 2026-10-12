@@ -97,13 +97,15 @@ async function staffNoTaken(facilityId: string, staffNo: string, exceptId?: stri
 const staffInclude = {
   cadre: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true, code: true } },
-  userProfile: { select: { role: true, active: true, lastSignInAt: true, mfaEnabled: true } },
+  userProfile: {
+    select: { role: true, active: true, lastSignInAt: true, mfaEnabled: true, privacyNoticeVersionAccepted: true },
+  },
 } satisfies Prisma.StaffInclude;
 
 type StaffRow = Prisma.StaffGetPayload<{ include: typeof staffInclude }>;
 
-/** What the browser receives. Dates as YYYY-MM-DD; no photo or consent internals yet. */
-function present(s: StaffRow) {
+/** What the browser receives. Dates as YYYY-MM-DD. The photo itself only on the detail route. */
+function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
   return {
     id: s.id,
     staffNo: s.staffNo,
@@ -127,8 +129,10 @@ function present(s: StaffRow) {
           active: s.userProfile.active,
           lastSignInAt: s.userProfile.lastSignInAt,
           mfaEnabled: s.userProfile.mfaEnabled,
+          privacyNoticeVersionAccepted: s.userProfile.privacyNoticeVersionAccepted,
         }
       : null,
+    hasPhoto: Boolean(s.photoUrl),
     updatedAt: s.updatedAt,
   };
 }
@@ -166,6 +170,7 @@ staffRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const staff = await prisma.staff.findMany({
     where,
     include: staffInclude,
+    omit: { photoUrl: true },
     orderBy: [{ fullName: "asc" }],
     take: 1000,
   });
@@ -181,7 +186,12 @@ staffRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
     include: staffInclude,
   });
   if (!s) return res.status(404).json({ error: "not_found" });
-  res.json({ staff: present(s) });
+  const invitation = await prisma.staffInvitation.findFirst({
+    where: { facilityId, staffId: s.id, status: "PENDING", expiresAt: { gt: new Date() } },
+    orderBy: { sentAt: "desc" },
+    select: { id: true, role: true, email: true, sentAt: true, expiresAt: true },
+  });
+  res.json({ staff: { ...present(s), photo: s.photoUrl }, invitation });
 });
 
 // ---------------------------------------------------------------- create
@@ -448,4 +458,164 @@ staffRouter.post("/:id/reset-link", allowRoles(...ADMIN_ROLES), async (req, res)
     summary: `${who.displayName} issued a password reset link for ${s.fullName}, valid for ${RESET_LINK_MINUTES} minutes.`,
   });
   res.json({ url: appUrl(`/reset-password?token=${encodeURIComponent(token)}`), expiresAt });
+});
+
+// ---------------------------------------------------------------- consent
+
+/**
+ * One consent per purpose, each recorded and withdrawn separately (Part 3,
+ * 0.5). A record is never edited: withdrawing stamps it, and consenting
+ * again makes a new record, so the history stays visible.
+ */
+const CONSENT_TYPES = ["PHOTOGRAPH", "CASE_STUDY", "REFERENCE", "MARKETING"] as const;
+const CONSENT_LABEL: Record<string, string> = {
+  PHOTOGRAPH: "a photograph on their record",
+  CASE_STUDY: "being named in a case study",
+  REFERENCE: "being contacted as a reference",
+  MARKETING: "appearing in PS Tech marketing",
+};
+
+staffRouter.get("/:id/consents", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const { facilityId } = caller(req);
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId }, select: { id: true } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  const records = await prisma.consentRecord.findMany({
+    where: { staffId: s.id, facilityId },
+    orderBy: { grantedAt: "desc" },
+  });
+  res.json({
+    consents: CONSENT_TYPES.map((type) => {
+      const latest = records.find((r) => r.consentType === type);
+      return {
+        consentType: type,
+        active: Boolean(latest && latest.granted && !latest.withdrawnAt),
+        latest: latest
+          ? { id: latest.id, grantedAt: latest.grantedAt, withdrawnAt: latest.withdrawnAt, recordedBy: latest.recordedBy, notes: latest.notes }
+          : null,
+      };
+    }),
+  });
+});
+
+const consentInput = z.object({
+  consentType: z.enum(CONSENT_TYPES),
+  notes: optionalText(300, "Notes"),
+});
+
+staffRouter.post("/:id/consents", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(consentInput, req.body, res);
+  if (!input) return;
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  const active = await prisma.consentRecord.findFirst({
+    where: { staffId: s.id, consentType: input.consentType, granted: true, withdrawnAt: null },
+  });
+  if (active) return res.status(409).json({ error: "already_given", message: "This consent is already recorded." });
+  const record = await prisma.consentRecord.create({
+    data: {
+      facilityId: who.facilityId,
+      staffId: s.id,
+      consentType: input.consentType,
+      granted: true,
+      grantedAt: new Date(),
+      recordedBy: who.email,
+      notes: input.notes,
+    },
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "consent_recorded",
+    entityType: "Staff",
+    entityId: s.id,
+    summary: `${who.displayName} recorded ${s.fullName}'s consent to ${CONSENT_LABEL[input.consentType]}.`,
+  });
+  res.status(201).json({ consent: record });
+});
+
+/** Withdrawing photograph consent deletes the photograph at once (Part 3, 0.5). */
+staffRouter.post("/:id/consents/:consentId/withdraw", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  const record = await prisma.consentRecord.findFirst({
+    where: { id: String(req.params.consentId), staffId: s.id, facilityId: who.facilityId },
+  });
+  if (!record) return res.status(404).json({ error: "not_found" });
+  if (record.withdrawnAt) return res.json({ ok: true });
+
+  const isPhoto = record.consentType === "PHOTOGRAPH";
+  const hadPhoto = isPhoto && Boolean(s.photoUrl);
+  await prisma.$transaction([
+    prisma.consentRecord.update({ where: { id: record.id }, data: { withdrawnAt: new Date() } }),
+    ...(isPhoto ? [prisma.staff.update({ where: { id: s.id }, data: { photoUrl: null, photoConsentId: null } })] : []),
+  ]);
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "consent_withdrawn",
+    entityType: "Staff",
+    entityId: s.id,
+    summary: `${who.displayName} recorded that ${s.fullName} withdrew consent to ${CONSENT_LABEL[record.consentType]}.${
+      hadPhoto ? " The photograph was deleted." : ""
+    }`,
+  });
+  res.json({ ok: true, photoDeleted: hadPhoto });
+});
+
+// ---------------------------------------------------------------- photograph
+
+// Resized in the browser before upload; anything bigger is refused.
+const MAX_PHOTO_CHARS = 90_000; // under the 100 KB request limit
+const photoInput = z.object({
+  dataUrl: z
+    .string()
+    .max(MAX_PHOTO_CHARS, "The photograph is too large. Choose a smaller image.")
+    .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/, "Choose a JPEG, PNG or WebP image."),
+});
+
+/** A photograph cannot be saved without an active photograph consent. */
+staffRouter.put("/:id/photo", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(photoInput, req.body, res);
+  if (!input) return;
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  const consent = await prisma.consentRecord.findFirst({
+    where: { staffId: s.id, consentType: "PHOTOGRAPH", granted: true, withdrawnAt: null },
+  });
+  if (!consent) {
+    return res.status(409).json({
+      error: "no_photo_consent",
+      message: `Record ${s.fullName}'s consent to a photograph before adding one.`,
+    });
+  }
+  await prisma.staff.update({ where: { id: s.id }, data: { photoUrl: input.dataUrl, photoConsentId: consent.id } });
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "photo_added",
+    entityType: "Staff",
+    entityId: s.id,
+    summary: `${who.displayName} ${s.photoUrl ? "replaced" : "added"} ${s.fullName}'s photograph.`,
+  });
+  res.json({ ok: true });
+});
+
+staffRouter.delete("/:id/photo", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  if (!s.photoUrl) return res.status(204).send();
+  await prisma.staff.update({ where: { id: s.id }, data: { photoUrl: null, photoConsentId: null } });
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "photo_removed",
+    entityType: "Staff",
+    entityId: s.id,
+    summary: `${who.displayName} removed ${s.fullName}'s photograph.`,
+  });
+  res.status(204).send();
 });

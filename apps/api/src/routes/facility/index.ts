@@ -24,6 +24,8 @@ import { departmentsRouter } from "./departments.js";
 import { cadresRouter } from "./cadres.js";
 import { staffRouter } from "./staff.js";
 import { auditRouter } from "./audit.js";
+import { privacyRouter } from "./privacy.js";
+import { staffInvitationRouter } from "../invitations.js";
 
 export const facilityRouter = Router();
 
@@ -31,6 +33,8 @@ facilityRouter.use(requireAuth, requireFacilityUser);
 facilityRouter.use("/departments", departmentsRouter);
 facilityRouter.use("/cadres", cadresRouter);
 facilityRouter.use("/staff", staffRouter);
+facilityRouter.use("/staff", staffInvitationRouter);
+facilityRouter.use("/privacy", privacyRouter);
 facilityRouter.use("/audit-log", auditRouter);
 
 const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;

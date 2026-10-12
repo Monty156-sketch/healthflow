@@ -56,7 +56,7 @@ export const authRouter = Router();
 // ------------------------------------------------------------- helpers
 
 /** The only user fields the browser ever receives. */
-function publicUser(user: Pick<UserProfile, "id" | "userEmail" | "role" | "scopeType" | "facilityId">) {
+export function publicUser(user: Pick<UserProfile, "id" | "userEmail" | "role" | "scopeType" | "facilityId">) {
   return {
     id: user.id,
     email: user.userEmail,
@@ -97,7 +97,7 @@ async function recordFailure(user: UserProfile, what: "password" | "code") {
 }
 
 /** Issues the access token and the session cookie, and records the sign-in. */
-async function startSession(req: Request, res: Response, user: UserProfile, how: string) {
+export async function startSession(req: Request, res: Response, user: UserProfile, how: string) {
   await prisma.userProfile.update({
     where: { id: user.id },
     data: { failedAttempts: 0, lockedUntil: null, lastSignInAt: new Date() },
