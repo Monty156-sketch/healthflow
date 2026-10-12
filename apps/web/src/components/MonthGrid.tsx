@@ -134,7 +134,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
 
   return (
     <div
-      className="relative max-h-[70vh] overflow-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]"
+      className="print-grid relative max-h-[70vh] overflow-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]"
       role="region"
       aria-label={caption}
       tabIndex={interactive ? -1 : 0}

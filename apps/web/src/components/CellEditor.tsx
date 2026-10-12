@@ -33,7 +33,7 @@ export function CellEditor({
   date: string;
   currentShiftId: string | null;
   shifts: ShiftLite[];
-  onDone: (saved: boolean) => void;
+  onDone: (saved: boolean, change?: { staffId: string; date: string; from: string | null; to: string }) => void;
 }) {
   const [shiftId, setShiftId] = useState(currentShiftId ?? "");
   const [reason, setReason] = useState("");
@@ -50,7 +50,7 @@ export function CellEditor({
     setReasonError(null);
     try {
       await api.put(`/api/facility/rosters/${rosterId}/cell`, { staffId, date, shiftId, ...(conflict ? { overrideReason: reason } : {}) });
-      onDone(true);
+      onDone(true, { staffId, date, from: currentShiftId, to: shiftId });
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { error?: string; message?: string; findings?: { ruleCode: string; message: string }[]; fields?: Record<string, string> }) : undefined;
       if (body?.error === "blocks_rule") setConflict({ message: body.message ?? "This change breaks a rule.", findings: body.findings ?? [] });
@@ -62,7 +62,7 @@ export function CellEditor({
   }
 
   return (
-    <div ref={heading} tabIndex={-1} className="mb-4 outline-none" aria-label="Change a duty">
+    <div ref={heading} tabIndex={-1} className="no-print mb-4 outline-none" aria-label="Change a duty">
       <Panel title={`Change duty: ${staffName}, ${showDate(date)}`} description="Choose the shift this person works on this day. Off Duty clears the day.">
         <div role="radiogroup" aria-label="Shift" className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {shifts.map((s) => (

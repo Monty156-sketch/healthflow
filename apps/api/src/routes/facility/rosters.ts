@@ -121,6 +121,13 @@ function findingRow(rosterId: string, facilityId: string, f: Finding): Prisma.Co
   };
 }
 
+async function saveVersion(tx: Prisma.TransactionClient, rosterId: string, version: number, by: string, reason: string) {
+  const rows = await tx.rosterAssignment.findMany({ where: { rosterId }, select: { staffId: true, shiftId: true, dutyDate: true, source: true, locked: true } });
+  await tx.rosterVersionSnapshot.create({
+    data: { rosterId, version, createdBy: by, reason, assignments: rows.map((a) => ({ ...a, dutyDate: a.dutyDate.toISOString().slice(0, 10) })) },
+  });
+}
+
 const findingKey = (f: { ruleCode: string; staffId: string | null; dutyDate?: Date | null; day?: number | null }) =>
   `${f.ruleCode}|${f.staffId ?? ""}|${f.dutyDate ? Math.floor(f.dutyDate.getTime() / 86_400_000) : f.day ?? ""}`;
 
@@ -255,9 +262,11 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   }
 
   const seconds = (Date.now() - started) / 1000;
+  const hadDuties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
   const blocking = result.findings.filter((f) => f.severity === "BLOCK").length;
   await prisma.$transaction(
     async (tx) => {
+      if (hadDuties) await saveVersion(tx, roster.id, roster.version + 1, who.email, "Before generating again");
       await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, locked: false } });
       await tx.rosterAssignment.createMany({
         data: result.cells.map((c) => ({ rosterId: roster.id, facilityId: who.facilityId, staffId: c.staffId, shiftId: c.shiftId, dutyDate: dateFromDay(c.day), source: c.source })),
@@ -265,7 +274,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
       await storeFindings(tx, roster.id, who.facilityId, result.findings);
       await tx.roster.update({
         where: { id: roster.id },
-        data: { status: "GENERATED", generatedAt: new Date(), generationSeconds: seconds, hasUnresolvedConflicts: blocking > 0, preparedBy: who.email },
+        data: { status: "GENERATED", generatedAt: new Date(), generationSeconds: seconds, hasUnresolvedConflicts: blocking > 0, preparedBy: who.email, ...(hadDuties ? { version: roster.version + 1 } : {}) },
       });
     },
     { timeout: 30_000, maxWait: 10_000 }
@@ -449,15 +458,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
   const snapshot = ["approve", "publish"].includes(input.action);
   const version = snapshot ? roster.version + 1 : roster.version;
   await prisma.$transaction(async (tx) => {
-    if (snapshot) {
-      const rows = await tx.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true, source: true, locked: true } });
-      await tx.rosterVersionSnapshot.create({
-        data: {
-          rosterId: roster.id, version, createdBy: who.email, reason: `${move.word[0].toUpperCase()}${move.word.slice(1)}${input.note ? `: ${input.note}` : ""}`,
-          assignments: rows.map((a) => ({ ...a, dutyDate: a.dutyDate.toISOString().slice(0, 10) })),
-        },
-      });
-    }
+    if (snapshot) await saveVersion(tx, roster.id, version, who.email, `${move.word[0].toUpperCase()}${move.word.slice(1)}${input.note ? `: ${input.note}` : ""}`);
     await tx.roster.update({
       where: { id: roster.id },
       data: {
@@ -474,4 +475,57 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
   });
   const fresh = await prisma.roster.findUniqueOrThrow({ where: { id: roster.id } });
   res.json({ roster: presentRoster(fresh), summary: await summaryOf(roster.id) });
+});
+
+// ------------------------------------------------------------- versions
+
+rostersRouter.get("/:id/versions", allowRoles(...READ_ROLES), async (req, res) => {
+  const { facilityId } = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const rows = await prisma.rosterVersionSnapshot.findMany({ where: { rosterId: roster.id }, orderBy: { version: "desc" }, select: { id: true, version: true, createdAt: true, createdBy: true, reason: true } });
+  res.json({ current: roster.version, versions: rows });
+});
+
+rostersRouter.post("/:id/versions/:versionId/restore", allowRoles(...ROSTER_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!EDITABLE.includes(roster.status)) return res.status(409).json({ error: "roster_locked", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}. Reopen it before restoring an earlier version.` });
+  const snap = await prisma.rosterVersionSnapshot.findFirst({ where: { id: String(req.params.versionId), rosterId: roster.id } });
+  if (!snap) return res.status(404).json({ error: "not_found" });
+
+  const saved = snap.assignments as { staffId: string; shiftId: string; dutyDate: string; source: "GENERATED" | "MANUAL" | "SWAP" | "COVER" | "REST_BLOCK"; locked: boolean }[];
+  const [staff, shifts] = await Promise.all([
+    prisma.staff.findMany({ where: { facilityId: who.facilityId }, select: { id: true } }),
+    prisma.shift.findMany({ where: { facilityId: who.facilityId }, select: { id: true } }),
+  ]);
+  const okStaff = new Set(staff.map((x) => x.id));
+  const okShift = new Set(shifts.map((x) => x.id));
+  const rows = saved.filter((a) => okStaff.has(a.staffId) && okShift.has(a.shiftId));
+
+  const version = roster.version + 1;
+  await prisma.$transaction(
+    async (tx) => {
+      await saveVersion(tx, roster.id, version, who.email, `Before restoring version ${snap.version}`);
+      await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id } });
+      await tx.rosterAssignment.createMany({
+        data: rows.map((a) => ({ rosterId: roster.id, facilityId: who.facilityId, staffId: a.staffId, shiftId: a.shiftId, dutyDate: new Date(`${a.dutyDate}T00:00:00Z`), source: a.source, locked: a.locked })),
+      });
+      await tx.roster.update({ where: { id: roster.id }, data: { version } });
+    },
+    { timeout: 30_000, maxWait: 10_000 }
+  );
+  const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
+  const findings = checkOf(data, data.current);
+  const blocking = findings.filter((f) => f.severity === "BLOCK").length;
+  await prisma.$transaction(async (tx) => {
+    await storeFindings(tx, roster.id, who.facilityId, findings);
+    await tx.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: blocking > 0 } });
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_version_restored", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} restored version ${snap.version} of the ${monthName(roster)} roster. The roster as it was before is saved as version ${version}.`,
+  });
+  res.json({ summary: await summaryOf(roster.id), skipped: saved.length - rows.length });
 });
