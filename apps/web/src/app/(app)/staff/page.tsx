@@ -68,7 +68,16 @@ export default function StaffListPage() {
       <PageHeader
         title="Staff"
         description={staff.data ? countLine(rows.length, show, Boolean(q || cadreId || departmentId)) : undefined}
-        actions={isAdmin && <ButtonLink href="/staff/new">Add staff member</ButtonLink>}
+        actions={
+          isAdmin && (
+            <>
+              <ButtonLink href="/staff/invite">Invite staff</ButtonLink>
+              <ButtonLink href="/staff/new" variant="secondary">
+                Add staff member
+              </ButtonLink>
+            </>
+          )
+        }
       />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

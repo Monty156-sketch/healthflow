@@ -131,7 +131,7 @@ function InviteFlow() {
   if (stage === "enrol" && pending) {
     return (
       <PublicCard title="Set up two-step sign-in" wide>
-        <p className="mb-6 text-[var(--muted)]">Your account has been created. Your role needs a code from your phone each time you sign in. This is done once.</p>
+        <p className="mb-6 text-[var(--muted)]">Your account has been created. The app shows a new code every 30 seconds, and you enter it with your email and password each time you sign in. This is done once.</p>
         <AuthenticatorSetup pending={pending} onConfirm={confirmCode} error={codeError} busy={busy} />
       </PublicCard>
     );
@@ -180,7 +180,7 @@ function InviteFlow() {
         <Field label="Type it again" error={errors.confirm}>
           {(a) => <Input {...a} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />}
         </Field>
-        {c.mfaRequired && <p className="text-sm text-[var(--muted)]">Next you will set up two-step sign-in with an authenticator app.</p>}
+        <p className="text-sm text-[var(--muted)]">Next you will set up an authenticator app on your phone. It gives you the code you need, with your email and password, every time you sign in.</p>
         {errors.form && <Notice tone="block">{errors.form}</Notice>}
         <Button type="submit" disabled={busy}>
           {busy ? "Creating your account…" : "Create my account"}

@@ -82,3 +82,30 @@ export interface Rule {
   range: { min: number; max: number } | null;
   standard: number | null;
 }
+
+export interface CycleRule {
+  id: string;
+  name: string;
+  countingShiftIds: string[];
+  consecutiveDuties: number;
+  offDaysRequired: number;
+  offDaysConsecutive: boolean;
+  applicableCadreIds: string[];
+  applicableDepartmentIds: string[];
+  enforcement: "BLOCK" | "PREFER";
+  priority: number;
+  active: boolean;
+}
+
+export interface CapacityRow {
+  cadreId: string;
+  cadreName: string;
+  staffCount: number;
+  rule: { id: string; name: string; consecutiveDuties: number; offDaysRequired: number } | null;
+  supply: number;
+  demand: number;
+  shortBy: number;
+  achievable: boolean;
+  staffNeeded: number;
+  suggestion: { consecutiveDuties: number; offDaysRequired: number } | null;
+}
