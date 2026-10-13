@@ -236,6 +236,7 @@ export interface AttendanceDay {
   }[];
   onLeave: { staffId: string; name: string; official: boolean; typeName: string }[];
   offDuty: { staffId: string; name: string }[];
+  review: { id: string; name: string; status: string; minutesLate: number | null }[];
 }
 
 export interface AttendanceMonth {
@@ -245,4 +246,27 @@ export interface AttendanceMonth {
   staff: { id: string; name: string; cadreName: string | null; departmentId: string | null; departmentName: string | null }[];
   departments: { id: string; name: string }[];
   cells: { staffId: string; date: string; code: string; needsReview?: boolean }[];
+}
+
+export interface NotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  linkUrl: string | null;
+  severity: "INFO" | "ACTION" | "URGENT";
+  read: boolean;
+  createdAt: string;
+}
+
+export interface MyDuties {
+  linked: boolean;
+  month: string;
+  duties: {
+    assignmentId: string;
+    date: string;
+    shift: { name: string; code: string; startTime: string | null; endTime: string | null; colour: string | null };
+    past: boolean;
+    attendance: { status: string; minutesLate: number | null; corrected: boolean } | null;
+  }[];
 }

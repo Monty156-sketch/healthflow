@@ -77,4 +77,37 @@ describe("attendance", () => {
     const ok = await api.put("/api/facility/attendance/day", { date: iso(d), reason: "Register found after the audit", records: [{ assignmentId: a1.id, status: "PRESENT" }] });
     expect(ok.body.saved).toBe(1);
   });
+
+  it("keeps attendance and flags it when the duty changes, and tells the admin", async () => {
+    const { api, a1, d, roster, facility, people } = await setup();
+    await api.put("/api/facility/attendance/day", { date: iso(d), records: [{ assignmentId: a1.id, status: "ABSENT" }] });
+    const second = (await api.post("/api/facility/shifts", { name: "Afternoon", code: "M", startTime: "14:00", endTime: "20:00", isOvernight: false, minStaff: 1, colour: "#b56b12" })).body.shift;
+    await prisma.roster.update({ where: { id: roster.id }, data: { status: "UNDER_REVIEW" } });
+    const r = await api.put(`/api/facility/rosters/${roster.id}/cell`, { staffId: people[0].id, date: iso(d), shiftId: second.id });
+    expect(r.status).toBe(200);
+    const row = await prisma.attendance.findFirstOrThrow({ where: { staffId: people[0].id } });
+    expect(row).toMatchObject({ status: "ABSENT", needsReview: true, rosterAssignmentId: null });
+    const notes = await api.get("/api/facility/notifications");
+    expect(notes.body.notifications.some((n: { type: string }) => n.type === "attendance_review")).toBe(true);
+    await prisma.roster.update({ where: { id: roster.id }, data: { status: "PUBLISHED" } });
+    const day = await api.get(`/api/facility/attendance/day?date=${iso(d)}`);
+    expect(day.body.review).toHaveLength(1);
+    await api.post(`/api/facility/attendance/${row.id}/resolve`);
+    expect((await prisma.attendance.findUniqueOrThrow({ where: { id: row.id } })).needsReview).toBe(false);
+    expect(facility.id).toBeTruthy();
+  });
+
+  it("shows a staff member only their own duties and attendance, and passes on a correction request", async () => {
+    const { api, facility, people, a1, d } = await setup();
+    await api.put("/api/facility/attendance/day", { date: iso(d), records: [{ assignmentId: a1.id, status: "LATE", minutesLate: 15 }] });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
+    await prisma.userProfile.update({ where: { id: user.id }, data: { staffId: people[0].id } });
+    const me = as(user);
+    const r = await me.get(`/api/facility/my-duties?month=${iso(d).slice(0, 7)}`);
+    expect(r.body.duties).toHaveLength(1);
+    expect(r.body.duties[0].attendance).toMatchObject({ status: "LATE", minutesLate: 15 });
+    expect((await me.post(`/api/facility/my-duties/${a1.id}/correction`, { note: "I was on time, the gate book shows it" })).status).toBe(201);
+    expect((await api.get("/api/facility/notifications")).body.notifications.some((n: { type: string }) => n.type === "attendance_correction_asked")).toBe(true);
+    expect((await me.get("/api/facility/attendance/month?month=" + iso(d).slice(0, 7))).status).toBe(403);
+  });
 });

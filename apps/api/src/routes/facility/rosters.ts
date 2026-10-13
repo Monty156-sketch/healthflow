@@ -7,6 +7,8 @@ import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
+import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.js";
+import { notifyDeciders } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -136,6 +138,19 @@ const findingKey = (f: { ruleCode: string; staffId: string | null; dutyDate?: Da
  * manager has already overridden with a reason, so re-checking does not
  * silently bring back a finding someone accepted.
  */
+/** Attendance that no longer matches a duty: tell the people who run the roster. */
+async function flagReview(who: { facilityId: string; email: string }, roster: { month: number; year: number }, loose: { name: string; date: Date }[]) {
+  if (loose.length === 0) return;
+  const names = [...new Set(loose.map((l) => l.name))];
+  await notifyDeciders(who.facilityId, {
+    type: "attendance_review",
+    title: `${loose.length} attendance ${loose.length === 1 ? "record needs" : "records need"} a second look`,
+    body: `A duty changed after attendance was recorded for ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` and ${names.length - 3} more` : ""}, in the ${monthName(roster)} roster. The record was kept; check that it is still right.`,
+    linkUrl: `/attendance?date=${loose[0].date.toISOString().slice(0, 10)}`,
+    severity: "ACTION",
+  });
+}
+
 async function storeFindings(tx: Prisma.TransactionClient, rosterId: string, facilityId: string, findings: Finding[]) {
   const kept = await tx.complianceFinding.findMany({ where: { rosterId, status: "OVERRIDDEN" } });
   const overrides = new Map(kept.map((k) => [findingKey(k), k]));
@@ -264,13 +279,16 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   const seconds = (Date.now() - started) / 1000;
   const hadDuties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
   const blocking = result.findings.filter((f) => f.severity === "BLOCK").length;
+  let loose: { name: string; date: Date }[] = [];
   await prisma.$transaction(
     async (tx) => {
       if (hadDuties) await saveVersion(tx, roster.id, roster.version + 1, who.email, "Before generating again");
+      await detachAttendance(tx, { rosterId: roster.id, locked: false });
       await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, locked: false } });
       await tx.rosterAssignment.createMany({
         data: result.cells.map((c) => ({ rosterId: roster.id, facilityId: who.facilityId, staffId: c.staffId, shiftId: c.shiftId, dutyDate: dateFromDay(c.day), source: c.source })),
       });
+      loose = await relinkAttendance(tx, roster.id);
       await storeFindings(tx, roster.id, who.facilityId, result.findings);
       await tx.roster.update({
         where: { id: roster.id },
@@ -279,6 +297,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
     },
     { timeout: 30_000, maxWait: 10_000 }
   );
+  await flagReview(who, roster, loose);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_generated", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.`,
@@ -369,11 +388,14 @@ rostersRouter.put("/:id/cell", allowRoles(...ROSTER_ROLES), async (req, res) => 
 
   const previous = data.current.find((a) => a.staffId === person.id && a.day === day);
   const blocking = after.filter((f) => f.severity === "BLOCK").length;
+  let loose: { name: string; date: Date }[] = [];
   await prisma.$transaction(async (tx) => {
+    await detachAttendance(tx, { rosterId: roster.id, staffId: person.id, dutyDate: dateFromDay(day) });
     await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, staffId: person.id, dutyDate: dateFromDay(day) } });
     await tx.rosterAssignment.create({
       data: { rosterId: roster.id, facilityId: who.facilityId, staffId: person.id, shiftId: shift.id, dutyDate: dateFromDay(day), source: "MANUAL", locked: true },
     });
+    loose = await relinkAttendance(tx, roster.id);
     await storeFindings(tx, roster.id, who.facilityId, after);
     if (added.length) {
       const keys = new Set(added.map((f) => findingKey(f)));
@@ -386,6 +408,7 @@ rostersRouter.put("/:id/cell", allowRoles(...ROSTER_ROLES), async (req, res) => 
     }
     await tx.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: blocking - added.length > 0 } });
   });
+  await flagReview(who, roster, loose);
   const was = previous ? data.shiftName.get(previous.shiftId) ?? "a shift" : "nothing";
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_cell_changed", entityType: "Roster", entityId: roster.id,
@@ -505,17 +528,21 @@ rostersRouter.post("/:id/versions/:versionId/restore", allowRoles(...ROSTER_ROLE
   const rows = saved.filter((a) => okStaff.has(a.staffId) && okShift.has(a.shiftId));
 
   const version = roster.version + 1;
+  let loose: { name: string; date: Date }[] = [];
   await prisma.$transaction(
     async (tx) => {
       await saveVersion(tx, roster.id, version, who.email, `Before restoring version ${snap.version}`);
+      await detachAttendance(tx, { rosterId: roster.id });
       await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id } });
       await tx.rosterAssignment.createMany({
         data: rows.map((a) => ({ rosterId: roster.id, facilityId: who.facilityId, staffId: a.staffId, shiftId: a.shiftId, dutyDate: new Date(`${a.dutyDate}T00:00:00Z`), source: a.source, locked: a.locked })),
       });
+      loose = await relinkAttendance(tx, roster.id);
       await tx.roster.update({ where: { id: roster.id }, data: { version } });
     },
     { timeout: 30_000, maxWait: 10_000 }
   );
+  await flagReview(who, roster, loose);
   const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
   const findings = checkOf(data, data.current);
   const blocking = findings.filter((f) => f.severity === "BLOCK").length;

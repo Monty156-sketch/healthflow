@@ -69,10 +69,12 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
+  { href: "/my-duties", label: "My duties", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave/calendar", label: "Leave calendar", roles: READ_ROLES },
   { href: "/attendance", label: "Daily attendance", roles: READ_ROLES },
   { href: "/attendance/month", label: "Monthly attendance", roles: READ_ROLES },
+  { href: "/notifications", label: "Notifications", roles: [...READ_ROLES, "STAFF"] },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/shifts", label: "Shifts", roles: READ_ROLES },
   { href: "/duty-cycles", label: "Duty cycles", roles: READ_ROLES },
@@ -82,6 +84,17 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
   { href: "/system-health", label: "System health", roles: PLATFORM },
 ];
+
+function UnreadCount() {
+  const { data } = useResource<{ unread: number }>("/api/facility/notifications/count");
+  if (!data || data.unread === 0) return null;
+  return (
+    <span className="figures ml-2 rounded-[4px] bg-[var(--accent)] px-1.5 text-sm text-white">
+      {data.unread}
+      <span className="sr-only"> unread</span>
+    </span>
+  );
+}
 
 function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -104,6 +117,7 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
               style={current ? { boxShadow: "inset 3px 0 0 var(--accent)" } : undefined}
             >
               {n.label}
+              {n.href === "/notifications" && <UnreadCount />}
             </Link>
           </li>
         );
@@ -197,7 +211,7 @@ export function NoFacilityNotice({ role }: { role: string }) {
     role === "PLATFORM_ADMIN"
       ? "You are signed in as a platform admin. Facility data is reached only through a logged support session, which arrives with the platform console in a later phase."
       : role === "STAFF"
-        ? "Your own screens, such as today's duty and your roster, arrive in a later phase."
+        ? "Your duties, leave requests and notifications are in the menu."
         : "This account has no facility screens yet.";
   return (
     <>
