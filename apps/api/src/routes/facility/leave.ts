@@ -91,7 +91,8 @@ async function impactOf(facilityId: string, staffId: string, startDay: number, e
   ]);
   const perDay = shifts.reduce((n, s) => n + (((s.minByCadre ?? {}) as Record<string, number>)[person.cadreId!] ?? 0), 0);
   const cadre = person.cadre?.name ?? "staff";
-  if (perDay === 0) return { summary: [`No shift sets a minimum number of ${cadre.toLowerCase()}s, so this leave does not put a minimum at risk.`], riskDates: [], needsReview: false };
+  const pl = (w: string) => (/(fe|f)$/i.test(w) ? w.replace(/(fe|f)$/i, "ves") : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`);
+  if (perDay === 0) return { summary: [`No shift sets a minimum number of ${pl(cadre.toLowerCase())}, so this leave does not put a minimum at risk.`], riskDates: [], needsReview: false };
 
   const risk: number[] = [];
   let lowest = Infinity;
@@ -101,7 +102,7 @@ async function impactOf(facilityId: string, staffId: string, startDay: number, e
     lowest = Math.min(lowest, available);
     if (available < perDay) risk.push(d);
   }
-  const plural = (n: number) => `${n} ${cadre.toLowerCase()}${n === 1 ? "" : "s"}`;
+  const plural = (n: number) => `${n} ${n === 1 ? cadre.toLowerCase() : pl(cadre.toLowerCase())}`;
   const summary = [
     `Approving this leaves ${plural(lowest)} available${startDay === endDay ? ` on ${sayDay(startDay)}` : ` from ${sayRange(startDay, endDay)}`}. The shifts need ${plural(perDay)} between them each day.`,
   ];
