@@ -210,3 +210,39 @@ export interface LeaveCalendar {
   cadres: { id: string; name: string }[];
   departments: { id: string; name: string }[];
 }
+
+export type AttendanceStatus = "PRESENT" | "LATE" | "ABSENT" | "EXCUSED";
+
+export interface AttendanceDay {
+  date: string;
+  cutoffDays: number;
+  needsReason: boolean;
+  canRecord: boolean;
+  blocked: string | null;
+  shifts: {
+    id: string;
+    name: string;
+    code: string;
+    startTime: string | null;
+    endTime: string | null;
+    people: {
+      assignmentId: string;
+      staffId: string;
+      name: string;
+      cadre: string | null;
+      isCover: boolean;
+      record: { status: AttendanceStatus | string; minutesLate: number | null; note: string | null; needsReview: boolean; corrected: boolean; originalStatus: string | null } | null;
+    }[];
+  }[];
+  onLeave: { staffId: string; name: string; official: boolean; typeName: string }[];
+  offDuty: { staffId: string; name: string }[];
+}
+
+export interface AttendanceMonth {
+  month: string;
+  published: boolean;
+  completeness: number | null;
+  staff: { id: string; name: string; cadreName: string | null; departmentId: string | null; departmentName: string | null }[];
+  departments: { id: string; name: string }[];
+  cells: { staffId: string; date: string; code: string; needsReview?: boolean }[];
+}
