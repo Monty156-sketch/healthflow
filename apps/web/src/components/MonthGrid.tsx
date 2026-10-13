@@ -219,6 +219,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                           }}
                           tabIndex={isActive ? 0 : -1}
                           aria-label={label}
+                          data-cell={`${row.staff.id}|${d.iso}`}
                           onFocus={() => setActive({ r: row.index, c })}
                           onKeyDown={(e) => onKey(e, row.index, c)}
                           onClick={() => onCellClick?.(row.staff.id, d.iso, data)}
@@ -227,7 +228,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                           {content}
                         </button>
                       ) : (
-                        <span className="flex h-10 items-center justify-center" aria-label={label}>
+                        <span className="flex h-10 items-center justify-center" aria-label={label} data-cell={`${row.staff.id}|${d.iso}`} tabIndex={-1}>
                           {content}
                         </span>
                       )}

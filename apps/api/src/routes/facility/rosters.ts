@@ -200,8 +200,8 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
   const [assignments, findings, shifts, cadres] = await Promise.all([
     prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true, source: true, locked: true } }),
     prisma.complianceFinding.findMany({ where: { rosterId: roster.id }, orderBy: [{ severity: "asc" }, { dutyDate: "asc" }, { ruleCode: "asc" }] }),
-    prisma.shift.findMany({ where: { facilityId }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true, countsAsDuty: true, isOvernight: true, active: true } }),
-    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, sortOrder: true } }),
+    prisma.shift.findMany({ where: { facilityId }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true, countsAsDuty: true, isOvernight: true, active: true, isOnCall: true, durationHours: true, minStaff: true, minByCadre: true } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, name: true, sortOrder: true } }),
   ]);
   const inRoster = new Set(assignments.map((a) => a.staffId));
   const staff = await prisma.staff.findMany({
@@ -215,10 +215,11 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
     roster: presentRoster(roster),
     summary: await summaryOf(roster.id),
     staff: staff.map((s) => ({
-      id: s.id, name: s.fullName, staffNo: s.staffNo, cadreCode: s.cadre?.code ?? s.cadre?.name ?? null, cadreName: s.cadre?.name ?? null,
+      id: s.id, name: s.fullName, staffNo: s.staffNo, cadreId: s.cadreId, cadreCode: s.cadre?.code ?? s.cadre?.name ?? null, cadreName: s.cadre?.name ?? null,
       cadreOrder: s.cadreId ? order.get(s.cadreId) ?? 999 : 999, departmentName: s.department?.name ?? null,
     })),
-    shifts,
+    shifts: shifts.map((x) => ({ ...x, minByCadre: (x.minByCadre ?? {}) as Record<string, number> })),
+    cadres: cadres.map((c) => ({ id: c.id, name: c.name })),
     assignments: assignments.map((a) => ({ staffId: a.staffId, shiftId: a.shiftId, date: a.dutyDate.toISOString().slice(0, 10), source: a.source, locked: a.locked })),
     findings: findings.map((f) => ({
       id: f.id, ruleCode: f.ruleCode, severity: f.severity, message: f.message, staffId: f.staffId,

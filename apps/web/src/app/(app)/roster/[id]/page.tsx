@@ -11,6 +11,7 @@ import type { RosterFinding, RosterView, Shortfall } from "@/lib/types";
 import { Button, Field, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge, Textarea } from "@/components/ui";
 import { GridChip, MonthGrid } from "@/components/MonthGrid";
 import { CellEditor } from "@/components/CellEditor";
+import { RosterPanel } from "@/components/RosterPanel";
 import { VersionsPanel } from "@/components/VersionsPanel";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 
@@ -29,11 +30,13 @@ function FindingList({
   items,
   nameOf,
   onOverride,
+  onJump,
 }: {
   title: string;
   items: RosterFinding[];
   nameOf: (id: string | null) => string;
   onOverride?: (id: string, reason: string) => Promise<string | null>;
+  onJump?: (staffId: string, date: string) => void;
 }) {
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -61,6 +64,13 @@ function FindingList({
                 {f.staffId ? `, ${nameOf(f.staffId)}` : ""}
                 {f.date ? `, ${showDate(f.date)}` : ""}
               </span>
+              {onJump && f.staffId && f.date && (
+                <span className="mt-1 block">
+                  <Button variant="quiet" onClick={() => onJump(f.staffId!, f.date!)}>
+                    Show on roster
+                  </Button>
+                </span>
+              )}
               {onOverride && openId !== f.id && (
                 <span className="mt-1 block">
                   <Button variant="quiet" onClick={() => { setOpenId(f.id); setReason(""); setProblem(null); }}>
@@ -122,7 +132,19 @@ export default function RosterPage() {
   type Change = { staffId: string; date: string; from: string | null; to: string };
   const [undo, setUndo] = useState<Change[]>([]);
   const [redo, setRedo] = useState<Change[]>([]);
-  const [versionKey, setVersionKey] = useState(0);
+  // Open on wide screens, closed on phones. The page shows nothing until the roster has loaded, so reading the screen here is safe.
+  const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 1023px)").matches);
+  const jump = (staffId: string, date: string) => {
+    const el = document.querySelector<HTMLElement>(`[data-cell="${staffId}|${date}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", inline: "center" });
+    el.focus({ preventScroll: true });
+    el.style.outline = "3px solid var(--accent)";
+    el.style.outlineOffset = "-3px";
+    window.setTimeout(() => {
+      el.style.outline = "";
+    }, 2500);
+  };
 
   const shiftById = useMemo(() => new Map((data?.shifts ?? []).map((s) => [s.id, s])), [data]);
   const cells = useMemo(() => {
@@ -153,7 +175,6 @@ export default function RosterPage() {
   const isAdmin = facility.me.role === "FACILITY_ADMIN";
   const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
   const canEdit = canRoster && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW");
-  const editable = canGenerate;
 
   async function move(action: string) {
     setBusy(true);
@@ -316,19 +337,6 @@ export default function RosterPage() {
         </Notice>
       ) : (
         <>
-          <dl className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-[15px]" aria-label="Roster totals">
-            {[
-              ["Duties", summary.duties],
-              ["Unfilled", summary.unfilled],
-              ["Blocking findings", summary.blocks],
-              ["Warnings", summary.warnings],
-            ].map(([label, n]) => (
-              <div key={label} className="flex gap-1.5">
-                <dt className="text-[var(--muted)]">{label}</dt>
-                <dd className="figures font-semibold">{n}</dd>
-              </div>
-            ))}
-          </dl>
 
           {available.length > 0 && (
             <div className="no-print mb-4">
@@ -390,6 +398,14 @@ export default function RosterPage() {
               }}
             />
           )}
+          <div className="no-print mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="sr-only">Roster</h2>
+            <Button variant="secondary" aria-expanded={panelOpen} aria-controls="roster-panel" onClick={() => setPanelOpen((o) => !o)}>
+              {panelOpen ? "Hide checks and coverage" : "Show checks and coverage"}
+            </Button>
+          </div>
+          <div className={panelOpen ? "gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_25rem]" : ""}>
+            <div className="min-w-0">
           {canEdit && (undo.length > 0 || redo.length > 0) && (
             <div className="no-print mb-2 flex flex-wrap gap-2" role="group" aria-label="Undo and redo">
               <Button variant="secondary" disabled={busy || !undo.length || !undo[undo.length - 1].from} onClick={() => replay(undo, setUndo, redo, setRedo, "undo")}>
@@ -454,19 +470,23 @@ export default function RosterPage() {
             </div>
           </dl>
 
-          <div className="no-print mt-6 space-y-5">
-            <h2 className="text-lg font-semibold">Checked against the rules</h2>
-            {!blocking.length && !warnings.length ? (
-              <Notice tone="success">No findings. Every rule that is switched on is met.</Notice>
-            ) : (
-              <>
-                <FindingList title="Blocking" items={blocking} nameOf={nameOf} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} />
-                <FindingList title="Warnings" items={warnings} nameOf={nameOf} />
-              </>
-            )}
-            <div className="no-print">
-              <VersionsPanel rosterId={roster.id} canRestore={canEdit} refreshKey={roster.version} onRestored={() => { setUndo([]); setRedo([]); reload(); }} />
             </div>
+            {panelOpen && (
+              <aside id="roster-panel" aria-label="Roster checks" className="no-print mt-6 min-w-0 lg:mt-0">
+                <RosterPanel
+                  data={data}
+                  blockCount={blocking.length}
+                  warnCount={warnings.length}
+                  compliance={
+                    <div className="space-y-5">
+                      {!blocking.length && !warnings.length ? (
+                        <Notice tone="success">No findings. Every rule that is switched on is met.</Notice>
+                      ) : (
+                        <>
+                          <FindingList title="Blocking" items={blocking} nameOf={nameOf} onJump={jump} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} />
+                          <FindingList title="Warnings" items={warnings} nameOf={nameOf} onJump={jump} />
+                        </>
+                      )}
             {accepted.length > 0 && (
               <section aria-label="Accepted with a reason">
                 <h3 className="mb-2 text-[15px] font-semibold">
@@ -485,6 +505,29 @@ export default function RosterPage() {
                 </ul>
               </section>
             )}
+                    </div>
+                  }
+                />
+              </aside>
+            )}
+          </div>
+          <div className="no-print mt-6">
+            <VersionsPanel rosterId={roster.id} canRestore={canEdit} refreshKey={roster.version} onRestored={() => { setUndo([]); setRedo([]); reload(); }} />
+          </div>
+          <div className="no-print sticky bottom-0 z-20 -mx-4 mt-6 border-t border-[var(--border)] bg-[var(--surface)] px-4 py-2.5 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+          <dl className="flex flex-wrap gap-x-6 gap-y-1 text-[15px]" aria-label="Roster totals">
+            {[
+              ["Duties", summary.duties],
+              ["Unfilled", summary.unfilled],
+              ["Blocking findings", summary.blocks],
+              ["Warnings", summary.warnings],
+            ].map(([label, n]) => (
+              <div key={label} className="flex gap-1.5">
+                <dt className="text-[var(--muted)]">{label}</dt>
+                <dd className="figures font-semibold">{n}</dd>
+              </div>
+            ))}
+          </dl>
           </div>
         </>
       )}
