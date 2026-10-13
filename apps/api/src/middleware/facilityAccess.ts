@@ -24,6 +24,8 @@ export interface FacilityCaller {
   displayName: string;
   role: Role;
   facilityId: string;
+  /** The staff record linked to this account, if any. */
+  staffId: string | null;
 }
 
 declare global {
@@ -47,6 +49,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
       scopeType: true,
       facilityId: true,
       active: true,
+      staffId: true,
       staff: { select: { fullName: true } },
     },
   });
@@ -64,6 +67,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     displayName: profile.staff?.fullName ?? profile.userEmail,
     role: profile.role,
     facilityId: profile.facilityId,
+    staffId: profile.staffId,
   };
   next();
 }
