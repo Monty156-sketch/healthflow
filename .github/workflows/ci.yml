@@ -60,4 +60,5 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        run: |
+          pnpm test > /tmp/t.log 2>&1 || { grep -E 'FAIL|Error|expected|received|✗|×' /tmp/t.log | head -15 | while read -r l; do echo "::error::$l"; done; exit 1; }
