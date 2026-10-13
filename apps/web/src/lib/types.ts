@@ -156,3 +156,57 @@ export interface Shortfall {
   available: number;
   sentence: string;
 }
+
+export interface LeaveTypeLite {
+  id: string;
+  code: string;
+  name: string;
+  colour: string | null;
+  countsAgainstEntitlement: boolean;
+  deductionBasis: string;
+}
+
+export interface LeaveRequestRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  cadreName: string | null;
+  leaveTypeId: string;
+  typeName: string;
+  typeCode: string;
+  colour: string | null;
+  startDate: string;
+  endDate: string;
+  days: number | null;
+  reason: string | null;
+  status: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED" | "CANCELLED";
+  decidedBy: string | null;
+  decisionNote: string | null;
+  expectedReturnDate: string | null;
+  conflictsPublishedRoster: boolean;
+}
+
+export interface LeaveBalance {
+  configured: boolean;
+  entitled: number | null;
+  taken: number;
+  pending: number;
+  remaining: number | null;
+}
+
+export interface LeaveDetail {
+  request: LeaveRequestRow;
+  impact: { summary: string[]; riskDates: string[]; needsReview: boolean } | null;
+  balance: LeaveBalance | null;
+  history: LeaveRequestRow[];
+}
+
+export interface LeaveCalendar {
+  month: string;
+  year: number;
+  monthNumber: number;
+  staff: { id: string; name: string; cadreId: string | null; cadreCode: string | null; cadreName: string | null; cadreOrder: number; departmentId: string | null; departmentName: string | null }[];
+  leave: { id: string; staffId: string; code: string; typeName: string; colour: string | null; startDate: string; endDate: string; pending: boolean }[];
+  cadres: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+}

@@ -69,6 +69,8 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
+  { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
+  { href: "/leave/calendar", label: "Leave calendar", roles: READ_ROLES },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/shifts", label: "Shifts", roles: READ_ROLES },
   { href: "/duty-cycles", label: "Duty cycles", roles: READ_ROLES },
@@ -84,7 +86,8 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
   return (
     <ul className="space-y-0.5">
       {NAV.filter((n) => n.roles.includes(role)).map((n) => {
-        const current = pathname === n.href || pathname.startsWith(`${n.href}/`);
+        const longer = NAV.some((o) => o.href.length > n.href.length && o.href.startsWith(`${n.href}/`) && (pathname === o.href || pathname.startsWith(`${o.href}/`)));
+        const current = !longer && (pathname === n.href || pathname.startsWith(`${n.href}/`));
         return (
           <li key={n.href}>
             <Link
