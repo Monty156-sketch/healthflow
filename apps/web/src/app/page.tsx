@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Button } from "@/components/ui";
-import { LegalLinks } from "@/components/LegalLinks";
 
 export default function LandingPage() {
   return (
@@ -26,7 +25,6 @@ export default function LandingPage() {
           Nadowli-Kaleo District, Upper West Region.
         </p>
       </section>
-      <LegalLinks className="pb-6" />
     </main>
   );
 }
