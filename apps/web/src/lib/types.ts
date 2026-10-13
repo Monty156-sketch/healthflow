@@ -142,8 +142,9 @@ export interface RosterFinding {
 export interface RosterView {
   roster: Omit<RosterSummary, "duties" | "blocks" | "warnings" | "unfilled">;
   summary: { duties: number; blocks: number; warnings: number; unfilled: number };
-  staff: { id: string; name: string; staffNo: string; cadreCode: string | null; cadreName: string | null; cadreOrder: number; departmentName: string | null }[];
-  shifts: { id: string; code: string; name: string; colour: string | null; countsAsDuty: boolean; isOvernight: boolean; active: boolean }[];
+  staff: { id: string; name: string; staffNo: string; cadreId: string | null; cadreCode: string | null; cadreName: string | null; cadreOrder: number; departmentName: string | null }[];
+  shifts: { id: string; code: string; name: string; colour: string | null; countsAsDuty: boolean; isOvernight: boolean; active: boolean; isOnCall: boolean; durationHours: number; minStaff: number; minByCadre: Record<string, number> }[];
+  cadres: { id: string; name: string }[];
   assignments: { staffId: string; shiftId: string; date: string; source: string; locked: boolean }[];
   findings: RosterFinding[];
 }
