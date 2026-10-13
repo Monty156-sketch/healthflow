@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFacility } from "@/components/AppShell";
@@ -132,10 +132,8 @@ export default function RosterPage() {
   type Change = { staffId: string; date: string; from: string | null; to: string };
   const [undo, setUndo] = useState<Change[]>([]);
   const [redo, setRedo] = useState<Change[]>([]);
-  const [panelOpen, setPanelOpen] = useState(true);
-  useEffect(() => {
-    if (window.matchMedia("(max-width: 1023px)").matches) setPanelOpen(false);
-  }, []);
+  // Open on wide screens, closed on phones. The page shows nothing until the roster has loaded, so reading the screen here is safe.
+  const [panelOpen, setPanelOpen] = useState(() => typeof window === "undefined" || !window.matchMedia("(max-width: 1023px)").matches);
   const jump = (staffId: string, date: string) => {
     const el = document.querySelector<HTMLElement>(`[data-cell="${staffId}|${date}"]`);
     if (!el) return;
@@ -177,7 +175,6 @@ export default function RosterPage() {
   const isAdmin = facility.me.role === "FACILITY_ADMIN";
   const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
   const canEdit = canRoster && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW");
-  const editable = canGenerate;
 
   async function move(action: string) {
     setBusy(true);
