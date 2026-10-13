@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoOf, sayDay, sayRange, dayOf } from "../../engine/time.js";
@@ -218,6 +219,10 @@ leaveRouter.post("/requests", async (req, res) => {
     facilityId: who.facilityId, actorEmail: who.email, action: "leave_requested", entityType: "LeaveRequest", entityId: request.id,
     summary: `${who.displayName} ${onBehalf ? `asked for ${person.fullName}'s` : "asked for"} ${type.name.toLowerCase()} leave, ${sayRange(start, end)}.`,
   });
+  await notifyDeciders(who.facilityId, {
+    type: "leave_request_submitted", title: `${person.fullName} asked for ${type.name.toLowerCase()} leave`,
+    body: `${sayRange(start, end)}, ${days} ${days === 1 ? "day" : "days"}. It is waiting for a decision.`, linkUrl: "/leave", severity: "ACTION",
+  }, who.email);
   res.status(201).json({ request: present(request) });
 });
 
@@ -293,6 +298,10 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: input.decision === "approve" ? "leave_approved" : "leave_rejected", entityType: "LeaveRequest", entityId: row.id,
     summary: `${who.displayName} ${input.decision === "approve" ? "approved" : "rejected"} ${row.staff.fullName}'s ${row.leaveType.name.toLowerCase()} leave, ${sayRange(start, end)}${input.note ? `. Note: ${input.note}` : ""}.`,
+  });
+  await notifyStaff(who.facilityId, row.staffId, {
+    type: "leave_decided", title: `Your ${row.leaveType.name.toLowerCase()} leave was ${input.decision === "approve" ? "approved" : "not approved"}`,
+    body: `${sayRange(start, end)}.${input.note ? ` ${input.note}` : ""}`, linkUrl: "/leave", severity: "INFO",
   });
   res.json({
     request: present(updated),

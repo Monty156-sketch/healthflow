@@ -80,8 +80,13 @@ attendanceRouter.get("/day", async (req, res) => {
     });
     shifts.set(a.shiftId, s);
   }
+  const review = await prisma.attendance.findMany({
+    where: { facilityId, dutyDate: dateOf(day), needsReview: true, rosterAssignmentId: null },
+    include: { staff: { select: { fullName: true } } },
+  });
   res.json({
     ...base,
+    review: review.map((r) => ({ id: r.id, name: r.staff.fullName, status: r.status, minutesLate: r.minutesLate })),
     canRecord: !blocked,
     blocked,
     shifts: [...shifts.values()],
@@ -179,6 +184,19 @@ attendanceRouter.put("/day", async (req, res) => {
   }
   await refreshCompleteness(roster.id, who.facilityId, day);
   res.json({ saved: written });
+});
+
+/** The officer has looked at a flagged record and it stands. */
+attendanceRouter.post("/:id/resolve", async (req, res) => {
+  const who = caller(req);
+  const row = await prisma.attendance.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { staff: { select: { fullName: true } } } });
+  if (!row) return res.status(404).json({ error: "not_found" });
+  await prisma.attendance.update({ where: { id: row.id }, data: { needsReview: false } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "attendance_review_cleared", entityType: "Attendance", entityId: row.id,
+    summary: `${who.displayName} checked ${row.staff.fullName}'s attendance on ${sayDay(dayOf(row.dutyDate))} after the duty changed, and kept it as ${row.status.toLowerCase().replace("_", " ")}.`,
+  });
+  res.json({ ok: true });
 });
 
 /** Share of past duties in the roster's month that have a record. */

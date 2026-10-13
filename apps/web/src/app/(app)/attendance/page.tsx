@@ -62,6 +62,23 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
 
   return (
     <div className="space-y-6">
+      {data.review.length > 0 && (
+        <Panel title="Check these" description="The duty changed after attendance was recorded. The record was kept as it was.">
+          <ul className="divide-y divide-[var(--border)]">
+            {data.review.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[15px]">
+                <span>
+                  {r.name}, recorded as {r.status.toLowerCase().replace("_", " ")}
+                  {r.minutesLate ? ` (${r.minutesLate} min)` : ""}
+                </span>
+                <Button variant="secondary" onClick={() => api.post(`/api/facility/attendance/${r.id}/resolve`).then(reload)}>
+                  It is still right
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
       {data.shifts.length === 0 && <EmptyState title="Nobody was on duty">The published roster has no duties on this date.</EmptyState>}
       {data.shifts.map((shift) => (
         <Panel key={shift.id} title={`${shift.name} (${shift.code})`} description={shift.startTime && shift.endTime ? `${shift.startTime} to ${shift.endTime}` : undefined}>
