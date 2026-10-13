@@ -30,6 +30,7 @@ import { rulesRouter } from "./rules.js";
 import { cyclesRouter } from "./cycles.js";
 import { rostersRouter } from "./rosters.js";
 import { leaveRouter } from "./leave.js";
+import { attendanceRouter } from "./attendance.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
 export const facilityRouter = Router();
@@ -46,6 +47,7 @@ facilityRouter.use("/rules", rulesRouter);
 facilityRouter.use("/cycles", cyclesRouter);
 facilityRouter.use("/rosters", rostersRouter);
 facilityRouter.use("/leave", leaveRouter);
+facilityRouter.use("/attendance", attendanceRouter);
 facilityRouter.use("/audit-log", auditRouter);
 
 const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;

@@ -71,6 +71,8 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave/calendar", label: "Leave calendar", roles: READ_ROLES },
+  { href: "/attendance", label: "Daily attendance", roles: READ_ROLES },
+  { href: "/attendance/month", label: "Monthly attendance", roles: READ_ROLES },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/shifts", label: "Shifts", roles: READ_ROLES },
   { href: "/duty-cycles", label: "Duty cycles", roles: READ_ROLES },
