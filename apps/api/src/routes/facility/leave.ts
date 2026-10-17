@@ -25,10 +25,10 @@ const isoToDay = (iso: string) => dayFromDate(new Date(`${iso}T00:00:00Z`));
 // ------------------------------------------------------------- types
 
 const NOTE = "Confirm this matches your facility's existing leave practice before the first leave year.";
-const SEED: { code: string; name: string; colour: string; counts: boolean; paid: boolean; short?: boolean; debt?: boolean }[] = [
+const SEED: { code: string; name: string; colour: string; counts: boolean; paid: boolean; short?: boolean; debt?: boolean; confirms?: boolean }[] = [
   { code: "L", name: "Annual", colour: "#25619f", counts: true, paid: true },
   { code: "S", name: "Study", colour: "#6b4f9e", counts: false, paid: true },
-  { code: "SK", name: "Sick", colour: "#b56b12", counts: false, paid: true },
+  { code: "SK", name: "Sick", colour: "#b56b12", counts: false, paid: true, confirms: true },
   { code: "MAT", name: "Maternity", colour: "#9e3f6b", counts: false, paid: true },
   { code: "PAT", name: "Paternity", colour: "#2f7a8c", counts: false, paid: true },
   { code: "COM", name: "Compassionate", colour: "#5b6770", counts: false, paid: true, short: true },
@@ -42,7 +42,7 @@ export async function ensureLeaveTypes(facilityId: string) {
   await prisma.leaveType.createMany({
     data: SEED.map((t, i) => ({
       facilityId, code: t.code, name: t.name, colour: t.colour, isPaid: t.paid, countsAgainstEntitlement: t.counts, sortOrder: i + 1,
-      isShortAbsence: Boolean(t.short), createsDutyDebt: Boolean(t.debt), returnDateSetBy: t.short ? "STAFF_CONFIRMS" : "IN_CHARGE",
+      isShortAbsence: Boolean(t.short), createsDutyDebt: Boolean(t.debt), returnDateSetBy: t.short || t.confirms ? "STAFF_CONFIRMS" : "IN_CHARGE",
     })),
   });
 }
