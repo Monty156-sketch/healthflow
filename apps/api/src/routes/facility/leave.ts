@@ -11,6 +11,7 @@ import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { overlaps, todayDay } from "../../lib/leaveWindow.js";
 import { holidayDays } from "../../lib/holidays.js";
 import { expectedBack, liveStatus, resumptionOf, syncReturns } from "../../lib/returns.js";
+import { ReinstateError, reinstate, reinstatementPlan } from "../../lib/reinstate.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoOf, sayDay, sayRange, dayOf } from "../../engine/time.js";
@@ -475,6 +476,34 @@ leaveRouter.post("/requests/:id/report-back", async (req, res) => {
     await notifyStaff(who.facilityId, row.staffId, { type: "return_confirmed", title: "Your return to duty was recorded", body: `Back on duty ${sayDay(day)}.`, linkUrl: "/leave", severity: "INFO" });
   }
   res.json({ request: present(updated) });
+});
+
+/** What would put someone back on the roster after they return. Proposes only. */
+leaveRouter.get("/requests/:id/reinstatement", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  try {
+    res.json(await reinstatementPlan(who.facilityId, String(req.params.id)));
+  } catch (err) {
+    if (err instanceof ReinstateError) return res.status(err.status).json({ error: "cannot_reinstate", message: err.message });
+    throw err;
+  }
+});
+
+const reinstateInput = z.object({
+  items: z.array(z.object({ kind: z.enum(["FILL", "RELIEVE", "CREDIT"]), day: z.number().int().optional(), shiftId: z.string().optional(), assignmentId: z.string().optional() })).min(1, "Choose at least one duty.").max(40),
+});
+
+/** Applies the duties the supervisor accepted. Each is checked again first. */
+leaveRouter.post("/requests/:id/reinstate", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(reinstateInput, req.body, res);
+  if (!input) return;
+  try {
+    res.json(await reinstate(who.facilityId, String(req.params.id), input.items, { email: who.email, displayName: who.displayName }));
+  } catch (err) {
+    if (err instanceof ReinstateError) return res.status(err.status).json({ error: "cannot_reinstate", message: err.message });
+    throw err;
+  }
 });
 
 const extendInput = z.object({

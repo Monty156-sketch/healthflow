@@ -113,3 +113,16 @@ export async function settleAgainstRoster(facilityId: string, rosterId: string, 
   });
   return total;
 }
+
+/** Settles one duty of a person's oldest open entry of this kind, and its twin. Returns false if there was none. */
+export async function settleOne(facilityId: string, staffId: string, entryType: "DEBT" | "CREDIT"): Promise<boolean> {
+  const e = await prisma.dutyLedgerEntry.findFirst({ where: { facilityId, staffId, entryType, status: { in: ["OPEN", "PARTLY_SETTLED"] } }, orderBy: { createdAt: "asc" } });
+  if (!e) return false;
+  const twin = await twinOf(e);
+  for (const row of [e, twin]) {
+    if (!row) continue;
+    const settled = row.dutiesSettled + 1;
+    await prisma.dutyLedgerEntry.update({ where: { id: row.id }, data: { dutiesSettled: settled, status: settled >= row.duties ? "SETTLED" : "PARTLY_SETTLED" } });
+  }
+  return true;
+}
