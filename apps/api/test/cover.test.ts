@@ -7,7 +7,7 @@ const day = (offset: number) => new Date(Math.floor(Date.now() / 86_400_000 + of
 
 async function setup() {
   const facility = await makeFacility("Sombo Health Centre");
-  const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Kofi Bawa" } });
+  const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id });
   const api = as(admin);
   const shift = (await api.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", isOvernight: false, minStaff: 1, colour: "#25619f" })).body.shift;
   const other = (await api.post("/api/facility/shifts", { name: "Afternoon", code: "M", startTime: "14:00", endTime: "20:00", isOvernight: false, minStaff: 1, colour: "#b56b12" })).body.shift;
@@ -18,10 +18,14 @@ async function setup() {
   const mk = (staffId: string, shiftId: string, dt: Date) => prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId, shiftId, dutyDate: dt } });
   const duty = await mk(people[0].id, shift.id, d);
   await mk(people[1].id, other.id, day(6));
+  const logins = new Map<string, ReturnType<typeof as>>();
   const login = async (staffId: string) => {
+    const known = logins.get(staffId);
+    if (known) return known;
     const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     await prisma.userProfile.update({ where: { id: user.id }, data: { staffId } });
-    return as(user);
+    logins.set(staffId, as(user));
+    return logins.get(staffId)!;
   };
   return { facility, api, people, roster, duty, login };
 }
@@ -97,12 +101,12 @@ describe("cover for an absence", () => {
     await api.post("/api/facility/ledger/adjust", { debtorId: people[2].id, creditorId: people[1].id, duties: 1, note: "Worked back from last month" });
     const opts = (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options;
     const yaw = opts.find((o: { name: string }) => o.name === "Yaw Boah");
+    const me = await login(people[2].id);
     const before = (await api.get("/api/facility/ledger")).body.entries.length;
     expect((await api.post("/api/facility/cover/assign", { assignmentId: duty.id, proposalId: yaw.proposalId, owedBack: true })).status).toBe(200);
     const row = await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } });
     expect(row).toMatchObject({ staffId: people[2].id, isCover: true, coverForStaffId: people[0].id, source: "COVER", acknowledgementState: "AWAITING" });
     expect((await api.get("/api/facility/ledger")).body.entries).toHaveLength(before);
-    const me = await login(people[2].id);
     expect((await me.get("/api/facility/notifications")).body.notifications.some((n: { type: string }) => n.type === "cover_asked")).toBe(true);
     expect((await me.post(`/api/facility/cover/${duty.id}/respond`, { accept: true })).body.outcome).toBe("confirmed");
     const ledger = (await api.get("/api/facility/ledger")).body;
@@ -113,6 +117,7 @@ describe("cover for an absence", () => {
   it("does not write a debt when the absence is not owed back", async () => {
     const { api, duty, login, people } = await setup();
     const opts = (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options;
+    for (const p of people) await login(p.id);
     await api.post("/api/facility/cover/assign", { assignmentId: duty.id, proposalId: opts[0].proposalId, owedBack: false });
     const holder = (await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId;
     expect(holder).not.toBe(people[0].id);
@@ -121,8 +126,9 @@ describe("cover for an absence", () => {
   });
 
   it("moves to the next-ranked person when someone declines, and leaves the duty unfilled when nobody is left", async () => {
-    const { api, duty, login } = await setup();
+    const { api, duty, login, people } = await setup();
     const opts = (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options as unknown[];
+    for (const p of people) await login(p.id);
     await api.post("/api/facility/cover/assign", { assignmentId: duty.id, proposalId: (opts[0] as { proposalId: string }).proposalId, owedBack: true });
     const first = (await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId;
     const short = await (await login(first)).post(`/api/facility/cover/${duty.id}/respond`, { accept: false, reason: "no" });
