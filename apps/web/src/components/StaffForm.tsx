@@ -4,7 +4,7 @@ import { FormEvent, ReactNode, useCallback, useState } from "react";
 import { api } from "@/lib/api";
 import { useResource, useSave } from "@/lib/useApi";
 import { EMPLOYMENT } from "@/lib/format";
-import type { Cadre, Department, Staff } from "@/lib/types";
+import type { Cadre, Department, Shift, Staff } from "@/lib/types";
 import { Button, Checkbox, Field, Input, Notice, SaveStatus, Select } from "@/components/ui";
 
 interface FormValues {
@@ -19,6 +19,7 @@ interface FormValues {
   email: string;
   emergencyContactName: string;
   emergencyContactPhone: string;
+  eligibleShiftIds: string[];
   excludedFromNights: boolean;
   exclusionReason: string;
   maxDutiesPerWeek: string;
@@ -37,6 +38,7 @@ function initialValues(s?: Staff): FormValues {
     email: s?.email ?? "",
     emergencyContactName: s?.emergencyContactName ?? "",
     emergencyContactPhone: s?.emergencyContactPhone ?? "",
+    eligibleShiftIds: (s?.eligibleShifts ?? []).map((x) => x.id),
     excludedFromNights: s?.excludedFromNights ?? false,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
@@ -69,6 +71,7 @@ export function StaffForm({
   const [values, setValues] = useState<FormValues>(() => initialValues(staff));
   const cadres = useResource<{ cadres: Cadre[] }>("/api/facility/cadres");
   const departments = useResource<{ departments: Department[] }>("/api/facility/departments");
+  const shifts = useResource<{ shifts: Shift[] }>("/api/facility/shifts");
 
   const set = <K extends keyof FormValues>(key: K) => (value: FormValues[K]) => setValues((v) => ({ ...v, [key]: value }));
 
@@ -96,6 +99,10 @@ export function StaffForm({
   }
 
   // Active choices, plus the current one even if it has since been deactivated.
+  const cadreId = values.cadreId;
+  const dutyShifts = (shifts.data?.shifts ?? []).filter(
+    (sh) => sh.countsAsDuty && (sh.active || values.eligibleShiftIds.includes(sh.id)) && (sh.eligibleCadreIds.length === 0 || (cadreId && sh.eligibleCadreIds.includes(cadreId)) || values.eligibleShiftIds.includes(sh.id))
+  );
   const cadreOptions = (cadres.data?.cadres ?? []).filter((c) => c.active || c.id === staff?.cadre?.id);
   const departmentOptions = (departments.data?.departments ?? []).filter((d) => d.active || d.id === staff?.department?.id);
 
@@ -203,6 +210,24 @@ export function StaffForm({
               {(a) => <Input {...a} value={values.exclusionReason} onChange={(e) => set("exclusionReason")(e.target.value)} />}
             </Field>
           </div>
+        )}
+        {dutyShifts.length > 0 && (
+          <fieldset className="sm:col-span-2">
+            <legend className="mb-1 text-sm font-medium">Shifts this person may work</legend>
+            <p className="mb-2 text-sm text-[var(--muted)]">Tick none to allow every shift their cadre is allowed. Tick some to limit them to those shifts only.</p>
+            <div className="flex flex-wrap gap-x-6">
+              {dutyShifts.map((sh) => (
+                <Checkbox
+                  key={sh.id}
+                  label={`${sh.name} (${sh.code})`}
+                  checked={values.eligibleShiftIds.includes(sh.id)}
+                  onChange={(on) => set("eligibleShiftIds")(on ? [...values.eligibleShiftIds, sh.id] : values.eligibleShiftIds.filter((x) => x !== sh.id))}
+                />
+              ))}
+            </div>
+            {err.eligibleShiftIds && <p className="mt-1 text-sm text-[var(--status-block)]">{err.eligibleShiftIds}</p>}
+            <p className="mt-2 text-sm text-[var(--muted)]">A roster already made keeps its duties. Check it again from the roster page to see any that no longer fit.</p>
+          </fieldset>
         )}
         <Field label="Maximum duties per week" hint="0 means no limit." error={err.maxDutiesPerWeek}>
           {(a) => (

@@ -47,6 +47,7 @@ const staffInput = z
     dateJoined: optionalDate("Date joined"),
     emergencyContactName: optionalText(120, "Emergency contact name"),
     emergencyContactPhone: optionalPhone("Emergency contact phone"),
+    eligibleShiftIds: z.array(z.string()).max(50).default([]),
     excludedFromNights: z.boolean().default(false),
     exclusionReason: optionalText(200, "Reason"),
     maxDutiesPerWeek: z
@@ -79,6 +80,16 @@ async function checkGroups(facilityId: string, input: StaffInput, current?: { ca
     const ok = await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true } });
     if (!ok) fields.departmentId = "Choose an active department.";
   }
+  if (input.eligibleShiftIds.length) {
+    const ids = [...new Set(input.eligibleShiftIds)];
+    const shifts = await prisma.shift.findMany({ where: { id: { in: ids }, facilityId, active: true, countsAsDuty: true }, select: { id: true, name: true, eligibleCadreIds: true } });
+    if (shifts.length !== ids.length) fields.eligibleShiftIds = "Choose only active duty shifts from your own list.";
+    else {
+      const cadreId = input.cadreId;
+      const shut = shifts.filter((sh) => sh.eligibleCadreIds.length > 0 && (!cadreId || !sh.eligibleCadreIds.includes(cadreId)));
+      if (shut.length) fields.eligibleShiftIds = `${shut.map((x) => x.name).join(", ")} ${shut.length === 1 ? "is" : "are"} not open to this person's cadre, so ${shut.length === 1 ? "it" : "they"} cannot be on their list.`;
+    }
+  }
   return fields;
 }
 
@@ -97,6 +108,7 @@ async function staffNoTaken(facilityId: string, staffNo: string, exceptId?: stri
 const staffInclude = {
   cadre: { select: { id: true, name: true, code: true } },
   department: { select: { id: true, name: true, code: true } },
+  eligibleForShifts: { select: { id: true, name: true, code: true }, orderBy: { sortOrder: "asc" as const } },
   userProfile: {
     select: { role: true, active: true, lastSignInAt: true, mfaEnabled: true, privacyNoticeVersionAccepted: true },
   },
@@ -120,6 +132,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     dateJoined: isoDate(s.dateJoined),
     emergencyContactName: s.emergencyContactName,
     emergencyContactPhone: s.emergencyContactPhone,
+    eligibleShifts: s.eligibleForShifts,
     excludedFromNights: s.excludedFromNights,
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
@@ -225,6 +238,7 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       excludedFromNights: input.excludedFromNights,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
+      eligibleForShifts: { connect: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
     },
     include: staffInclude,
   });
@@ -258,6 +272,7 @@ const FIELD_LABEL: Record<string, string> = {
   excludedFromNights: "night duty exclusion",
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
+  eligibleShifts: "shifts they may work",
   cadre: "cadre",
   department: "department",
 };
@@ -296,6 +311,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       excludedFromNights: input.excludedFromNights,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
+      eligibleForShifts: { set: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
     },
     include: staffInclude,
   });
@@ -326,6 +342,11 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
     }
     if (k === "dateJoined") {
       const fmt = (v: unknown) => (v ? displayDate(new Date(`${v}T00:00:00Z`)) : "none");
+      return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
+    }
+    if (k === "eligibleShifts") {
+      const names = (v: unknown) => ((v as { name: string }[]) ?? []).map((x) => x.name);
+      const fmt = (v: unknown) => (names(v).length ? names(v).join(", ") : "every shift their cadre allows");
       return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
     }
     if (k === "excludedFromNights") return b ? "excluded them from night duty" : "returned them to night duty";

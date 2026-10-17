@@ -23,6 +23,7 @@ export interface Staff {
   excludedFromNights: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
+  eligibleShifts?: { id: string; name: string; code: string }[];
   account: {
     role: string;
     active: boolean;
