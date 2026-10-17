@@ -60,5 +60,4 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: |
-          pnpm test > /tmp/t.log 2>&1 || { grep -E 'FAIL|AssertionError|Error:|expected|Received|Expected' /tmp/t.log | head -30 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
+        run: pnpm test

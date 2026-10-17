@@ -31,8 +31,8 @@ describe("resumption date", () => {
     const cal = await api.get(`/api/facility/leave/resumption?leaveTypeId=${type("L")}&startDate=2026-12-21&days=5`);
     expect(cal.body.resumptionDate).toBe("2026-12-27");
     expect(cal.body.sentence).toBe("5 days from 21 December, excluding 1 public holiday. Resumption of duty: 27 December.");
-    const annual = (await api.get("/api/facility/leave/types")).body.types.find((t: { code: string }) => t.code === "L");
-    await api.patch(`/api/facility/leave-types/${annual.id}`, { ...annual, deductionBasis: "WORKING_DAYS_MON_FRI" });
+    const annual = (await api.get("/api/facility/leave-types")).body.types.find((t: { code: string }) => t.code === "L");
+    expect((await api.patch(`/api/facility/leave-types/${annual.id}`, { ...annual, deductionBasis: "WORKING_DAYS_MON_FRI" })).status).toBe(200);
     const work = await api.get(`/api/facility/leave/resumption?leaveTypeId=${annual.id}&startDate=2026-12-21&days=5`);
     expect(work.body.resumptionDate).toBe("2026-12-30");
     expect(work.body.skippedHolidays).toBe(2);
