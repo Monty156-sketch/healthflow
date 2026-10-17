@@ -8,6 +8,7 @@ import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
+import { holidayDays } from "../../lib/holidays.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoOf, sayDay, sayRange, dayOf } from "../../engine/time.js";
@@ -61,14 +62,42 @@ leaveRouter.get("/types", async (req, res) => {
 
 // ------------------------------------------------------------- days
 
-/** Days a request takes off the balance, by the type's deduction basis. */
-export function daysFor(startDay: number, endDay: number, basis: string): number {
-  let n = 0;
+/**
+ * Days a request takes off the balance, by the type's deduction basis.
+ * Calendar days count every day. Working days skip weekends and public holidays.
+ * Scheduled duty days count the days the person is rostered on an approved or
+ * published roster; where no roster covers the dates yet, every calendar day counts.
+ */
+export async function leaveDays(facilityId: string, staffId: string, startDay: number, endDay: number, basis: string) {
+  const holidays = await holidayDays(facilityId, startDay, endDay);
+  let days = 0;
+  let skippedHolidays = 0;
+  let note: string | null = null;
+  if (basis === "SCHEDULED_DUTY_DAYS") {
+    const duties = await prisma.rosterAssignment.findMany({
+      where: { facilityId, staffId, shift: { countsAsDuty: true }, dutyDate: { gte: dateFromDay(startDay), lte: dateFromDay(endDay) }, roster: { status: { in: ["APPROVED", "PUBLISHED"] } } },
+      select: { dutyDate: true },
+    });
+    const set = new Set(duties.map((d) => dayFromDate(d.dutyDate)));
+    if (set.size > 0) days = set.size;
+    else {
+      days = endDay - startDay + 1;
+      note = "No approved roster covers these dates yet, so every calendar day is counted.";
+    }
+    return { days, skippedHolidays, note };
+  }
   for (let d = startDay; d <= endDay; d++) {
     const wd = new Date(d * 86_400_000).getUTCDay();
-    if (basis === "WORKING_DAYS_MON_FRI" ? wd >= 1 && wd <= 5 : true) n++;
+    if (basis === "WORKING_DAYS_MON_FRI") {
+      if (wd < 1 || wd > 5) continue;
+      if (holidays.has(d)) {
+        skippedHolidays++;
+        continue;
+      }
+    }
+    days++;
   }
-  return n;
+  return { days, skippedHolidays, note };
 }
 
 // ------------------------------------------------------------- coverage impact
@@ -207,7 +236,7 @@ leaveRouter.post("/requests", async (req, res) => {
       message: `${person.fullName} already has ${clash.leaveType.name.toLowerCase()} leave from ${sayRange(dayFromDate(clash.startDate), dayFromDate(clash.endDate))}. Change the dates or cancel that one first.`,
     });
   }
-  const days = daysFor(start, end, type.deductionBasis);
+  const { days } = await leaveDays(who.facilityId, staffId, start, end, type.deductionBasis);
   const request = await prisma.leaveRequest.create({
     data: {
       facilityId: who.facilityId, staffId, leaveTypeId: type.id, startDate: dateFromDay(start), endDate: dateFromDay(end), daysDeducted: days,
@@ -236,9 +265,10 @@ leaveRouter.get("/preview", async (req, res) => {
   const start = isoToDay(q.data.startDate);
   const end = isoToDay(q.data.endDate);
   if (!type || end < start || !staffId) return res.json({ days: null });
-  const days = daysFor(start, end, type.deductionBasis);
+  const counted = await leaveDays(who.facilityId, staffId, start, end, type.deductionBasis);
+  const days = counted.days;
   const balance = await balanceOf(who.facilityId, staffId, type.id, new Date(q.data.startDate).getUTCFullYear());
-  res.json({ days, basis: type.deductionBasis, balance: balance && { ...balance, after: balance.remaining === null ? null : balance.remaining - days } });
+  res.json({ days, basis: type.deductionBasis, skippedHolidays: counted.skippedHolidays, note: counted.note, balance: balance && { ...balance, after: balance.remaining === null ? null : balance.remaining - days } });
 });
 
 leaveRouter.get("/requests/:id", async (req, res) => {

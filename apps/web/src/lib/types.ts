@@ -294,3 +294,34 @@ export interface SwapCandidates {
   handover: { staffId: string; name: string; cadre: string | null; warnings: string[] }[];
   colleagues: { staffId: string; name: string; cadre: string | null }[];
 }
+
+export interface LeaveTypeFull {
+  id: string;
+  name: string;
+  code: string;
+  colour: string | null;
+  isPaid: boolean;
+  affectsAvailability: boolean;
+  countsAgainstEntitlement: boolean;
+  deductionBasis: "CALENDAR_DAYS" | "SCHEDULED_DUTY_DAYS" | "WORKING_DAYS_MON_FRI";
+  maxConsecutiveDays: number | null;
+  createsDutyDebt: boolean;
+  isShortAbsence: boolean;
+  maxDaysForAutoCover: number;
+  returnDateSetBy: "IN_CHARGE" | "STAFF_CONFIRMS";
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface EntitlementRow {
+  staffId: string;
+  name: string;
+  staffNo: string;
+  cadre: string | null;
+  configured: boolean;
+  daysEntitled: number | null;
+  daysCarriedOver: number;
+  taken: number;
+  pending: number;
+  remaining: number | null;
+}
