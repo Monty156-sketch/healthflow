@@ -7,7 +7,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { LeaveBalance, LeaveTypeLite } from "@/lib/types";
-import { Button, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, Textarea } from "@/components/ui";
+import { Button, Checkbox, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, Textarea } from "@/components/ui";
 
 interface Preview {
   days: number | null;
@@ -26,6 +26,7 @@ export default function RequestLeavePage() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [reason, setReason] = useState("");
+  const [openEnded, setOpenEnded] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
@@ -44,7 +45,10 @@ export default function RequestLeavePage() {
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading" />;
   const decider = data.people.length > 0;
-  const ready = Boolean(typeId && start && end);
+  const chosen = data.types.find((t) => t.id === typeId);
+  const canOpen = chosen?.returnDateSetBy === "STAFF_CONFIRMS";
+  const open = canOpen && openEnded;
+  const ready = Boolean(typeId && start && (end || open));
   const shown = ready ? preview : null;
 
   async function submit(e: FormEvent) {
@@ -53,7 +57,7 @@ export default function RequestLeavePage() {
     setFields({});
     setProblem(null);
     try {
-      await api.post("/api/facility/leave/requests", { ...(staffId ? { staffId } : {}), leaveTypeId: typeId, startDate: start, endDate: end, reason });
+      await api.post("/api/facility/leave/requests", { ...(staffId ? { staffId } : {}), leaveTypeId: typeId, startDate: start, endDate: open ? start : end, reason, ...(open ? { openEnded: true } : {}) });
       router.push("/leave");
     } catch (err) {
       const b = err instanceof ApiError ? (err.body as { message?: string; fields?: Record<string, string> }) : undefined;
@@ -98,15 +102,24 @@ export default function RequestLeavePage() {
           <Field label="First day" error={fields.startDate}>
             {(a) => <Input {...a} type="date" value={start} onChange={(e) => { setStart(e.target.value); if (!end || end < e.target.value) setEnd(e.target.value); }} />}
           </Field>
-          <Field label="Last day" error={fields.endDate}>
-            {(a) => <Input {...a} type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />}
-          </Field>
+          {!open && (
+            <Field label="Last day" error={fields.endDate}>
+              {(a) => <Input {...a} type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />}
+            </Field>
+          )}
         </div>
+        {canOpen && (
+          <div>
+            <Checkbox label="I do not know when I will be back" checked={openEnded} onChange={setOpenEnded} />
+            <p className="mt-1 text-sm text-[var(--muted)]">You will stay off the roster until you or your in-charge confirm the day you are back.</p>
+            {fields.openEnded && <div className="mt-2"><Notice tone="block">{fields.openEnded}</Notice></div>}
+          </div>
+        )}
         <Field label="Reason" optional hint="Keep it operational. Do not write a diagnosis or symptoms." error={fields.reason}>
           {(a) => <Textarea {...a} value={reason} onChange={(e) => setReason(e.target.value)} />}
         </Field>
 
-        {shown && shown.days !== null && (
+        {shown && shown.days !== null && !open && (
           <Panel title="What this takes">
             <p className="figures text-[15px]" aria-live="polite">
               {shown.days} {shown.days === 1 ? "day" : "days"}, {showDate(start)}

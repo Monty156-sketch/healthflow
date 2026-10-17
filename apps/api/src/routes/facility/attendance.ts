@@ -9,6 +9,7 @@ import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { effectiveEnd, overlaps } from "../../lib/leaveWindow.js";
 import { sayDay } from "../../engine/time.js";
 
 export const attendanceRouter = Router();
@@ -31,10 +32,10 @@ async function rosterFor(facilityId: string, day: number) {
 
 async function leaveOn(facilityId: string, from: number, to: number) {
   const rows = await prisma.leaveRequest.findMany({
-    where: { facilityId, status: "APPROVED", startDate: { lte: dateOf(to) }, endDate: { gte: dateOf(from) } },
+    where: { facilityId, status: "APPROVED", startDate: { lte: dateOf(to) }, OR: [{ endDate: { gte: dateOf(from) } }, { actualReturnDate: null }] },
     include: { leaveType: true },
   });
-  return rows.map((r) => ({ staffId: r.staffId, start: dayOf(r.startDate), end: dayOf(r.endDate), official: r.leaveType.code === "OA", typeName: r.leaveType.name }));
+  return rows.filter((r) => overlaps(r, from, to)).map((r) => ({ staffId: r.staffId, start: dayOf(r.startDate), end: effectiveEnd(r), official: r.leaveType.code === "OA", typeName: r.leaveType.name }));
 }
 
 // ------------------------------------------------------------- one day

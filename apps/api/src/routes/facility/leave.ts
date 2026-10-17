@@ -8,7 +8,9 @@ import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
+import { overlaps, todayDay } from "../../lib/leaveWindow.js";
 import { holidayDays } from "../../lib/holidays.js";
+import { expectedBack, liveStatus, resumptionOf, syncReturns } from "../../lib/returns.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoOf, sayDay, sayRange, dayOf } from "../../engine/time.js";
@@ -23,10 +25,10 @@ const isoToDay = (iso: string) => dayFromDate(new Date(`${iso}T00:00:00Z`));
 // ------------------------------------------------------------- types
 
 const NOTE = "Confirm this matches your facility's existing leave practice before the first leave year.";
-const SEED: { code: string; name: string; colour: string; counts: boolean; paid: boolean; short?: boolean; debt?: boolean }[] = [
+const SEED: { code: string; name: string; colour: string; counts: boolean; paid: boolean; short?: boolean; debt?: boolean; confirms?: boolean }[] = [
   { code: "L", name: "Annual", colour: "#25619f", counts: true, paid: true },
   { code: "S", name: "Study", colour: "#6b4f9e", counts: false, paid: true },
-  { code: "SK", name: "Sick", colour: "#b56b12", counts: false, paid: true },
+  { code: "SK", name: "Sick", colour: "#b56b12", counts: false, paid: true, confirms: true },
   { code: "MAT", name: "Maternity", colour: "#9e3f6b", counts: false, paid: true },
   { code: "PAT", name: "Paternity", colour: "#2f7a8c", counts: false, paid: true },
   { code: "COM", name: "Compassionate", colour: "#5b6770", counts: false, paid: true, short: true },
@@ -40,7 +42,7 @@ export async function ensureLeaveTypes(facilityId: string) {
   await prisma.leaveType.createMany({
     data: SEED.map((t, i) => ({
       facilityId, code: t.code, name: t.name, colour: t.colour, isPaid: t.paid, countsAgainstEntitlement: t.counts, sortOrder: i + 1,
-      isShortAbsence: Boolean(t.short), createsDutyDebt: Boolean(t.debt), returnDateSetBy: t.short ? "STAFF_CONFIRMS" : "IN_CHARGE",
+      isShortAbsence: Boolean(t.short), createsDutyDebt: Boolean(t.debt), returnDateSetBy: t.short || t.confirms ? "STAFF_CONFIRMS" : "IN_CHARGE",
     })),
   });
 }
@@ -56,7 +58,7 @@ leaveRouter.get("/types", async (req, res) => {
     note: NOTE,
     people,
     myStaffId: caller(req).staffId,
-    types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, colour: t.colour, countsAgainstEntitlement: t.countsAgainstEntitlement, deductionBasis: t.deductionBasis })),
+    types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, colour: t.colour, countsAgainstEntitlement: t.countsAgainstEntitlement, deductionBasis: t.deductionBasis, returnDateSetBy: t.returnDateSetBy })),
   });
 });
 
@@ -115,8 +117,8 @@ async function impactOf(facilityId: string, staffId: string, startDay: number, e
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true, isOnCall: false } }),
     prisma.staff.findMany({ where: { facilityId, cadreId: person.cadreId, status: "ACTIVE" }, select: { id: true } }),
     prisma.leaveRequest.findMany({
-      where: { facilityId, status: "APPROVED", staffId: { not: staffId }, startDate: { lte: dateFromDay(endDay) }, endDate: { gte: dateFromDay(startDay) }, staff: { cadreId: person.cadreId } },
-      select: { staffId: true, startDate: true, endDate: true },
+      where: { facilityId, status: "APPROVED", staffId: { not: staffId }, startDate: { lte: dateFromDay(endDay) }, OR: [{ endDate: { gte: dateFromDay(startDay) } }, { actualReturnDate: null }], staff: { cadreId: person.cadreId } },
+      select: { staffId: true, startDate: true, endDate: true, isOpenEnded: true, actualReturnDate: true, returnStatus: true },
     }),
   ]);
   const perDay = shifts.reduce((n, s) => n + (((s.minByCadre ?? {}) as Record<string, number>)[person.cadreId!] ?? 0), 0);
@@ -127,7 +129,7 @@ async function impactOf(facilityId: string, staffId: string, startDay: number, e
   const risk: number[] = [];
   let lowest = Infinity;
   for (let d = startDay; d <= endDay; d++) {
-    const onLeave = new Set(away.filter((a) => dayFromDate(a.startDate) <= d && dayFromDate(a.endDate) >= d).map((a) => a.staffId));
+    const onLeave = new Set(away.filter((a) => overlaps(a, d, d)).map((a) => a.staffId));
     const available = peers.filter((p) => p.id !== staffId && !onLeave.has(p.id)).length;
     lowest = Math.min(lowest, available);
     if (available < perDay) risk.push(d);
@@ -161,11 +163,11 @@ async function balanceOf(facilityId: string, staffId: string, leaveTypeId: strin
 
 // ------------------------------------------------------------- requests
 
-type Row = Prisma.LeaveRequestGetPayload<{ include: { staff: { select: { id: true; fullName: true; cadre: { select: { name: true } } } }; leaveType: { select: { id: true; name: true; code: true; colour: true } } } }>;
+type Row = Prisma.LeaveRequestGetPayload<{ include: { staff: { select: { id: true; fullName: true; cadre: { select: { name: true } } } }; leaveType: { select: { id: true; name: true; code: true; colour: true; returnDateSetBy: true } } } }>;
 
 const include = {
   staff: { select: { id: true, fullName: true, cadre: { select: { name: true } } } },
-  leaveType: { select: { id: true, name: true, code: true, colour: true } },
+  leaveType: { select: { id: true, name: true, code: true, colour: true, returnDateSetBy: true } },
 } as const;
 
 function present(r: Row) {
@@ -175,11 +177,15 @@ function present(r: Row) {
     startDate: isoOf(dayFromDate(r.startDate)), endDate: isoOf(dayFromDate(r.endDate)), days: r.daysDeducted, reason: r.reason,
     status: r.status, submittedAt: r.submittedAt, decidedBy: r.decidedBy, decidedAt: r.decidedAt, decisionNote: r.decisionNote,
     expectedReturnDate: r.expectedReturnDate ? isoOf(dayFromDate(r.expectedReturnDate)) : null, conflictsPublishedRoster: r.conflictsPublishedRoster,
+    isOpenEnded: r.isOpenEnded, returnDateSetBy: r.leaveType.returnDateSetBy, extensionOfId: r.extensionOfId,
+    returnStatus: r.status === "APPROVED" ? liveStatus(r) : null,
+    actualReturnDate: r.actualReturnDate ? isoOf(dayFromDate(r.actualReturnDate)) : null,
   };
 }
 
 leaveRouter.get("/requests", async (req, res) => {
   const who = caller(req);
+  await syncReturns(who.facilityId);
   const isDecider = DECIDERS.includes(who.role);
   if (!isDecider && !who.staffId) return res.json({ requests: [] });
   const status = typeof req.query.status === "string" ? req.query.status : "";
@@ -203,6 +209,7 @@ const requestInput = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a start date."),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose an end date."),
   reason: z.string().trim().max(300, "Keep the reason under 300 characters.").optional(),
+  openEnded: z.boolean().optional(),
 });
 
 leaveRouter.post("/requests", async (req, res) => {
@@ -220,7 +227,11 @@ leaveRouter.post("/requests", async (req, res) => {
   if (!type) return res.status(400).json({ error: "invalid_input", fields: { leaveTypeId: "Choose a type of leave." } });
 
   const start = isoToDay(input.startDate);
-  const end = isoToDay(input.endDate);
+  const openEnded = Boolean(input.openEnded);
+  if (openEnded && type.returnDateSetBy !== "STAFF_CONFIRMS") {
+    return res.status(400).json({ error: "invalid_input", fields: { openEnded: `${type.name} leave has a set return date, so it cannot be open-ended.` } });
+  }
+  const end = openEnded ? start : isoToDay(input.endDate);
   if (end < start) return res.status(400).json({ error: "invalid_input", fields: { endDate: "The end date is before the start date." } });
   if (end - start > 400) return res.status(400).json({ error: "invalid_input", fields: { endDate: "That is longer than a year. Request it in parts." } });
   if (type.maxConsecutiveDays && end - start + 1 > type.maxConsecutiveDays) {
@@ -240,17 +251,17 @@ leaveRouter.post("/requests", async (req, res) => {
   const request = await prisma.leaveRequest.create({
     data: {
       facilityId: who.facilityId, staffId, leaveTypeId: type.id, startDate: dateFromDay(start), endDate: dateFromDay(end), daysDeducted: days,
-      reason: input.reason || null, status: "SUBMITTED", submittedAt: new Date(), createdBy: who.email,
+      reason: input.reason || null, status: "SUBMITTED", submittedAt: new Date(), createdBy: who.email, isOpenEnded: openEnded,
     },
     include,
   });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "leave_requested", entityType: "LeaveRequest", entityId: request.id,
-    summary: `${who.displayName} ${onBehalf ? `asked for ${person.fullName}'s` : "asked for"} ${type.name.toLowerCase()} leave, ${sayRange(start, end)}.`,
+    summary: `${who.displayName} ${onBehalf ? `asked for ${person.fullName}'s` : "asked for"} ${type.name.toLowerCase()} leave, ${openEnded ? `from ${sayDay(start)} with no end date` : sayRange(start, end)}.`,
   });
   await notifyDeciders(who.facilityId, {
     type: "leave_request_submitted", title: `${person.fullName} asked for ${type.name.toLowerCase()} leave`,
-    body: `${sayRange(start, end)}, ${days} ${days === 1 ? "day" : "days"}. It is waiting for a decision.`, linkUrl: "/leave", severity: "ACTION",
+    body: `${openEnded ? `From ${sayDay(start)}, no end date` : `${sayRange(start, end)}, ${days} ${days === 1 ? "day" : "days"}`}. It is waiting for a decision.`, linkUrl: "/leave", severity: "ACTION",
   }, who.email);
   res.status(201).json({ request: present(request) });
 });
@@ -293,6 +304,7 @@ const decideInput = z.object({
   decision: z.enum(["approve", "reject"]),
   note: z.string().trim().max(300).optional(),
   reviewedImpact: z.boolean().optional(),
+  expectedReturnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, res) => {
@@ -305,7 +317,28 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
   if (input.decision === "reject" && !input.note) return res.status(400).json({ error: "invalid_input", fields: { note: "Say why, so the person knows." } });
 
   const start = dayFromDate(row.startDate);
-  const end = dayFromDate(row.endDate);
+  let end = dayFromDate(row.endDate);
+  let days = row.daysDeducted;
+  let resumeDay: number | null = row.isOpenEnded ? null : end + 1;
+  // The in-charge may set the date duty resumes, as long as it is after the first day of leave.
+  if (input.decision === "approve" && input.expectedReturnDate && !row.isOpenEnded) {
+    const back = isoToDay(input.expectedReturnDate);
+    if (back <= start) return res.status(400).json({ error: "invalid_input", fields: { expectedReturnDate: "Duty cannot resume on or before the first day of leave." } });
+    if (back - start > 401) return res.status(400).json({ error: "invalid_input", fields: { expectedReturnDate: "That is longer than a year." } });
+    if (back !== end + 1) {
+      const clash = await prisma.leaveRequest.findFirst({
+        where: { staffId: row.staffId, id: { not: row.id }, status: { in: ["SUBMITTED", "APPROVED"] }, startDate: { lte: dateFromDay(back - 1) }, endDate: { gte: dateFromDay(start) } },
+      });
+      if (clash) return res.status(409).json({ error: "overlap", message: "That date runs into other leave this person already has." });
+    }
+    end = back - 1;
+    resumeDay = back;
+    const type = await prisma.leaveType.findUnique({ where: { id: row.leaveTypeId } });
+    const basis = type?.deductionBasis ?? "CALENDAR_DAYS";
+    days = (await leaveDays(who.facilityId, row.staffId, start, end, basis)).days;
+    // Public holidays inside the leave are not leave days, matching the resumption calculation.
+    if (basis === "CALENDAR_DAYS") days = Math.max(0, days - (await holidayDays(who.facilityId, start, end)).size);
+  }
   let conflicts = false;
   if (input.decision === "approve") {
     const impact = await impactOf(who.facilityId, row.staffId, start, end);
@@ -313,7 +346,7 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
       return res.status(409).json({ error: "review_impact", message: "Cover would be short on some of these days. Read the coverage impact and tick that you have reviewed it.", impact });
     }
     const mine = await prisma.rosterAssignment.count({
-      where: { staffId: row.staffId, shift: { countsAsDuty: true }, dutyDate: { gte: row.startDate, lte: row.endDate }, roster: { status: { in: ["APPROVED", "PUBLISHED"] } } },
+      where: { staffId: row.staffId, shift: { countsAsDuty: true }, dutyDate: { gte: row.startDate, lte: dateFromDay(end) }, roster: { status: { in: ["APPROVED", "PUBLISHED"] } } },
     });
     conflicts = mine > 0;
   }
@@ -321,17 +354,22 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
     where: { id: row.id },
     data: {
       status: input.decision === "approve" ? "APPROVED" : "REJECTED", decidedBy: who.email, decidedAt: new Date(), decisionNote: input.note || null,
-      ...(input.decision === "approve" ? { expectedReturnDate: dateFromDay(end + 1), conflictsPublishedRoster: conflicts } : {}),
+      ...(input.decision === "approve"
+        ? { endDate: dateFromDay(end), daysDeducted: days, expectedReturnDate: resumeDay === null ? null : dateFromDay(resumeDay), returnStatus: "NOT_DUE" as const, conflictsPublishedRoster: conflicts }
+        : {}),
     },
     include,
   });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: input.decision === "approve" ? "leave_approved" : "leave_rejected", entityType: "LeaveRequest", entityId: row.id,
-    summary: `${who.displayName} ${input.decision === "approve" ? "approved" : "rejected"} ${row.staff.fullName}'s ${row.leaveType.name.toLowerCase()} leave, ${sayRange(start, end)}${input.note ? `. Note: ${input.note}` : ""}.`,
+    summary: `${who.displayName} ${input.decision === "approve" ? "approved" : "rejected"} ${row.staff.fullName}'s ${row.leaveType.name.toLowerCase()} leave, ${row.isOpenEnded ? `from ${sayDay(start)} with no end date` : sayRange(start, end)}${input.decision === "approve" && resumeDay !== null && resumeDay !== dayFromDate(row.endDate) + 1 ? `, back on duty ${sayDay(resumeDay)}` : ""}${input.note ? `. Note: ${input.note}` : ""}.`,
   });
+  if (input.decision === "approve" && row.extensionOfId) {
+    await prisma.leaveRequest.updateMany({ where: { id: row.extensionOfId, facilityId: who.facilityId, actualReturnDate: null }, data: { returnStatus: "EXTENDED" } });
+  }
   await notifyStaff(who.facilityId, row.staffId, {
     type: "leave_decided", title: `Your ${row.leaveType.name.toLowerCase()} leave was ${input.decision === "approve" ? "approved" : "not approved"}`,
-    body: `${sayRange(start, end)}.${input.note ? ` ${input.note}` : ""}`, linkUrl: "/leave", severity: "INFO",
+    body: `${row.isOpenEnded ? `From ${sayDay(start)}, no end date.` : `${sayRange(start, end)}${resumeDay !== null && input.decision === "approve" ? `. Back on duty ${sayDay(resumeDay)}` : ""}.`}${input.note ? ` ${input.note}` : ""}`, linkUrl: "/leave", severity: "INFO",
   });
   res.json({
     request: present(updated),
@@ -353,6 +391,136 @@ leaveRouter.post("/requests/:id/cancel", async (req, res) => {
     summary: `${who.displayName} cancelled ${own ? "their" : `${row.staff.fullName}'s`} ${row.leaveType.name.toLowerCase()} leave, ${sayRange(dayFromDate(row.startDate), dayFromDate(row.endDate))}.`,
   });
   res.json({ request: present(updated) });
+});
+
+// ------------------------------------------------------------- returns
+
+/** Proposes the date duty resumes, with the working. The in-charge can change it. */
+leaveRouter.get("/resumption", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  const q = z.object({ leaveTypeId: z.string(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), days: z.coerce.number().int().min(1).max(400) }).safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Give a leave type, a start date and a number of days." });
+  const type = await prisma.leaveType.findFirst({ where: { id: q.data.leaveTypeId, facilityId: who.facilityId } });
+  if (!type) return res.status(404).json({ error: "not_found" });
+  const r = await resumptionOf(who.facilityId, isoToDay(q.data.startDate), q.data.days, type.deductionBasis);
+  res.json({ resumptionDate: isoOf(r.date), lastLeaveDay: isoOf(r.lastLeaveDay), skippedHolidays: r.skippedHolidays, sentence: r.sentence });
+});
+
+/** Who is back, who is due, who is overdue and who is away with no end date. */
+leaveRouter.get("/returns", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  await syncReturns(who.facilityId);
+  const today = todayDay();
+  const rows = await prisma.leaveRequest.findMany({
+    where: { facilityId: who.facilityId, status: "APPROVED", actualReturnDate: null, returnStatus: { not: "EXTENDED" }, startDate: { lte: dateFromDay(today + 14) } },
+    include: { ...include, extensions: { where: { status: "SUBMITTED" }, select: { id: true } } },
+    orderBy: { endDate: "asc" },
+  });
+  const item = (r: (typeof rows)[number]) => {
+    const back = expectedBack(r);
+    return {
+      ...present(r), expectedReturnDate: back === null ? null : isoOf(back), daysLate: back !== null && today > back ? today - back : 0,
+      daysAway: today - dayFromDate(r.startDate) + 1, extensionPending: r.extensions.length > 0,
+    };
+  };
+  const overdue: ReturnType<typeof item>[] = [];
+  const soon: ReturnType<typeof item>[] = [];
+  const open: ReturnType<typeof item>[] = [];
+  for (const r of rows) {
+    if (dayFromDate(r.startDate) > today && !r.extensionOfId) continue; // not started yet (an extension carries on from leave already under way)
+    const back = expectedBack(r);
+    if (back === null) open.push(item(r));
+    else if (today > back) overdue.push(item(r));
+    else if (back - today <= 14) soon.push(item(r));
+  }
+  soon.sort((a, b) => String(a.expectedReturnDate).localeCompare(String(b.expectedReturnDate)));
+  overdue.sort((a, b) => b.daysLate - a.daysLate);
+  res.json({ today: isoOf(today), overdue, soon, open });
+});
+
+const reportInput = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the day they resumed duty.") });
+
+/** The person, or a supervisor on their behalf, says the day they are back on duty. */
+leaveRouter.post("/requests/:id/report-back", async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(reportInput, req.body, res);
+  if (!input) return;
+  const row = await prisma.leaveRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include });
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const own = row.staffId === who.staffId;
+  if (!own && !DECIDERS.includes(who.role)) return res.status(404).json({ error: "not_found" });
+  if (row.status !== "APPROVED" || row.actualReturnDate || row.returnStatus === "EXTENDED") return res.status(409).json({ error: "not_open", message: "There is no open leave here to report back from." });
+  const start = dayFromDate(row.startDate);
+  const end = dayFromDate(row.endDate);
+  const day = isoToDay(input.date);
+  if (day <= start) return res.status(400).json({ error: "invalid_input", fields: { date: "The day back must be after the first day of leave." } });
+  if (day > todayDay()) return res.status(400).json({ error: "invalid_input", fields: { date: "That day has not come yet. Report back on the day they resume." } });
+  const early = !row.isOpenEnded && day <= end;
+  const data: Prisma.LeaveRequestUpdateInput = {
+    actualReturnDate: dateFromDay(day), returnStatus: early ? "RETURNED_EARLY" : "CONFIRMED", returnConfirmedAt: new Date(), returnConfirmedBy: who.email,
+  };
+  if (early) {
+    const type = await prisma.leaveType.findUnique({ where: { id: row.leaveTypeId } });
+    data.daysDeducted = (await leaveDays(who.facilityId, row.staffId, start, day - 1, type?.deductionBasis ?? "CALENDAR_DAYS")).days;
+  }
+  if (row.isOpenEnded) data.endDate = dateFromDay(day - 1);
+  const updated = await prisma.leaveRequest.update({ where: { id: row.id }, data, include });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "leave_return_confirmed", entityType: "LeaveRequest", entityId: row.id,
+    summary: `${who.displayName} confirmed ${own ? "their" : `${row.staff.fullName}'s`} return from ${row.leaveType.name.toLowerCase()} leave on ${sayDay(day)}${early ? ", before the leave was due to end" : day > end + 1 && !row.isOpenEnded ? `, ${day - end - 1} ${day - end - 1 === 1 ? "day" : "days"} after the expected date` : ""}.`,
+  });
+  if (own) {
+    await notifyDeciders(who.facilityId, { type: "return_confirmed", title: `${row.staff.fullName} is back on duty`, body: `Resumed ${sayDay(day)} after ${row.leaveType.name.toLowerCase()} leave.`, linkUrl: "/returns", severity: "INFO" }, who.email);
+  } else {
+    await notifyStaff(who.facilityId, row.staffId, { type: "return_confirmed", title: "Your return to duty was recorded", body: `Back on duty ${sayDay(day)}.`, linkUrl: "/leave", severity: "INFO" });
+  }
+  res.json({ request: present(updated) });
+});
+
+const extendInput = z.object({
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the new last day of leave."),
+  reason: z.string().trim().max(300).optional(),
+});
+
+/** Asks for more time. A linked request starts the day after the leave ends. */
+leaveRouter.post("/requests/:id/extend", async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(extendInput, req.body, res);
+  if (!input) return;
+  const row = await prisma.leaveRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { ...include, extensions: { where: { status: "SUBMITTED" }, select: { id: true } } } });
+  if (!row) return res.status(404).json({ error: "not_found" });
+  const own = row.staffId === who.staffId;
+  if (!own && !DECIDERS.includes(who.role)) return res.status(404).json({ error: "not_found" });
+  if (row.status !== "APPROVED" || row.actualReturnDate || row.isOpenEnded || row.returnStatus === "EXTENDED") {
+    return res.status(409).json({ error: "not_extendable", message: "This leave cannot be extended. If the person is already back, record the return instead." });
+  }
+  if (row.extensions.length > 0) return res.status(409).json({ error: "extension_pending", message: "An extension is already waiting for a decision." });
+  const from = dayFromDate(row.endDate) + 1;
+  const to = isoToDay(input.endDate);
+  if (to < from) return res.status(400).json({ error: "invalid_input", fields: { endDate: `The new last day must be ${sayDay(from)} or later.` } });
+  if (to - from > 400) return res.status(400).json({ error: "invalid_input", fields: { endDate: "That is longer than a year. Request it in parts." } });
+  const type = await prisma.leaveType.findUnique({ where: { id: row.leaveTypeId } });
+  const clash = await prisma.leaveRequest.findFirst({
+    where: { staffId: row.staffId, id: { not: row.id }, status: { in: ["SUBMITTED", "APPROVED"] }, startDate: { lte: dateFromDay(to) }, endDate: { gte: dateFromDay(from) } },
+  });
+  if (clash) return res.status(409).json({ error: "overlap", message: "That runs into other leave this person already has." });
+  const { days } = await leaveDays(who.facilityId, row.staffId, from, to, type?.deductionBasis ?? "CALENDAR_DAYS");
+  const created = await prisma.leaveRequest.create({
+    data: {
+      facilityId: who.facilityId, staffId: row.staffId, leaveTypeId: row.leaveTypeId, startDate: dateFromDay(from), endDate: dateFromDay(to), daysDeducted: days,
+      reason: input.reason || null, status: "SUBMITTED", submittedAt: new Date(), createdBy: who.email, extensionOfId: row.id,
+    },
+    include,
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "leave_extension_requested", entityType: "LeaveRequest", entityId: created.id,
+    summary: `${who.displayName} asked to extend ${own ? "their" : `${row.staff.fullName}'s`} ${row.leaveType.name.toLowerCase()} leave to ${sayDay(to)}.`,
+  });
+  await notifyDeciders(who.facilityId, {
+    type: "leave_extension_requested", title: `${row.staff.fullName} asked for more time`,
+    body: `${row.leaveType.name} leave extended to ${sayDay(to)}, ${days} more ${days === 1 ? "day" : "days"}. It is waiting for a decision.`, linkUrl: "/leave", severity: "ACTION",
+  }, who.email);
+  res.status(201).json({ request: present(created) });
 });
 
 // ------------------------------------------------------------- calendar

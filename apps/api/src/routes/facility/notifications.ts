@@ -1,12 +1,14 @@
 // A person's own notifications. Nobody reads anyone else's.
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
+import { syncReturns } from "../../lib/returns.js";
 import { caller } from "../../middleware/facilityAccess.js";
 
 export const notificationsRouter = Router();
 
 notificationsRouter.get("/", async (req, res) => {
   const who = caller(req);
+  await syncReturns(who.facilityId);
   const mine = { facilityId: who.facilityId, recipientEmail: who.email };
   const [rows, unread] = await Promise.all([
     prisma.notification.findMany({ where: mine, orderBy: { createdAt: "desc" }, take: 60 }),

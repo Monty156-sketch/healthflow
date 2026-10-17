@@ -165,6 +165,22 @@ export interface LeaveTypeLite {
   colour: string | null;
   countsAgainstEntitlement: boolean;
   deductionBasis: string;
+  returnDateSetBy: "IN_CHARGE" | "STAFF_CONFIRMS";
+}
+
+export type ReturnStatus = "NOT_DUE" | "DUE" | "CONFIRMED" | "OVERDUE" | "EXTENDED" | "RETURNED_EARLY";
+
+export interface ReturnItem extends LeaveRequestRow {
+  daysLate: number;
+  daysAway: number;
+  extensionPending: boolean;
+}
+
+export interface ReturnsDue {
+  today: string;
+  overdue: ReturnItem[];
+  soon: ReturnItem[];
+  open: ReturnItem[];
 }
 
 export interface LeaveRequestRow {
@@ -185,6 +201,11 @@ export interface LeaveRequestRow {
   decisionNote: string | null;
   expectedReturnDate: string | null;
   conflictsPublishedRoster: boolean;
+  isOpenEnded: boolean;
+  returnDateSetBy: "IN_CHARGE" | "STAFF_CONFIRMS";
+  extensionOfId: string | null;
+  returnStatus: ReturnStatus | null;
+  actualReturnDate: string | null;
 }
 
 export interface LeaveBalance {
