@@ -33,7 +33,7 @@ const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
 export function plain(s: string): string {
   return s
     .replace(/ɛ/g, "e").replace(/Ɛ/g, "E").replace(/ɔ/g, "o").replace(/Ɔ/g, "O").replace(/ŋ/g, "ng").replace(/Ŋ/g, "Ng")
-    .replace(/[^ -~ -ÿ]/g, "");
+    .replace(/[^\x20-\x7e\xa0-\xff]/g, "");
 }
 
 function hexToRgb(hex: string | null): [number, number, number] | null {
