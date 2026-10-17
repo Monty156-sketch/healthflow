@@ -53,6 +53,9 @@ function Details({ s }: { s: Staff }) {
       <Row label="Night duty">
         {s.excludedFromNights ? `Excluded. Reason: ${s.exclusionReason}` : "Can be rostered for nights"}
       </Row>
+      <Row label="Shifts they may work">
+        {s.eligibleShifts && s.eligibleShifts.length > 0 ? s.eligibleShifts.map((x) => x.name).join(", ") : "Every shift their cadre allows"}
+      </Row>
       <Row label="Maximum duties per week">
         <span className="figures">{s.maxDutiesPerWeek === 0 ? "No limit" : s.maxDutiesPerWeek}</span>
       </Row>
