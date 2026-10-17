@@ -14,6 +14,7 @@ import { notifyDeciders } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { effectiveEnd, overlaps } from "../../lib/leaveWindow.js";
 import { ensureHolidays } from "../../lib/holidays.js";
 import { ensureRules } from "./rules.js";
 import { ensureOffDuty } from "./shifts.js";
@@ -46,8 +47,8 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
     prisma.leaveRequest.findMany({
-      where: { facilityId, status: "APPROVED", startDate: { lte: dateFromDay(period.endDay) }, endDate: { gte: dateFromDay(period.startDay) } },
-      select: { staffId: true, startDate: true, endDate: true },
+      where: { facilityId, status: "APPROVED", startDate: { lte: dateFromDay(period.endDay) }, OR: [{ endDate: { gte: dateFromDay(period.startDay) } }, { actualReturnDate: null }] },
+      select: { staffId: true, startDate: true, endDate: true, isOpenEnded: true, actualReturnDate: true, returnStatus: true },
     }),
     prisma.publicHoliday.findMany({
       where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: dateFromDay(period.startDay), lte: dateFromDay(period.endDay) } },
@@ -86,7 +87,9 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     cadreIds: c.applicableCadreIds, departmentIds: c.applicableDepartmentIds, enforcement: c.enforcement, priority: c.priority,
     nextShiftAfterRestId: c.nextShiftAfterRestId, blockShiftPatternIds: c.blockShiftPatternIds,
   }));
-  const leave = leaveRows.map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: dayFromDate(l.endDate) }));
+  const leave = leaveRows
+    .filter((l) => overlaps(l, period.startDay, period.endDay))
+    .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }));
   const toAssignment = (a: { staffId: string; shiftId: string; dutyDate: Date; locked?: boolean }): EAssignment => ({ staffId: a.staffId, shiftId: a.shiftId, day: dayFromDate(a.dutyDate), locked: a.locked });
 
   return {

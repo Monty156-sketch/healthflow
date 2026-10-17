@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { LeaveDetail, LeaveRequestRow } from "@/lib/types";
-import { Button, ButtonLink, Checkbox, EmptyState, Field, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, Textarea } from "@/components/ui";
+import { ReturnActions } from "@/components/ReturnActions";
+import { Button, ButtonLink, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, Textarea } from "@/components/ui";
 
 const STATUS: Record<LeaveRequestRow["status"], { word: string; tone: "neutral" | "success" | "warning" | "block" }> = {
   DRAFT: { word: "Draft", tone: "neutral" },
@@ -15,6 +16,17 @@ const STATUS: Record<LeaveRequestRow["status"], { word: string; tone: "neutral" 
   REJECTED: { word: "Rejected", tone: "block" },
   CANCELLED: { word: "Cancelled", tone: "neutral" },
 };
+
+const RETURN_WORD: Record<string, string> = {
+  NOT_DUE: "Not yet due",
+  DUE: "Due back",
+  OVERDUE: "Overdue, not confirmed back",
+  CONFIRMED: "Back on duty",
+  RETURNED_EARLY: "Back early",
+  EXTENDED: "Extended",
+};
+
+const dayCount = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1;
 
 const span = (r: { startDate: string; endDate: string }) => (r.startDate === r.endDate ? showDate(r.startDate) : `${showDate(r.startDate)} to ${showDate(r.endDate)}`);
 
@@ -26,6 +38,26 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
   const [problem, setProblem] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [resume, setResume] = useState("");
+  const [working, setWorking] = useState<string | null>(null);
+
+  const pending = data?.request;
+  const calc = Boolean(pending && decider && pending.status === "SUBMITTED" && !pending.isOpenEnded && pending.returnDateSetBy === "IN_CHARGE");
+  useEffect(() => {
+    if (!calc || !pending) return;
+    let live = true;
+    const q = new URLSearchParams({ leaveTypeId: pending.leaveTypeId, startDate: pending.startDate, days: String(dayCount(pending.startDate, pending.endDate)) });
+    api.get<{ resumptionDate: string; sentence: string }>(`/api/facility/leave/resumption?${q}`)
+      .then((r) => {
+        if (!live) return;
+        setResume(r.resumptionDate);
+        setWorking(r.sentence);
+      })
+      .catch(() => live && setWorking(null));
+    return () => {
+      live = false;
+    };
+  }, [calc, pending]);
 
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading request" />;
@@ -96,10 +128,28 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
             </dd>
           </>
         )}
-        {r.expectedReturnDate && r.status === "APPROVED" && (
+        {r.status === "APPROVED" && (
           <>
-            <dt className="text-[var(--muted)]">Expected back</dt>
-            <dd>{showDate(r.expectedReturnDate)}</dd>
+            <dt className="text-[var(--muted)]">Return</dt>
+            <dd>
+              {r.actualReturnDate
+                ? `${RETURN_WORD[r.returnStatus ?? "CONFIRMED"]}: ${showDate(r.actualReturnDate)}`
+                : r.isOpenEnded
+                  ? "No end date. Off the roster until their return is confirmed."
+                  : `Expected back ${showDate(r.expectedReturnDate)}. ${r.returnStatus ? RETURN_WORD[r.returnStatus] : ""}`.trim()}
+            </dd>
+          </>
+        )}
+        {r.isOpenEnded && r.status === "SUBMITTED" && (
+          <>
+            <dt className="text-[var(--muted)]">End date</dt>
+            <dd>None. Open-ended from {showDate(r.startDate)}.</dd>
+          </>
+        )}
+        {r.extensionOfId && (
+          <>
+            <dt className="text-[var(--muted)]">Extension</dt>
+            <dd>This continues earlier leave.</dd>
           </>
         )}
       </dl>
@@ -143,11 +193,16 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
       {decider && open && (
         <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
           {impact?.needsReview && <Checkbox label="I have reviewed the coverage impact" checked={reviewed} onChange={setReviewed} />}
+          {calc && (
+            <Field label="Duty resumes on" hint={working ?? "Worked out from the dates asked for."}>
+              {(a) => <Input {...a} type="date" min={r.startDate} value={resume} onChange={(e) => setResume(e.target.value)} />}
+            </Field>
+          )}
           <Field label="Note to the person" optional hint="Needed when you reject." error={noteError ?? undefined}>
             {(a) => <Textarea {...a} value={note} onChange={(e) => setNote(e.target.value)} />}
           </Field>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy || (Boolean(impact?.needsReview) && !reviewed)} onClick={() => act("decide", { decision: "approve", note, reviewedImpact: reviewed })}>
+            <Button disabled={busy || (Boolean(impact?.needsReview) && !reviewed)} onClick={() => act("decide", { decision: "approve", note, reviewedImpact: reviewed, ...(calc && resume ? { expectedReturnDate: resume } : {}) })}>
               Approve
             </Button>
             <Button variant="secondary" disabled={busy} onClick={() => act("decide", { decision: "reject", note })}>
@@ -156,6 +211,7 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
           </div>
         </div>
       )}
+      {(mine || decider) && <ReturnActions request={r} onDone={() => { onChanged(); reload(); }} />}
       {(mine || decider) && (r.status === "SUBMITTED" || (r.status === "APPROVED" && decider)) && (
         <div className="mt-3">
           <Button variant="quiet" disabled={busy} onClick={() => act("cancel")}>
