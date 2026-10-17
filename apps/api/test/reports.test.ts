@@ -12,7 +12,7 @@ async function setup() {
   const morning = (await api.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", isOvernight: false, minStaff: 1, colour: "#25619f" })).body.shift;
   const night = (await api.post("/api/facility/shifts", { name: "Night", code: "N", startTime: "20:00", endTime: "08:00", isOvernight: true, minStaff: 1, colour: "#463a85" })).body.shift;
   const cadre = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Midwife", code: "MW", sortOrder: 1 } });
-  const people = [];
+  const people: Awaited<ReturnType<typeof prisma.staff.create>>[] = [];
   for (const n of ["Ama Dery", "Esi Naa", "Yaw Boah"]) people.push(await prisma.staff.create({ data: { facilityId: facility.id, staffNo: n, fullName: n, status: "ACTIVE", cadreId: cadre.id } }));
   const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: 3, year: 2026, status: "PUBLISHED" } });
   const mk = (i: number, shiftId: string, day: number) => prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: people[i].id, shiftId, dutyDate: at(day) } });
@@ -115,7 +115,7 @@ describe("Excel export", () => {
     expect((r.body as Buffer).subarray(0, 2).toString()).toBe("PK");
     const ExcelJS = (await import("exceljs")).default;
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(r.body as Buffer);
+    await wb.xlsx.load(r.body as never);
     const ws = wb.getWorksheet("Roster")!;
     const row = ws.getRow(6);
     expect(row.getCell(2).value).toBe("Ama Dery");
