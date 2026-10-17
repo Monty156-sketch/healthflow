@@ -9,6 +9,7 @@ import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.js";
 import { rosterPdf, type PdfRoster } from "../../lib/rosterPdf.js";
+import { settleAgainstRoster, settlementFor } from "../../lib/ledger.js";
 import { rosterWorkbook } from "../../lib/rosterExcel.js";
 import { FACILITY_TYPE_LABEL } from "../../lib/labels.js";
 import { notifyDeciders } from "../../lib/notify.js";
@@ -351,11 +352,12 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
     return res.status(409).json({ error: "no_demand", message: "No shift asks for any staff yet. Set a minimum number of people on at least one shift, under Shifts." });
   }
 
+  const settlement = await settlementFor(who.facilityId);
   const started = Date.now();
   const locked = data.current.filter((a) => a.locked);
   const result = generate({
     staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, leave: data.leave, holidays: data.holidays,
-    period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames,
+    period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames, settlement,
   });
 
   if (!result.feasible) {
@@ -392,7 +394,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   await flagReview(who, roster, loose);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_generated", entityType: "Roster", entityId: roster.id,
-    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.`,
+    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.${Object.keys(settlement).length ? ` The duty ledger moved ${Object.keys(settlement).length} ${Object.keys(settlement).length === 1 ? "person's" : "people's"} share.` : ""}`,
   });
   res.json({
     roster: presentRoster({ ...roster, status: "GENERATED" }),
@@ -588,6 +590,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
     facilityId: who.facilityId, actorEmail: who.email, action: `roster_${input.action}`, entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} ${move.word} the ${monthName(roster)} roster${input.note ? `. Note: ${input.note}` : ""}.`,
   });
+  if (input.action === "publish") await settleAgainstRoster(who.facilityId, roster.id, who.email);
   const fresh = await prisma.roster.findUniqueOrThrow({ where: { id: roster.id } });
   res.json({ roster: presentRoster(fresh), summary: await summaryOf(roster.id) });
 });

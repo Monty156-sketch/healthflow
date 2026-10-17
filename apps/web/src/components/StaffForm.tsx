@@ -21,6 +21,7 @@ interface FormValues {
   emergencyContactPhone: string;
   eligibleShiftIds: string[];
   excludedFromNights: boolean;
+  willingForExtraDuties: boolean;
   exclusionReason: string;
   maxDutiesPerWeek: string;
 }
@@ -40,6 +41,7 @@ function initialValues(s?: Staff): FormValues {
     emergencyContactPhone: s?.emergencyContactPhone ?? "",
     eligibleShiftIds: (s?.eligibleShifts ?? []).map((x) => x.id),
     excludedFromNights: s?.excludedFromNights ?? false,
+    willingForExtraDuties: s?.willingForExtraDuties ?? false,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
   };
@@ -199,6 +201,10 @@ export function StaffForm({
             checked={values.excludedFromNights}
             onChange={set("excludedFromNights")}
           />
+        </div>
+        <div className="sm:col-span-2">
+          <Checkbox label="Willing to cover extra duties" checked={values.willingForExtraDuties} onChange={set("willingForExtraDuties")} />
+          <p className="mt-1 text-sm text-[var(--muted)]">Used only to rank who is asked first when a colleague is absent. It never obliges anyone.</p>
         </div>
         {values.excludedFromNights && (
           <div className="sm:col-span-2">

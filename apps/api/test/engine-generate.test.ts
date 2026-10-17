@@ -247,4 +247,22 @@ describe("what follows a rest, and the order inside a block", () => {
     expect(mine(3)).not.toBe("A");
     expect(r.unfilled.some((u) => u.day === day(3))).toBe(true);
   });
+
+  it("gives someone who owes duties more of the month, and someone who is owed less", () => {
+    const input = base({ settlement: { staff_01: 2, staff_02: -2 } });
+    const r = generate(input);
+    expect(r.feasible).toBe(true);
+    const count = (id: string) => r.cells.filter((c) => c.staffId === id && c.shiftId !== "D/O").length;
+    const others = input.staff.filter((x) => x.id !== "staff_01" && x.id !== "staff_02");
+    const avg = others.reduce((n, x) => n + count(x.id), 0) / others.length;
+    expect(count("staff_01")).toBeGreaterThanOrEqual(Math.round(avg) + 1);
+    expect(count("staff_02")).toBeLessThanOrEqual(Math.round(avg) - 1);
+    expect(r.findings.filter((f) => f.severity === "BLOCK")).toEqual([]);
+  });
+
+  it("changes nothing when the ledger is empty", () => {
+    const plain = generate(base());
+    const zero = generate(base({ settlement: { staff_01: 0 } }));
+    expect(zero.cells).toEqual(plain.cells);
+  });
 });

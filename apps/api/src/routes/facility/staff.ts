@@ -49,6 +49,7 @@ const staffInput = z
     emergencyContactPhone: optionalPhone("Emergency contact phone"),
     eligibleShiftIds: z.array(z.string()).max(50).default([]),
     excludedFromNights: z.boolean().default(false),
+    willingForExtraDuties: z.boolean().default(false),
     exclusionReason: optionalText(200, "Reason"),
     maxDutiesPerWeek: z
       .number({ invalid_type_error: "Maximum duties per week must be a number." })
@@ -134,6 +135,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     emergencyContactPhone: s.emergencyContactPhone,
     eligibleShifts: s.eligibleForShifts,
     excludedFromNights: s.excludedFromNights,
+    willingForExtraDuties: s.willingForExtraDuties,
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
     account: s.userProfile
@@ -236,6 +238,7 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       emergencyContactName: input.emergencyContactName,
       emergencyContactPhone: input.emergencyContactPhone,
       excludedFromNights: input.excludedFromNights,
+      willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
       eligibleForShifts: { connect: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
@@ -270,6 +273,7 @@ const FIELD_LABEL: Record<string, string> = {
   emergencyContactName: "emergency contact name",
   emergencyContactPhone: "emergency contact phone",
   excludedFromNights: "night duty exclusion",
+  willingForExtraDuties: "willingness to cover extra duties",
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
   eligibleShifts: "shifts they may work",
@@ -309,6 +313,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       emergencyContactName: input.emergencyContactName,
       emergencyContactPhone: input.emergencyContactPhone,
       excludedFromNights: input.excludedFromNights,
+      willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
       eligibleForShifts: { set: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
@@ -349,6 +354,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       const fmt = (v: unknown) => (names(v).length ? names(v).join(", ") : "every shift their cadre allows");
       return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
     }
+    if (k === "willingForExtraDuties") return b ? "marked them willing to cover extra duties" : "marked them not available for extra duties";
     if (k === "excludedFromNights") return b ? "excluded them from night duty" : "returned them to night duty";
     if (k === "maxDutiesPerWeek") {
       const fmt = (v: unknown) => (v === 0 ? "no limit" : String(v));

@@ -48,7 +48,7 @@ export async function coverOptions(facilityId: string, assignmentId: string) {
   const a = await load(facilityId, assignmentId);
   const day = dayOf(a.dutyDate);
   const [people, counts, near, bal] = await Promise.all([
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", id: { not: a.staffId } }, select: { id: true, fullName: true, staffNo: true, cadreId: true, cadre: { select: { name: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", id: { not: a.staffId } }, select: { id: true, fullName: true, staffNo: true, cadreId: true, willingForExtraDuties: true, cadre: { select: { name: true } } } }),
     prisma.rosterAssignment.groupBy({ by: ["staffId"], where: { rosterId: a.rosterId, shift: { countsAsDuty: true } }, _count: { _all: true } }),
     prisma.rosterAssignment.findMany({ where: { rosterId: a.rosterId, shift: { countsAsDuty: true }, dutyDate: { in: [new Date((day - 1) * DAY), new Date((day + 1) * DAY)] } }, select: { staffId: true } }),
     openBalances(facilityId),
@@ -82,7 +82,9 @@ export async function coverOptions(facilityId: string, assignmentId: string) {
     if (b.owes > 0) reasons.push(`owes ${b.owes} ${b.owes === 1 ? "duty" : "duties"} to the ledger, so this settles part of it`);
     if (b.owed > 0) reasons.push(`is already owed ${b.owed} ${b.owed === 1 ? "duty" : "duties"}`);
     if (cont) reasons.push("already works the day before or after");
-    lawful.push({ staffId: c.id, staffNo: c.staffNo, name: c.fullName, cadre: c.cadre?.name ?? null, score: Math.round((10 * deficit + 8 * balance + 2 * cont) * 10) / 10, reasons, warnings: o.warnings });
+    const willing = c.willingForExtraDuties ? 1 : 0;
+    if (willing) reasons.push("has said they are willing to cover extra duties");
+    lawful.push({ staffId: c.id, staffNo: c.staffNo, name: c.fullName, cadre: c.cadre?.name ?? null, score: Math.round((10 * deficit + 8 * balance + 2 * cont + 2 * willing) * 10) / 10, reasons, warnings: o.warnings });
   }
   lawful.sort((x, y) => y.score - x.score || x.staffNo.localeCompare(y.staffNo));
   const top = lawful.slice(0, 5);

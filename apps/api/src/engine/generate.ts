@@ -28,6 +28,11 @@ export interface GenerateInput {
   /** Assignments already in the period that must be kept. */
   locked: EAssignment[];
   cadreNames?: Record<string, string>;
+  /**
+   * Duties to add to (positive, they owe) or take off (negative, they are owed)
+   * a person's share this month, from the duty ledger. Already clamped.
+   */
+  settlement?: Record<string, number>;
 }
 
 export interface Shortfall {
@@ -71,6 +76,8 @@ const WRONG_AFTER_REST = 15;
 const RIGHT_AFTER_REST = 4;
 /** Out of the order a rule sets for its block. The spec says 3; a little more is needed for the order to read clearly. */
 const OFF_PATTERN = 8;
+/** Each duty still owed to or from the ledger moves a person this far up or down the queue. */
+const LEDGER_WEIGHT = 5;
 const HARD_CODES = ["C2", "C3", "C5", "C6", "C7", "C8"];
 
 function mulberry32(seed: number) {
@@ -364,7 +371,23 @@ export function generate(input: GenerateInput): GenerateResult {
     const st = state.get(s.id)!;
     let run = 0;
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
-    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run;
+    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day);
+  };
+
+  /**
+   * A person who owes duties is chosen sooner until they are that many duties
+   * ahead of their cadre's average so far this month; a person who is owed
+   * is chosen later until they are that far behind. The pull is capped so the
+   * ledger can tilt a month but never override the hard rules.
+   */
+  const ledgerPull = (s: EStaff, day: number): number => {
+    const owed = input.settlement?.[s.id] ?? 0;
+    if (owed === 0) return 0;
+    const peers = staff.filter((p) => p.cadreId === s.cadreId);
+    const count = (id: string) => dutyCount(id, period.startDay, day - 1, () => true);
+    const average = peers.reduce((n, p) => n + count(p.id), 0) / Math.max(1, peers.length);
+    const remaining = owed - (count(s.id) - average);
+    return -LEDGER_WEIGHT * Math.max(-3, Math.min(3, remaining));
   };
 
   const generated: GeneratedCell[] = [];

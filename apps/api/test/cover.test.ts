@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { settleAgainstRoster, settlementFor } from "../src/lib/ledger.js";
 import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
 
 beforeEach(resetDatabase);
@@ -76,6 +77,29 @@ describe("the ledger", () => {
   });
 });
 
+describe("settling the ledger", () => {
+  it("feeds the next roster with what people owe, held to the monthly limit", async () => {
+    const { api, people, facility } = await setup();
+    await api.post("/api/facility/ledger/adjust", { debtorId: people[0].id, creditorId: people[1].id, duties: 9, note: "Agreed at the ward meeting" });
+    const s = await settlementFor(facility.id);
+    expect(s[people[0].id]).toBe(4); // capped at the facility's monthly limit
+    expect(s[people[1].id]).toBe(-4);
+  });
+
+  it("settles debts against the extra duties people worked, once, when a roster is published", async () => {
+    const { api, people, facility, roster } = await setup();
+    const shift = await prisma.shift.findFirstOrThrow({ where: { facilityId: facility.id, code: "A" } });
+    for (const d of [20, 21, 22]) await prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: people[0].id, shiftId: shift.id, dutyDate: day(d) } });
+    await api.post("/api/facility/ledger/adjust", { debtorId: people[0].id, creditorId: people[2].id, duties: 3, note: "Agreed at the ward meeting" });
+    expect(await settleAgainstRoster(facility.id, roster.id, "kofi@example.com")).toBe(2);
+    expect(await settleAgainstRoster(facility.id, roster.id, "kofi@example.com")).toBe(0);
+    const l = (await api.get("/api/facility/ledger")).body;
+    expect(l.people.find((p: { name: string }) => p.name === "Ama Dery")).toMatchObject({ owes: 1 });
+    expect(l.people.find((p: { name: string }) => p.name === "Yaw Boah")).toMatchObject({ owed: 1 });
+    expect(l.summary.balanced).toBe(true);
+  });
+});
+
 describe("cover for an absence", () => {
   it("ranks the lawful people with reasons, keeps the list, and does not move anything until asked", async () => {
     const { api, people, duty } = await setup();
@@ -94,6 +118,16 @@ describe("cover for an absence", () => {
     const r = await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`);
     expect(r.body.options[0].name).toBe("Yaw Boah");
     expect(r.body.options[0].reasons.join(" ")).toMatch(/owes 2 duties to the ledger/);
+  });
+
+  it("adds a little to someone who has said they are willing to cover extra duties", async () => {
+    const { api, people, duty } = await setup();
+    const score = async () => (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options.find((o: { name: string }) => o.name === "Yaw Boah");
+    const before = await score();
+    await prisma.staff.update({ where: { id: people[2].id }, data: { willingForExtraDuties: true } });
+    const after = await score();
+    expect(after.score - before.score).toBeCloseTo(2, 5);
+    expect(after.reasons.join(" ")).toMatch(/willing to cover extra duties/);
   });
 
   it("assigns, waits for confirmation, and writes the ledger pair only when it is confirmed", async () => {
