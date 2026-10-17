@@ -21,6 +21,7 @@ export interface Staff {
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
   excludedFromNights: boolean;
+  willingForExtraDuties: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
   eligibleShifts?: { id: string; name: string; code: string }[];

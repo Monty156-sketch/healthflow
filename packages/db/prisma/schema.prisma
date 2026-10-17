@@ -472,6 +472,7 @@ model Staff {
   emergencyContactName  String?
   emergencyContactPhone String?
   excludedFromNights   Boolean          @default(false)
+  willingForExtraDuties Boolean         @default(false)
   exclusionReason      String?          // operational only — never a medical reason
   maxDutiesPerWeek     Int              @default(0) // 0 = no limit
   archivedAt           DateTime?

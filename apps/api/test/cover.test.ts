@@ -96,6 +96,16 @@ describe("cover for an absence", () => {
     expect(r.body.options[0].reasons.join(" ")).toMatch(/owes 2 duties to the ledger/);
   });
 
+  it("adds a little to someone who has said they are willing to cover extra duties", async () => {
+    const { api, people, duty } = await setup();
+    const score = async () => (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options.find((o: { name: string }) => o.name === "Yaw Boah");
+    const before = await score();
+    await prisma.staff.update({ where: { id: people[2].id }, data: { willingForExtraDuties: true } });
+    const after = await score();
+    expect(after.score - before.score).toBe(2);
+    expect(after.reasons.join(" ")).toMatch(/willing to cover extra duties/);
+  });
+
   it("assigns, waits for confirmation, and writes the ledger pair only when it is confirmed", async () => {
     const { api, people, duty, login } = await setup();
     await api.post("/api/facility/ledger/adjust", { debtorId: people[2].id, creditorId: people[1].id, duties: 1, note: "Worked back from last month" });
