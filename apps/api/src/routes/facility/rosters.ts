@@ -25,11 +25,11 @@ const ROSTER_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER"] as const;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const dayFromDate = (d: Date) => Math.floor(d.getTime() / 86_400_000);
 const dateFromDay = (day: number) => new Date(day * 86_400_000);
-const monthName = (r: { month: number; year: number }) => `${MONTHS[r.month - 1]} ${r.year}`;
+export const monthName = (r: { month: number; year: number }) => `${MONTHS[r.month - 1]} ${r.year}`;
 
 // ------------------------------------------------------------- loading
 
-async function loadEngineData(facilityId: string, rosterId: string, year: number, month: number) {
+export async function loadEngineData(facilityId: string, rosterId: string, year: number, month: number) {
   await ensureRules(facilityId);
   await ensureOffDuty(facilityId);
   const startDay = dayOf(year, month, 1);
@@ -103,7 +103,7 @@ async function loadEngineData(facilityId: string, rosterId: string, year: number
   };
 }
 
-type Data = Awaited<ReturnType<typeof loadEngineData>>;
+export type Data = Awaited<ReturnType<typeof loadEngineData>>;
 
 function sayShortfall(s: Shortfall, d: Data): { date: string; shift: string | null; cadre: string | null; required: number; available: number; sentence: string } {
   const shift = s.shiftId ? d.shiftName.get(s.shiftId) ?? "A shift" : null;
@@ -123,14 +123,14 @@ function findingRow(rosterId: string, facilityId: string, f: Finding): Prisma.Co
   };
 }
 
-async function saveVersion(tx: Prisma.TransactionClient, rosterId: string, version: number, by: string, reason: string) {
+export async function saveVersion(tx: Prisma.TransactionClient, rosterId: string, version: number, by: string, reason: string) {
   const rows = await tx.rosterAssignment.findMany({ where: { rosterId }, select: { staffId: true, shiftId: true, dutyDate: true, source: true, locked: true } });
   await tx.rosterVersionSnapshot.create({
     data: { rosterId, version, createdBy: by, reason, assignments: rows.map((a) => ({ ...a, dutyDate: a.dutyDate.toISOString().slice(0, 10) })) },
   });
 }
 
-const findingKey = (f: { ruleCode: string; staffId: string | null; dutyDate?: Date | null; day?: number | null }) =>
+export const findingKey = (f: { ruleCode: string; staffId: string | null; dutyDate?: Date | null; day?: number | null }) =>
   `${f.ruleCode}|${f.staffId ?? ""}|${f.dutyDate ? Math.floor(f.dutyDate.getTime() / 86_400_000) : f.day ?? ""}`;
 
 /**
@@ -151,7 +151,7 @@ async function flagReview(who: { facilityId: string; email: string }, roster: { 
   });
 }
 
-async function storeFindings(tx: Prisma.TransactionClient, rosterId: string, facilityId: string, findings: Finding[]) {
+export async function storeFindings(tx: Prisma.TransactionClient, rosterId: string, facilityId: string, findings: Finding[]) {
   const kept = await tx.complianceFinding.findMany({ where: { rosterId, status: "OVERRIDDEN" } });
   const overrides = new Map(kept.map((k) => [findingKey(k), k]));
   await tx.complianceFinding.deleteMany({ where: { rosterId } });
@@ -337,7 +337,7 @@ const cellInput = z.object({
   overrideReason: z.string().trim().max(500).optional(),
 });
 
-function checkOf(data: Data, assignments: EAssignment[]) {
+export function checkOf(data: Data, assignments: EAssignment[]) {
   return evaluateCompliance(data.rules, {
     staff: data.staff, shifts: data.shifts, assignments: [...data.history, ...assignments], leave: data.leave, period: data.period,
     weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames,

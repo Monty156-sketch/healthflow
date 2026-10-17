@@ -70,6 +70,7 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/my-duties", label: "My duties", roles: [...READ_ROLES, "STAFF"] },
+  { href: "/swaps", label: "Duty swaps", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave/calendar", label: "Leave calendar", roles: READ_ROLES },
   { href: "/attendance", label: "Daily attendance", roles: READ_ROLES },
