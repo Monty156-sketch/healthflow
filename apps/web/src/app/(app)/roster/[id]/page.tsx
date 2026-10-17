@@ -40,7 +40,6 @@ function FindingList({
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [pdfBusy, setPdfBusy] = useState(false);
   if (!items.length) return null;
   const shown = all ? items : items.slice(0, SHOWN);
   const block = items[0].severity === "BLOCK";
@@ -114,6 +113,7 @@ export default function RosterPage() {
   const canRoster = ["FACILITY_ADMIN", "ROSTER_MANAGER"].includes(facility.me.role);
   const { data, error, reload } = useResource<RosterView>(`/api/facility/rosters/${id}`);
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [shortfalls, setShortfalls] = useState<{ list: Shortfall[]; more: number } | null>(null);
