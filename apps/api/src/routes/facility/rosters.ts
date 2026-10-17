@@ -8,7 +8,8 @@ import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.js";
-import { rosterPdf } from "../../lib/rosterPdf.js";
+import { rosterPdf, type PdfRoster } from "../../lib/rosterPdf.js";
+import { rosterWorkbook } from "../../lib/rosterExcel.js";
 import { FACILITY_TYPE_LABEL } from "../../lib/labels.js";
 import { notifyDeciders } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
@@ -250,21 +251,20 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
   });
 });
 
-/** The A4 landscape sheet. Available at any status, so a draft can be circulated for comment. */
-rostersRouter.get("/:id/pdf", allowRoles(...READ_ROLES), async (req, res) => {
-  const who = caller(req);
-  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
-  if (!roster) return res.status(404).json({ error: "not_found" });
+type RosterRow = NonNullable<Awaited<ReturnType<typeof prisma.roster.findFirst>>>;
+
+/** Everything the printed and Excel sheets show, read once. */
+async function buildSheet(facilityId: string, roster: RosterRow) {
   const [facility, assignments, shifts, cadres, findings] = await Promise.all([
-    prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, include: { district: { select: { name: true } } } }),
+    prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, include: { district: { select: { name: true } } } }),
     prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true } }),
-    prisma.shift.findMany({ where: { facilityId: who.facilityId }, orderBy: { sortOrder: "asc" } }),
-    prisma.cadre.findMany({ where: { facilityId: who.facilityId }, select: { id: true, sortOrder: true } }),
+    prisma.shift.findMany({ where: { facilityId }, orderBy: { sortOrder: "asc" } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, sortOrder: true } }),
     prisma.complianceFinding.findMany({ where: { rosterId: roster.id }, select: { severity: true, status: true } }),
   ]);
   const inRoster = new Set(assignments.map((a) => a.staffId));
   const staffRows = await prisma.staff.findMany({
-    where: { facilityId: who.facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }] },
+    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }] },
     include: { cadre: { select: { name: true } } },
   });
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
@@ -276,7 +276,7 @@ rostersRouter.get("/:id/pdf", allowRoles(...READ_ROLES), async (req, res) => {
     return u?.staff?.fullName ?? email;
   };
   const status = roster.status.charAt(0) + roster.status.slice(1).toLowerCase().replace("_", " ");
-  const buf = await rosterPdf({
+  const sheet: PdfRoster = {
     facilityName: facility.name,
     place: [FACILITY_TYPE_LABEL[facility.facilityType], facility.district?.name, facility.region].filter(Boolean).join(", ") || null,
     title: monthName(roster),
@@ -295,13 +295,42 @@ rostersRouter.get("/:id/pdf", allowRoles(...READ_ROLES), async (req, res) => {
     warnings: findings.filter((f) => f.severity === "WARN").length,
     overrides: findings.filter((f) => f.status === "OVERRIDDEN").length,
     printedOn: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
-  });
+  };
+  return { sheet, status, facilityName: facility.name, hours: new Map(shifts.map((s) => [s.id, s.countsAsDuty ? s.durationHours * (s.isOnCall ? s.onCallHoursFactor : 1) : 0])) };
+}
+
+const fileStem = (name: string, r: { year: number; month: number }) => `${name.replace(/[^A-Za-z0-9]+/g, "-")}-roster-${r.year}-${String(r.month).padStart(2, "0")}`;
+
+/** The A4 landscape sheet. Available at any status, so a draft can be circulated for comment. */
+rostersRouter.get("/:id/pdf", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const { sheet, status, facilityName } = await buildSheet(who.facilityId, roster);
+  const buf = await rosterPdf(sheet);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_pdf_downloaded", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} downloaded the ${monthName(roster)} roster as a PDF (${status.toLowerCase()}, version ${roster.version}).`,
   });
   res.setHeader("Content-Type", "application/pdf");
-  res.setHeader("Content-Disposition", `attachment; filename="${facility.name.replace(/[^A-Za-z0-9]+/g, "-")}-roster-${roster.year}-${String(roster.month).padStart(2, "0")}.pdf"`);
+  res.setHeader("Content-Disposition", `attachment; filename="${fileStem(facilityName, roster)}.pdf"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(buf);
+});
+
+/** The same roster as a spreadsheet, at any status. */
+rostersRouter.get("/:id/excel", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const { sheet, status, facilityName, hours } = await buildSheet(who.facilityId, roster);
+  const buf = await rosterWorkbook(sheet, hours);
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_excel_downloaded", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} downloaded the ${monthName(roster)} roster as an Excel file (${status.toLowerCase()}, version ${roster.version}).`,
+  });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="${fileStem(facilityName, roster)}.xlsx"`);
   res.setHeader("Cache-Control", "no-store");
   res.send(buf);
 });

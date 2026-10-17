@@ -114,6 +114,7 @@ export default function RosterPage() {
   const { data, error, reload } = useResource<RosterView>(`/api/facility/rosters/${id}`);
   const [busy, setBusy] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [xlsBusy, setXlsBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [shortfalls, setShortfalls] = useState<{ list: Shortfall[]; more: number } | null>(null);
@@ -232,6 +233,17 @@ export default function RosterPage() {
     }
   }
 
+  async function downloadExcel() {
+    setXlsBusy(true);
+    try {
+      await api.download(`/api/facility/rosters/${id}/excel`, "roster.xlsx");
+    } catch {
+      setFlow("The Excel file could not be made. Check your connection and try again.");
+    } finally {
+      setXlsBusy(false);
+    }
+  }
+
   async function generate() {
     setBusy(true);
     setProblem(null);
@@ -274,6 +286,9 @@ export default function RosterPage() {
           <span className="no-print flex flex-wrap gap-2">
             <Button variant="secondary" disabled={pdfBusy} onClick={downloadPdf}>
               {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+            </Button>
+            <Button variant="secondary" disabled={xlsBusy} onClick={downloadExcel}>
+              {xlsBusy ? "Preparing Excel…" : "Download Excel"}
             </Button>
             {generated && (
               <Button variant="quiet" onClick={() => window.print()}>
