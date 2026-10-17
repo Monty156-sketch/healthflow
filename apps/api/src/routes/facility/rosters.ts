@@ -14,6 +14,7 @@ import { notifyDeciders } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { ensureHolidays } from "../../lib/holidays.js";
 import { ensureRules } from "./rules.js";
 import { ensureOffDuty } from "./shifts.js";
 import { generate, type Shortfall } from "../../engine/generate.js";
@@ -34,6 +35,7 @@ export const monthName = (r: { month: number; year: number }) => `${MONTHS[r.mon
 export async function loadEngineData(facilityId: string, rosterId: string, year: number, month: number) {
   await ensureRules(facilityId);
   await ensureOffDuty(facilityId);
+  await ensureHolidays(facilityId);
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
 

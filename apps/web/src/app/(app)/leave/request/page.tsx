@@ -12,6 +12,8 @@ import { Button, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Se
 interface Preview {
   days: number | null;
   basis?: string;
+  skippedHolidays?: number;
+  note?: string | null;
   balance?: (LeaveBalance & { after: number | null }) | null;
 }
 
@@ -109,7 +111,9 @@ export default function RequestLeavePage() {
             <p className="figures text-[15px]" aria-live="polite">
               {shown.days} {shown.days === 1 ? "day" : "days"}, {showDate(start)}
               {start !== end ? ` to ${showDate(end)}` : ""}.
+              {shown.skippedHolidays ? ` ${shown.skippedHolidays} public ${shown.skippedHolidays === 1 ? "holiday is" : "holidays are"} not counted.` : ""}
             </p>
+            {shown.note && <p className="mt-1 text-[15px] text-[var(--muted)]">{shown.note}</p>}
             {shown.balance &&
               (shown.balance.configured ? (
                 <p className="figures mt-1 text-[15px]">
