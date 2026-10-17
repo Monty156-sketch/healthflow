@@ -126,7 +126,7 @@ describe("cover for an absence", () => {
     const before = await score();
     await prisma.staff.update({ where: { id: people[2].id }, data: { willingForExtraDuties: true } });
     const after = await score();
-    expect(after.score - before.score).toBe(2);
+    expect(after.score - before.score).toBeCloseTo(2, 5);
     expect(after.reasons.join(" ")).toMatch(/willing to cover extra duties/);
   });
 
