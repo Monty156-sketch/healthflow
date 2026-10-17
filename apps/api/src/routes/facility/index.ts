@@ -33,6 +33,7 @@ import { leaveRouter } from "./leave.js";
 import { attendanceRouter } from "./attendance.js";
 import { notificationsRouter } from "./notifications.js";
 import { myDutiesRouter } from "./myDuties.js";
+import { swapsRouter } from "./swaps.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
 export const facilityRouter = Router();
@@ -52,6 +53,7 @@ facilityRouter.use("/leave", leaveRouter);
 facilityRouter.use("/attendance", attendanceRouter);
 facilityRouter.use("/notifications", notificationsRouter);
 facilityRouter.use("/my-duties", myDutiesRouter);
+facilityRouter.use("/swaps", swapsRouter);
 facilityRouter.use("/audit-log", auditRouter);
 
 const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;

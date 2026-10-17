@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS, showDate } from "@/lib/format";
 import type { MyDuties } from "@/lib/types";
+import { SwapAsk } from "@/components/SwapAsk";
 import { Button, EmptyState, Field, Loading, LoadError, Notice, PageHeader, Select, StatusBadge, Textarea } from "@/components/ui";
 
 const WORDS: Record<string, string> = { PRESENT: "Present", LATE: "Late", ABSENT: "Absent", EXCUSED: "Excused" };
@@ -42,7 +43,9 @@ export default function MyDutiesPage() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [open, setOpen] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [swapSent, setSwapSent] = useState(false);
   const { data, error, reload } = useResource<MyDuties>(`/api/facility/my-duties?month=${year}-${String(month).padStart(2, "0")}`);
   const years = Array.from({ length: 3 }, (_, i) => now.getFullYear() - 1 + i);
 
@@ -63,6 +66,7 @@ export default function MyDutiesPage() {
           </Select>
         </div>
       </div>
+      {swapSent && <div className="mb-4"><Notice tone="success">Swap request sent. You will be told when they answer. See Duty swaps.</Notice></div>}
       {sent && <div className="mb-4"><Notice tone="success">Sent. Your in-charge will see it with the date.</Notice></div>}
       {error && !data ? (
         <LoadError onRetry={reload} />
@@ -96,6 +100,12 @@ export default function MyDutiesPage() {
                   This is wrong
                 </button>
               )}
+              {!d.past && !d.attendance && swapping !== d.assignmentId && (
+                <button type="button" onClick={() => { setSwapping(d.assignmentId); setSent(false); }} className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-[var(--accent-text)] underline-offset-4 hover:underline">
+                  Swap this duty
+                </button>
+              )}
+              {swapping === d.assignmentId && <SwapAsk assignmentId={d.assignmentId} onDone={(ok) => { setSwapping(null); if (ok) setSwapSent(true); }} />}
               {open === d.assignmentId && <Correction id={d.assignmentId} onDone={() => { setOpen(null); setSent(true); }} />}
             </li>
           ))}

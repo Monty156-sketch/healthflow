@@ -270,3 +270,26 @@ export interface MyDuties {
     attendance: { status: string; minutesLate: number | null; corrected: boolean } | null;
   }[];
 }
+
+export interface SwapRow {
+  id: string;
+  type: "EXCHANGE" | "HANDOVER";
+  status: "REQUESTED" | "ACCEPTED" | "DECLINED" | "APPROVED" | "REJECTED" | "CANCELLED" | "EXPIRED";
+  reason: string | null;
+  responseNote: string | null;
+  decisionNote: string | null;
+  decidedBy: string | null;
+  requesterId: string;
+  requester: string;
+  targetId: string;
+  target: string;
+  gives: { date: string; shift: string } | null;
+  takes: { date: string; shift: string } | null;
+  month: string;
+}
+
+export interface SwapCandidates {
+  duty: { id: string; date: string; shift: string };
+  handover: { staffId: string; name: string; cadre: string | null; warnings: string[] }[];
+  colleagues: { staffId: string; name: string; cadre: string | null }[];
+}
