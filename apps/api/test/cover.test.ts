@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { settleAgainstRoster, settlementFor } from "../src/lib/ledger.js";
 import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
 
 beforeEach(resetDatabase);
@@ -73,6 +74,29 @@ describe("the ledger", () => {
     const l = (await api.get("/api/facility/ledger")).body;
     expect(l.summary.openDebts).toBe(0);
     expect(l.entries.every((e: { status: string }) => e.status === "EXPIRED")).toBe(true);
+  });
+});
+
+describe("settling the ledger", () => {
+  it("feeds the next roster with what people owe, held to the monthly limit", async () => {
+    const { api, people, facility } = await setup();
+    await api.post("/api/facility/ledger/adjust", { debtorId: people[0].id, creditorId: people[1].id, duties: 9, note: "Agreed at the ward meeting" });
+    const s = await settlementFor(facility.id);
+    expect(s[people[0].id]).toBe(4); // capped at the facility's monthly limit
+    expect(s[people[1].id]).toBe(-4);
+  });
+
+  it("settles debts against the extra duties people worked, once, when a roster is published", async () => {
+    const { api, people, facility, roster } = await setup();
+    const shift = await prisma.shift.findFirstOrThrow({ where: { facilityId: facility.id, code: "A" } });
+    for (const d of [20, 21, 22]) await prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: people[0].id, shiftId: shift.id, dutyDate: day(d) } });
+    await api.post("/api/facility/ledger/adjust", { debtorId: people[0].id, creditorId: people[2].id, duties: 3, note: "Agreed at the ward meeting" });
+    expect(await settleAgainstRoster(facility.id, roster.id, "kofi@example.com")).toBe(2);
+    expect(await settleAgainstRoster(facility.id, roster.id, "kofi@example.com")).toBe(0);
+    const l = (await api.get("/api/facility/ledger")).body;
+    expect(l.people.find((p: { name: string }) => p.name === "Ama Dery")).toMatchObject({ owes: 1 });
+    expect(l.people.find((p: { name: string }) => p.name === "Yaw Boah")).toMatchObject({ owed: 1 });
+    expect(l.summary.balanced).toBe(true);
   });
 });
 
