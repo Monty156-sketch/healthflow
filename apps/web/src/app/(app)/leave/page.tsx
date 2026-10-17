@@ -7,6 +7,7 @@ import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { LeaveDetail, LeaveRequestRow } from "@/lib/types";
 import { ReturnActions } from "@/components/ReturnActions";
+import { ReinstatePanel } from "@/components/ReinstatePanel";
 import { Button, ButtonLink, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, Textarea } from "@/components/ui";
 
 const STATUS: Record<LeaveRequestRow["status"], { word: string; tone: "neutral" | "success" | "warning" | "block" }> = {
@@ -212,6 +213,7 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
         </div>
       )}
       {(mine || decider) && <ReturnActions request={r} onDone={() => { onChanged(); reload(); }} />}
+      {decider && r.status === "APPROVED" && r.actualReturnDate && <ReinstatePanel requestId={r.id} onDone={onChanged} />}
       {(mine || decider) && (r.status === "SUBMITTED" || (r.status === "APPROVED" && decider)) && (
         <div className="mt-3">
           <Button variant="quiet" disabled={busy} onClick={() => act("cancel")}>

@@ -105,7 +105,7 @@ export async function coverOptions(facilityId: string, assignmentId: string) {
   };
 }
 
-async function refreshFindings(facilityId: string, roster: { id: string; year: number; month: number }) {
+export async function refreshFindings(facilityId: string, roster: { id: string; year: number; month: number }) {
   const data = await loadEngineData(facilityId, roster.id, roster.year, roster.month);
   const findings = checkOf(data, data.current);
   await prisma.$transaction(async (tx) => {
