@@ -403,3 +403,43 @@ export interface Ledger {
   staff: { id: string; name: string }[];
   entries: LedgerEntryRow[];
 }
+
+export interface ComplianceReport {
+  month: string;
+  title?: string;
+  roster: { id: string; status: string; version: number } | null;
+  rows?: {
+    staffId: string;
+    staffNo: string;
+    name: string;
+    cadre: string | null;
+    hours: number;
+    dutyDays: number;
+    nights: number;
+    highestWeekHours: number;
+    hoursAboveNormal: number;
+    longestRestHours: number | null;
+    restBreaches: number;
+  }[];
+  overrides?: { rule: string; message: string; staff: string | null; reason: string; approver: string; date: string | null }[];
+  summary?: { staffAboveNormalWeek: number; restBreaches: number; overridesGranted: number; unfilledShifts: number };
+  normalWeek?: number;
+}
+
+export interface FairMeans {
+  nights: number;
+  weekends: number;
+  holidays: number;
+  duties: number;
+  hours: number;
+}
+
+export interface FairnessReport {
+  month: string;
+  period: { from: string; to: string };
+  monthsCovered: number;
+  monthsAsked: number;
+  manager: boolean;
+  cadres?: { cadre: string; means: FairMeans; sentence: string | null; people: ({ staffId: string; name: string } & FairMeans)[] }[];
+  mine?: { cadre: string; means: FairMeans; me: FairMeans; peers: number } | null;
+}
