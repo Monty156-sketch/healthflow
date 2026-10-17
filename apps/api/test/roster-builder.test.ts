@@ -158,4 +158,14 @@ describe("versions", () => {
     expect((await as(otherAdmin).get(`/api/facility/rosters/${id}/versions`)).status).toBe(404);
     expect((await as(otherAdmin).post(`/api/facility/rosters/${id}/versions/${vid}/restore`)).status).toBe(404);
   });
+
+  it("downloads the roster as a PDF at any status, and the audit log notes it", async () => {
+    const { api, id } = await setup();
+    const res = await api.get(`/api/facility/rosters/${id}/pdf`);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+    expect(res.headers["content-disposition"]).toMatch(/roster-2026-11\.pdf/);
+    const log = await prisma.auditLog.findFirst({ where: { action: "roster_pdf_downloaded" } });
+    expect(log?.summary).toMatch(/November 2026 roster as a PDF/);
+  });
 });

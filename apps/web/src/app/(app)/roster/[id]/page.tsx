@@ -40,6 +40,7 @@ function FindingList({
   const [reason, setReason] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   if (!items.length) return null;
   const shown = all ? items : items.slice(0, SHOWN);
   const block = items[0].severity === "BLOCK";
@@ -220,6 +221,17 @@ export default function RosterPage() {
   };
   const available = (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
 
+  async function downloadPdf() {
+    setPdfBusy(true);
+    try {
+      await api.download(`/api/facility/rosters/${id}/pdf`, "roster.pdf");
+    } catch {
+      setFlow("The PDF could not be made. Check your connection and try again.");
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   async function generate() {
     setBusy(true);
     setProblem(null);
@@ -260,9 +272,12 @@ export default function RosterPage() {
         }
         actions={
           <span className="no-print flex flex-wrap gap-2">
+            <Button variant="secondary" disabled={pdfBusy} onClick={downloadPdf}>
+              {pdfBusy ? "Preparing PDF…" : "Download PDF"}
+            </Button>
             {generated && (
-              <Button variant="secondary" onClick={() => window.print()}>
-                Print or save as PDF
+              <Button variant="quiet" onClick={() => window.print()}>
+                Print this page
               </Button>
             )}
             {canRoster && canGenerate && !confirming && (

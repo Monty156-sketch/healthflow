@@ -70,6 +70,28 @@ async function request<T>(
   return res.json();
 }
 
+/** Fetches a file with the signed-in session and hands it to the browser as a download. */
+async function download(path: string, fallbackName: string, retry = true): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (res.status === 401 && retry) {
+    if (await refreshSession()) return download(path, fallbackName, false);
+    onSessionExpired?.();
+  }
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})));
+  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 export interface SessionUser {
   id: string;
   email: string;
@@ -118,5 +140,6 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+  download,
   refreshSession,
 };

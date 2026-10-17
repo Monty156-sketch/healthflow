@@ -8,6 +8,8 @@ import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../../lib/prisma.js";
 import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.js";
+import { rosterPdf } from "../../lib/rosterPdf.js";
+import { FACILITY_TYPE_LABEL } from "../../lib/labels.js";
 import { notifyDeciders } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
@@ -241,6 +243,62 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
       overrideReason: f.overrideReason, overrideBy: f.overrideBy,
     })),
   });
+});
+
+/** The A4 landscape sheet. Available at any status, so a draft can be circulated for comment. */
+rostersRouter.get("/:id/pdf", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const [facility, assignments, shifts, cadres, findings] = await Promise.all([
+    prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, include: { district: { select: { name: true } } } }),
+    prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true } }),
+    prisma.shift.findMany({ where: { facilityId: who.facilityId }, orderBy: { sortOrder: "asc" } }),
+    prisma.cadre.findMany({ where: { facilityId: who.facilityId }, select: { id: true, sortOrder: true } }),
+    prisma.complianceFinding.findMany({ where: { rosterId: roster.id }, select: { severity: true, status: true } }),
+  ]);
+  const inRoster = new Set(assignments.map((a) => a.staffId));
+  const staffRows = await prisma.staff.findMany({
+    where: { facilityId: who.facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }] },
+    include: { cadre: { select: { name: true } } },
+  });
+  const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
+  staffRows.sort((a, b) => (order.get(a.cadreId ?? "") ?? 999) - (order.get(b.cadreId ?? "") ?? 999) || a.staffNo.localeCompare(b.staffNo, undefined, { numeric: true }));
+
+  const nameOf = async (email: string | null) => {
+    if (!email) return null;
+    const u = await prisma.userProfile.findUnique({ where: { userEmail: email }, select: { staff: { select: { fullName: true } } } });
+    return u?.staff?.fullName ?? email;
+  };
+  const status = roster.status.charAt(0) + roster.status.slice(1).toLowerCase().replace("_", " ");
+  const buf = await rosterPdf({
+    facilityName: facility.name,
+    place: [FACILITY_TYPE_LABEL[facility.facilityType], facility.district?.name, facility.region].filter(Boolean).join(", ") || null,
+    title: monthName(roster),
+    statusWord: status === "Draft" || status === "Generated" || status === "Under review" ? `${status}, not yet approved` : status,
+    version: roster.version,
+    year: roster.year,
+    month: roster.month,
+    staff: staffRows.map((s) => ({ id: s.id, name: s.fullName, staffNo: s.staffNo, cadre: s.cadre?.name ?? null })),
+    shifts: shifts.filter((s) => s.active || assignments.some((a) => a.shiftId === s.id)).map((s) => ({
+      id: s.id, code: s.code, name: s.name, time: s.startTime && s.endTime ? `${s.startTime} to ${s.endTime}` : null, colour: s.colour, countsAsDuty: s.countsAsDuty,
+    })),
+    cells: new Map(assignments.map((a) => [`${a.staffId}|${a.dutyDate.toISOString().slice(0, 10)}`, a.shiftId])),
+    preparedBy: await nameOf(roster.preparedBy),
+    approvedBy: await nameOf(roster.approvedBy),
+    blocking: findings.filter((f) => f.severity === "BLOCK" && f.status === "OPEN").length,
+    warnings: findings.filter((f) => f.severity === "WARN").length,
+    overrides: findings.filter((f) => f.status === "OVERRIDDEN").length,
+    printedOn: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_pdf_downloaded", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} downloaded the ${monthName(roster)} roster as a PDF (${status.toLowerCase()}, version ${roster.version}).`,
+  });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${facility.name.replace(/[^A-Za-z0-9]+/g, "-")}-roster-${roster.year}-${String(roster.month).padStart(2, "0")}.pdf"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(buf);
 });
 
 // ------------------------------------------------------------- generate and validate
