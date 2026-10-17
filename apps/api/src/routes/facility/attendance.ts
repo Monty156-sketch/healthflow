@@ -70,13 +70,19 @@ attendanceRouter.get("/day", async (req, res) => {
   const leaveOf = new Map(leave.map((l) => [l.staffId, l]));
   const assigned = new Set(assignments.map((a) => a.staffId));
 
+  const accepted = await prisma.coverProposal.findMany({
+    where: { facilityId, dutyDate: dateOf(day), status: "ACCEPTED" },
+    include: { proposedStaff: { select: { fullName: true } } },
+  });
+  const absentNames = new Map((await prisma.staff.findMany({ where: { id: { in: accepted.map((c) => c.absentStaffId) } }, select: { id: true, fullName: true } })).map((p) => [p.id, p.fullName]));
+  const coverFor = new Map(accepted.map((c) => [c.rosterAssignmentId, absentNames.get(c.absentStaffId) ?? null]));
   const shifts = new Map<string, { id: string; name: string; code: string; startTime: string | null; endTime: string | null; people: unknown[] }>();
   for (const a of assignments) {
     if (leaveOf.has(a.staffId)) continue; // approved leave wins; the roster page already flags the clash
     const s = shifts.get(a.shiftId) ?? { id: a.shift.id, name: a.shift.name, code: a.shift.code, startTime: a.shift.startTime, endTime: a.shift.endTime, people: [] };
     const r = byAssignment.get(a.id);
     s.people.push({
-      assignmentId: a.id, staffId: a.staffId, name: a.staff.fullName, cadre: a.staff.cadre?.name ?? null, isCover: a.isCover,
+      assignmentId: a.id, staffId: a.staffId, name: a.staff.fullName, cadre: a.staff.cadre?.name ?? null, isCover: a.isCover, coverForName: coverFor.get(a.id) ?? null, coverState: a.isCover ? a.acknowledgementState : null,
       record: r ? { status: r.status, minutesLate: r.minutesLate, note: r.note, needsReview: r.needsReview, corrected: Boolean(r.correctedAt), originalStatus: r.originalStatus } : null,
     });
     shifts.set(a.shiftId, s);
@@ -88,6 +94,7 @@ attendanceRouter.get("/day", async (req, res) => {
   res.json({
     ...base,
     review: review.map((r) => ({ id: r.id, name: r.staff.fullName, status: r.status, minutesLate: r.minutesLate })),
+    covered: accepted.map((c) => ({ absentName: absentNames.get(c.absentStaffId) ?? "", coverName: c.proposedStaff.fullName })),
     canRecord: !blocked,
     blocked,
     shifts: [...shifts.values()],

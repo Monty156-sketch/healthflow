@@ -34,6 +34,7 @@ import { attendanceRouter } from "./attendance.js";
 import { notificationsRouter } from "./notifications.js";
 import { myDutiesRouter } from "./myDuties.js";
 import { swapsRouter } from "./swaps.js";
+import { coverRouter, ledgerRouter } from "./cover.js";
 import { leaveSettingsRouter } from "./leaveSettings.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
@@ -55,6 +56,8 @@ facilityRouter.use("/attendance", attendanceRouter);
 facilityRouter.use("/notifications", notificationsRouter);
 facilityRouter.use("/my-duties", myDutiesRouter);
 facilityRouter.use("/swaps", swapsRouter);
+facilityRouter.use("/cover", coverRouter);
+facilityRouter.use("/ledger", ledgerRouter);
 facilityRouter.use("/", leaveSettingsRouter);
 facilityRouter.use("/audit-log", auditRouter);
 

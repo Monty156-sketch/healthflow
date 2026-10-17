@@ -253,9 +253,12 @@ export interface AttendanceDay {
       name: string;
       cadre: string | null;
       isCover: boolean;
+      coverForName: string | null;
+      coverState: string | null;
       record: { status: AttendanceStatus | string; minutesLate: number | null; note: string | null; needsReview: boolean; corrected: boolean; originalStatus: string | null } | null;
     }[];
   }[];
+  covered: { absentName: string; coverName: string }[];
   onLeave: { staffId: string; name: string; official: boolean; typeName: string }[];
   offDuty: { staffId: string; name: string }[];
   review: { id: string; name: string; status: string; minutesLate: number | null }[];
@@ -345,4 +348,58 @@ export interface EntitlementRow {
   taken: number;
   pending: number;
   remaining: number | null;
+}
+
+export interface CoverOption {
+  proposalId: string;
+  rank: number;
+  staffId: string;
+  name: string;
+  cadre: string | null;
+  score: number;
+  reasons: string[];
+  warnings: string[];
+}
+
+export interface CoverOptions {
+  duty: { id: string; date: string; shift: string; holder: string };
+  options: CoverOption[];
+  ruledOut: { name: string; why: string }[];
+  summary: string;
+}
+
+export interface CoverWaiting {
+  assignmentId: string;
+  date: string;
+  shift: string;
+  startTime: string | null;
+  staffId: string;
+  coverName: string;
+  forName: string | null;
+  state: "AWAITING" | "ESCALATED";
+  notifiedAt: string | null;
+  mine: boolean;
+}
+
+export interface LedgerEntryRow {
+  id: string;
+  staffId: string;
+  staffName: string;
+  type: "DEBT" | "CREDIT";
+  duties: number;
+  settled: number;
+  status: "OPEN" | "PARTLY_SETTLED" | "SETTLED" | "WRITTEN_OFF" | "EXPIRED";
+  reason: "ABSENCE_COVER" | "SWAP_HANDOVER" | "MANUAL_ADJUSTMENT";
+  description: string | null;
+  counterparty: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  writtenOffReason: string | null;
+}
+
+export interface Ledger {
+  summary: { openDebts: number; openCredits: number; balanced: boolean; line: string };
+  people: { staffId: string; name: string; cadre: string | null; owes: number; owed: number }[];
+  staff: { id: string; name: string }[];
+  entries: LedgerEntryRow[];
 }
