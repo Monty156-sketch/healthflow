@@ -13,6 +13,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.js";
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
+import { writePair } from "../../lib/ledger.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { sayDay } from "../../engine/time.js";
 import { checkOf, findingKey, loadEngineData, monthName, saveVersion, storeFindings, type Data } from "./rosters.js";
@@ -24,14 +25,14 @@ const dayOf = (d: Date) => Math.floor(d.getTime() / DAY);
 const dateOf = (n: number) => new Date(n * DAY);
 const isoOf = (n: number) => dateOf(n).toISOString().slice(0, 10);
 
-interface Spec {
+export interface Spec {
   rosterId: string;
   requesterStaffId: string;
   requesterAssignmentId: string;
   targetStaffId: string;
   targetAssignmentId: string | null;
 }
-interface Outcome {
+export interface Outcome {
   ok: boolean; // false when something stops the swap outright
   hard: string[]; // reasons it cannot go ahead, in plain words
   warnings: string[]; // things to read and confirm
@@ -44,7 +45,7 @@ interface Outcome {
 const MIN_SWAP_NOTE = 10;
 
 /** Everything about whether this swap is lawful, from the database as it is now. */
-async function evaluateSwap(facilityId: string, spec: Spec, opts: { enforceCutoff: boolean }): Promise<Outcome> {
+export async function evaluateSwap(facilityId: string, spec: Spec, opts: { enforceCutoff: boolean; ignoreStart?: boolean }): Promise<Outcome> {
   const type = spec.targetAssignmentId ? "EXCHANGE" : "HANDOVER";
   const bad = (reason: string): Outcome => ({ ok: false, hard: [reason], warnings: [], type });
 
@@ -75,6 +76,7 @@ async function evaluateSwap(facilityId: string, spec: Spec, opts: { enforceCutof
   const cutoff = (await prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { swapCutoffHours: true } })).swapCutoffHours;
   const start = (day: number, hhmm: string | null) => day * DAY + (hhmm ? (Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5))) * 60_000 : 0);
   const early = (day: number, hhmm: string | null, who: string) => {
+    if (opts.ignoreStart) return; // cover for an absence can be found after the shift has begun
     const at = start(day, hhmm);
     if (at <= now) hard.push(`${who}'s duty on ${sayDay(day)} has already started or passed.`);
     else if (opts.enforceCutoff && at - now < cutoff * 3_600_000) hard.push(`${who}'s duty on ${sayDay(day)} is less than ${cutoff} hours away. Swaps close ${cutoff} hours before a duty starts.`);
@@ -388,6 +390,13 @@ swapsRouter.post("/:id/decide", allowRoles(...READ_ROLES), async (req, res) => {
   await notifyStaff(who.facilityId, row.requesterStaffId, n);
   await notifyStaff(who.facilityId, row.targetStaffId, n);
   void loose;
+  // Giving a duty away without taking one back leaves a debt: the person who handed it over owes one.
+  if (o.type === "HANDOVER") {
+    await writePair({
+      facilityId: who.facilityId, debtorId: row.requesterStaffId, creditorId: row.targetStaffId, duties: 1, reason: "SWAP_HANDOVER", swapId: row.id,
+      description: `${row.targetStaff.fullName} took ${s.give} from ${row.requesterStaff.fullName}`,
+    });
+  }
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "swap_approved", entityType: "DutySwap", entityId: row.id,
     before: { requesterAssignmentId: row.requesterAssignmentId, staffId: row.requesterStaffId }, after: { staffId: row.targetStaffId },

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS, showDate } from "@/lib/format";
-import type { MyDuties } from "@/lib/types";
+import type { CoverWaiting, MyDuties } from "@/lib/types";
 import { SwapAsk } from "@/components/SwapAsk";
 import { Button, EmptyState, Field, Loading, LoadError, Notice, PageHeader, Select, StatusBadge, Textarea } from "@/components/ui";
 
@@ -38,6 +38,50 @@ function Correction({ id, onDone }: { id: string; onDone: () => void }) {
   );
 }
 
+function Asked({ item, onDone }: { item: CoverWaiting; onDone: () => void }) {
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function answer(accept: boolean) {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.post(`/api/facility/cover/${item.assignmentId}/respond`, { accept, reason });
+      onDone();
+    } catch (e) {
+      const b = e instanceof ApiError ? (e.body as { message?: string }) : undefined;
+      setErr(b?.message ?? "It was not sent. Check your connection and try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <li className="px-4 py-3">
+      <p className="text-[15px]">
+        <span className="figures font-medium">{showDate(item.date)}</span>, {item.shift}
+        {item.startTime ? <span className="text-[var(--muted)]"> from {item.startTime}</span> : null}
+        {item.forName ? <span>, covering {item.forName}</span> : null}
+      </p>
+      {!declining ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button disabled={busy} onClick={() => answer(true)}>I can cover this</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => setDeclining(true)}>I cannot</Button>
+        </div>
+      ) : (
+        <div className="mt-2 max-w-md space-y-2">
+          <Field label="Why can you not?" hint="Your in-charge sees this.">{(a) => <Textarea {...a} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+          <div className="flex gap-2">
+            <Button disabled={busy} onClick={() => answer(false)}>Send</Button>
+            <Button variant="quiet" onClick={() => setDeclining(false)}>Back</Button>
+          </div>
+        </div>
+      )}
+      {err && <div className="mt-2"><Notice tone="block">{err}</Notice></div>}
+    </li>
+  );
+}
+
 export default function MyDutiesPage() {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -47,6 +91,7 @@ export default function MyDutiesPage() {
   const [sent, setSent] = useState(false);
   const [swapSent, setSwapSent] = useState(false);
   const { data, error, reload } = useResource<MyDuties>(`/api/facility/my-duties?month=${year}-${String(month).padStart(2, "0")}`);
+  const asked = useResource<{ cover: CoverWaiting[] }>("/api/facility/cover/awaiting");
   const years = Array.from({ length: 3 }, (_, i) => now.getFullYear() - 1 + i);
 
   return (
@@ -66,6 +111,16 @@ export default function MyDutiesPage() {
           </Select>
         </div>
       </div>
+      {asked.data && asked.data.cover.filter((c) => c.mine).length > 0 && (
+        <section aria-labelledby="asked-h" className="mb-6">
+          <h2 id="asked-h" className="mb-2 text-lg font-semibold">Asked to cover</h2>
+          <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--status-warning)] bg-[var(--surface)]">
+            {asked.data.cover.filter((c) => c.mine).map((c) => (
+              <Asked key={c.assignmentId} item={c} onDone={() => { asked.reload(); reload(); }} />
+            ))}
+          </ul>
+        </section>
+      )}
       {swapSent && <div className="mb-4"><Notice tone="success">Swap request sent. You will be told when they answer. See Duty swaps.</Notice></div>}
       {sent && <div className="mb-4"><Notice tone="success">Sent. Your in-charge will see it with the date.</Notice></div>}
       {error && !data ? (

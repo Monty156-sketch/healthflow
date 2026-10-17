@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import type { AttendanceDay, AttendanceStatus } from "@/lib/types";
+import { CoverPanel } from "@/components/CoverPanel";
 import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Textarea } from "@/components/ui";
 
 const OPTIONS: { value: AttendanceStatus; label: string }[] = [
@@ -34,6 +35,8 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
   const [saved, setSaved] = useState<number | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [needReason, setNeedReason] = useState(data.needsReason);
+  const [finding, setFinding] = useState<{ id: string; name: string } | null>(null);
+  const today = data.date === todayIso();
 
   const set = (id: string, patch: Partial<Entry>) => setEntries((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
   const anyRecorded = data.shifts.some((s) => s.people.some((p) => p.record));
@@ -79,6 +82,18 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
           </ul>
         </Panel>
       )}
+      {finding && <CoverPanel key={finding.id} assignmentId={finding.id} personName={finding.name} onClose={() => setFinding(null)} onDone={() => { setFinding(null); reload(); }} />}
+      {data.covered.length > 0 && (
+        <Panel title="Covered today" description="Absent, with someone else asked to take the duty.">
+          <ul className="text-[15px]">
+            {data.covered.map((c) => (
+              <li key={`${c.absentName}-${c.coverName}`}>
+                {c.absentName} is covered by {c.coverName}
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
       {data.shifts.length === 0 && <EmptyState title="Nobody was on duty">The published roster has no duties on this date.</EmptyState>}
       {data.shifts.map((shift) => (
         <Panel key={shift.id} title={`${shift.name} (${shift.code})`} description={shift.startTime && shift.endTime ? `${shift.startTime} to ${shift.endTime}` : undefined}>
@@ -91,7 +106,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
                     <legend className="mb-2 text-[15px] font-medium">
                       {p.name}
                       {p.cadre && <span className="font-normal text-[var(--muted)]"> , {p.cadre}</span>}
-                      {p.isCover && <span className="font-normal text-[var(--muted)]"> , cover</span>}
+                      {p.isCover && <span className="font-normal text-[var(--muted)]"> , cover{p.coverForName ? ` for ${p.coverForName}` : ""}{p.coverState === "AWAITING" ? ", waiting to confirm" : p.coverState === "ESCALATED" ? ", has not confirmed" : ""}</span>}
                     </legend>
                     <div className="flex flex-wrap gap-2">
                       {OPTIONS.map((o) => (
@@ -111,7 +126,15 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
                         <Field label="Minutes late">{(a) => <Input {...a} inputMode="numeric" value={e.minutes} onChange={(ev) => set(p.assignmentId, { minutes: ev.target.value.replace(/\D/g, "") })} />}</Field>
                       </div>
                     )}
-                    {p.record?.needsReview && <p className="mt-1 text-sm text-[var(--warning)]">The duty changed after this was recorded. Check it is still right.</p>}
+                    {today && p.record && (p.record.status === "ABSENT" || p.record.status === "EXCUSED") && (
+                      <div className="mt-2">
+                        <Button variant="secondary" onClick={() => setFinding({ id: p.assignmentId, name: p.name })}>
+                          Find cover for this duty
+                        </Button>
+                        {(e.status !== p.record.status) && <p className="mt-1 text-sm text-[var(--muted)]">Save the change first, then find cover.</p>}
+                      </div>
+                    )}
+                    {p.record?.needsReview && <p className="mt-1 text-sm text-[var(--status-warning)]">The duty changed after this was recorded. Check it is still right.</p>}
                     {p.record?.corrected && p.record.originalStatus && <p className="mt-1 text-sm text-[var(--muted)]">Corrected. First recorded as {p.record.originalStatus.toLowerCase().replace("_", " ")}.</p>}
                   </fieldset>
                 </li>
