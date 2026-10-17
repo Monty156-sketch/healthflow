@@ -11,6 +11,7 @@ import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { overlaps, todayDay } from "../../lib/leaveWindow.js";
 import { holidayDays } from "../../lib/holidays.js";
 import { expectedBack, liveStatus, resumptionOf, syncReturns } from "../../lib/returns.js";
+import { LeaveCoverError, coverOnApproval, leaveCoverPlan, requestLeaveSwap } from "../../lib/leaveCover.js";
 import { ReinstateError, reinstate, reinstatementPlan } from "../../lib/reinstate.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -372,7 +373,10 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
     type: "leave_decided", title: `Your ${row.leaveType.name.toLowerCase()} leave was ${input.decision === "approve" ? "approved" : "not approved"}`,
     body: `${row.isOpenEnded ? `From ${sayDay(start)}, no end date.` : `${sayRange(start, end)}${resumeDay !== null && input.decision === "approve" ? `. Back on duty ${sayDay(resumeDay)}` : ""}.`}${input.note ? ` ${input.note}` : ""}`, linkUrl: "/leave", severity: "INFO",
   });
+  let cover: Awaited<ReturnType<typeof coverOnApproval>> = null;
+  if (input.decision === "approve" && conflicts) cover = await coverOnApproval(who.facilityId, row.id, { email: who.email, displayName: who.displayName }).catch(() => null);
   res.json({
+    cover,
     request: present(updated),
     warning: conflicts ? "This person has duties on an approved or published roster in these dates. Regenerate or edit that roster so they are not rostered while away." : null,
   });
@@ -476,6 +480,32 @@ leaveRouter.post("/requests/:id/report-back", async (req, res) => {
     await notifyStaff(who.facilityId, row.staffId, { type: "return_confirmed", title: "Your return to duty was recorded", body: `Back on duty ${sayDay(day)}.`, linkUrl: "/leave", severity: "INFO" });
   }
   res.json({ request: present(updated) });
+});
+
+/** Swaps first, then cover, for each published duty this leave takes the person off. */
+leaveRouter.get("/requests/:id/cover-plan", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  try {
+    res.json(await leaveCoverPlan(who.facilityId, String(req.params.id)));
+  } catch (err) {
+    if (err instanceof LeaveCoverError) return res.status(err.status).json({ error: "cannot_plan", message: err.message });
+    throw err;
+  }
+});
+
+const swapRequestInput = z.object({ assignmentId: z.string(), targetAssignmentId: z.string() });
+
+/** Asks a colleague to exchange duties on the absent person's behalf. */
+leaveRouter.post("/requests/:id/swap-request", allowRoles(...DECIDERS), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(swapRequestInput, req.body, res);
+  if (!input) return;
+  try {
+    res.status(201).json(await requestLeaveSwap(who.facilityId, String(req.params.id), input.assignmentId, input.targetAssignmentId, { email: who.email, displayName: who.displayName }));
+  } catch (err) {
+    if (err instanceof LeaveCoverError) return res.status(err.status).json({ error: "cannot_swap", message: err.message });
+    throw err;
+  }
 });
 
 /** What would put someone back on the roster after they return. Proposes only. */

@@ -1,0 +1,76 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
+
+beforeEach(resetDatabase);
+
+const DAY = 86_400_000;
+const day = (offset: number) => new Date(Math.floor(Date.now() / DAY + offset) * DAY);
+const iso = (offset: number) => day(offset).toISOString().slice(0, 10);
+
+async function setup() {
+  const facility = await makeFacility("Sombo Health Centre");
+  const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id });
+  const api = as(admin);
+  const morning = (await api.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", isOvernight: false, minStaff: 0, colour: "#25619f" })).body.shift;
+  const people: { id: string }[] = [];
+  for (const n of ["Ama Dery", "Esi Naa", "Yaw Boah"]) people.push(await prisma.staff.create({ data: { facilityId: facility.id, staffNo: n, fullName: n, status: "ACTIVE" } }));
+  const types = (await api.get("/api/facility/leave/types")).body.types as { id: string; code: string }[];
+  const type = (code: string) => types.find((t) => t.code === code)!.id;
+  const first = day(3);
+  const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: first.getUTCMonth() + 1, year: first.getUTCFullYear(), status: "PUBLISHED" } });
+  const mk = (staffId: string, offset: number) => prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId, shiftId: morning.id, dutyDate: day(offset) } });
+  const duty = await mk(people[0].id, 3);
+  const theirs = await mk(people[1].id, 8);
+  return { facility, api, people, type, duty, theirs };
+}
+
+describe("planned absence", () => {
+  it("shows swaps first and cover after, with what each does to the ledger", async () => {
+    const { api, people, type, duty, theirs } = await setup();
+    const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("L"), startDate: iso(3), endDate: iso(4) });
+    const plan = (await api.get(`/api/facility/leave/requests/${made.body.request.id}/cover-plan`)).body;
+    expect(plan.duties).toHaveLength(1);
+    const d = plan.duties[0];
+    expect(d.assignmentId).toBe(duty.id);
+    expect(d.swaps.map((s: { targetAssignmentId: string }) => s.targetAssignmentId)).toContain(theirs.id);
+    expect(d.cover.length).toBeGreaterThan(0);
+    expect(d.ledger).toContain("not worked back");
+    // Planning moves nothing.
+    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId).toBe(people[0].id);
+  });
+
+  it("asks the colleague for a swap on the absent person's behalf, through the ordinary steps", async () => {
+    const { api, people, type, duty, theirs } = await setup();
+    const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("L"), startDate: iso(3), endDate: iso(4) });
+    const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/swap-request`, { assignmentId: duty.id, targetAssignmentId: theirs.id });
+    expect(out.status).toBe(201);
+    const swap = await prisma.dutySwap.findUniqueOrThrow({ where: { id: out.body.swapId } });
+    expect(swap).toMatchObject({ status: "REQUESTED", swapType: "EXCHANGE", requesterStaffId: people[0].id, targetStaffId: people[1].id });
+    expect((await api.post(`/api/facility/leave/requests/${made.body.request.id}/swap-request`, { assignmentId: duty.id, targetAssignmentId: theirs.id })).status).toBe(409);
+    const again = (await api.get(`/api/facility/leave/requests/${made.body.request.id}/cover-plan`)).body;
+    expect(again.duties[0].openSwap).toBe(true);
+  });
+
+  it("starts cover when a short absence is approved, and says the duty is worked back for permission", async () => {
+    const { api, people, type, duty } = await setup();
+    const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("PERM"), startDate: iso(3), endDate: iso(3) });
+    const plan = (await api.get(`/api/facility/leave/requests/${made.body.request.id}/cover-plan`)).body;
+    expect(plan.owedBack).toBe(true);
+    const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/decide`, { decision: "approve", reviewedImpact: true });
+    expect(out.status).toBe(200);
+    expect(out.body.cover.asked).toHaveLength(1);
+    const moved = await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } });
+    expect(moved).toMatchObject({ isCover: true, coverForStaffId: people[0].id });
+    expect(moved.staffId).not.toBe(people[0].id);
+    const accepted = await prisma.coverProposal.findFirst({ where: { rosterAssignmentId: duty.id, status: "ACCEPTED" } });
+    expect((accepted?.reasons as { owedBack?: boolean }).owedBack).toBe(true);
+  });
+
+  it("leaves a longer absence to the in-charge", async () => {
+    const { api, people, type, duty } = await setup();
+    const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("L"), startDate: iso(3), endDate: iso(5) });
+    const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/decide`, { decision: "approve", reviewedImpact: true });
+    expect(out.body.cover).toBeNull();
+    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId).toBe(people[0].id);
+  });
+});

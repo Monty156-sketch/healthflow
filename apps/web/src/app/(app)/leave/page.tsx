@@ -7,6 +7,7 @@ import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { LeaveDetail, LeaveRequestRow } from "@/lib/types";
 import { ReturnActions } from "@/components/ReturnActions";
+import { LeaveCoverPlan } from "@/components/LeaveCoverPlan";
 import { ReinstatePanel } from "@/components/ReinstatePanel";
 import { Button, ButtonLink, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, Textarea } from "@/components/ui";
 
@@ -71,8 +72,9 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
     setProblem(null);
     setNoteError(null);
     try {
-      const res = await api.post<{ warning?: string | null }>(`/api/facility/leave/requests/${id}/${path}`, body);
-      if (res.warning) setWarning(res.warning);
+      const res = await api.post<{ warning?: string | null; cover?: { asked: string[]; unfilled: string[] } | null }>(`/api/facility/leave/requests/${id}/${path}`, body);
+      if (res.cover) setWarning([res.warning, res.cover.asked.length ? `Cover was asked for: ${res.cover.asked.join("; ")}.` : null, res.cover.unfilled.length ? `Nobody could lawfully cover: ${res.cover.unfilled.join("; ")}.` : null].filter(Boolean).join(" "));
+      else if (res.warning) setWarning(res.warning);
       onChanged();
       reload();
     } catch (err) {
@@ -167,6 +169,7 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
           </Notice>
         </div>
       )}
+      {decider && (r.status === "SUBMITTED" || (r.status === "APPROVED" && !r.actualReturnDate)) && <LeaveCoverPlan requestId={r.id} onChanged={onChanged} />}
       {decider && history.length > 0 && (
         <div className="mt-4">
           <h3 className="mb-1 text-[15px] font-semibold">Earlier approved leave</h3>
