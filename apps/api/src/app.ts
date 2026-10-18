@@ -10,6 +10,7 @@ import { accountRouter } from "./routes/account.js";
 import { facilityRouter } from "./routes/facility/index.js";
 import { invitationRouter } from "./routes/invitations.js";
 import { errorReportRouter, platformRouter, recordServerError } from "./routes/errors.js";
+import { internalRouter } from "./routes/internal.js";
 import { districtRouter } from "./routes/district.js";
 import { publicRouter } from "./routes/public.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
@@ -47,6 +48,7 @@ export function createApp() {
   app.use("/api/errors", errorReportRouter);
   app.use("/api/public", publicRouter);
   app.use("/api/district", districtRouter);
+  app.use("/api/internal", internalRouter);
   app.use("/api/platform", platformRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
