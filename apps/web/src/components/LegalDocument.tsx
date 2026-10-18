@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Block, LegalDoc } from "@/lib/legal";
+import { PublicNav } from "@/components/PublicNav";
+import { PrintButton } from "@/components/PrintButton";
 
 /** Turns **bold**, [text](/path) and {{to be confirmed: x}} in a string into elements. */
 function inline(text: string): ReactNode[] {
@@ -59,18 +61,20 @@ function BlockView({ b }: { b: Block }) {
   );
 }
 
-export function LegalDocument({ doc, other }: { doc: LegalDoc; other: { href: string; label: string } }) {
+export function LegalDocument({ doc, other, print }: { doc: LegalDoc; other: { href: string; label: string }; print?: boolean }) {
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-12">
-      <p className="mb-6 text-sm">
-        <Link href="/" className="text-[var(--accent-text)] underline-offset-2 hover:underline">
-          HealthFlow
-        </Link>
-      </p>
+    <>
+    <PublicNav />
+    <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-12">
       <h1 className="text-3xl font-semibold leading-tight">{doc.title}</h1>
       <p className="figures mt-2 text-[15px] text-[var(--muted)]">
         Version {doc.version}. Effective {inline(doc.effective)}
       </p>
+      {print && (
+        <div className="mt-4">
+          <PrintButton label="Save as PDF" />
+        </div>
+      )}
       <div className="mt-5 rounded-[var(--radius)] border border-[var(--border)] border-l-[3px] border-l-[var(--status-warning)] bg-[var(--surface)] px-4 py-3 text-[15px]">
         This is the draft that applies during the pilot. It has not yet been reviewed by a lawyer. Items marked <em>To be confirmed</em> will be filled in
         before it takes effect.
@@ -108,5 +112,6 @@ export function LegalDocument({ doc, other }: { doc: LegalDoc; other: { href: st
         </Link>
       </footer>
     </main>
+    </>
   );
 }
