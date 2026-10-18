@@ -39,9 +39,9 @@ export default function DistrictDashboard() {
             <Figure label="Staff on duty now" value={data.staffOnDutyNow} />
             <Figure label="Facility days short of staff in the next 24 hours" value={data.shortDaysNext24Hours} />
           </div>
-          <Panel title="Next month's roster not yet published">
+          <Panel title="Next month&apos;s roster not yet published">
             {data.nextMonthNotPublished.length === 0 ? (
-              <p className="text-[15px]">Every facility has published next month's roster.</p>
+              <p className="text-[15px]">Every facility has published next month&apos;s roster.</p>
             ) : (
               <ul className="list-disc pl-5 text-[15px]">
                 {data.nextMonthNotPublished.map((n) => (
