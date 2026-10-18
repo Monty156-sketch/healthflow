@@ -1,6 +1,7 @@
 // Duty cycle rules (Part 3, 1.2 and 1.3): the off-day patterns. "After N
 // consecutive duties, give M days off", counted over the shifts the rule
-// names. Never deleted, only turned off.
+// names. A rule can be turned off or deleted; deleting a starting rule means
+// it is not set up again.
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -38,9 +39,11 @@ function present(r: RuleRow) {
   };
 }
 
-/** Which of the three starting rules a facility gets depends on the shifts it has. */
+/** Which of the two starting rules a facility gets depends on the shifts it has. */
 async function ensureSeeded(facilityId: string) {
   if ((await prisma.dutyCycleRule.count({ where: { facilityId } })) > 0) return;
+  // Once a rule has been deleted the facility has chosen its own set; never put the presets back.
+  if (await prisma.auditLog.findFirst({ where: { facilityId, action: "cycle_rule_deleted" }, select: { id: true } })) return;
   const shifts = await prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true } });
   if (!shifts.length) return;
   const night = shifts.filter((s) => s.isOvernight);
@@ -51,8 +54,6 @@ async function ensureSeeded(facilityId: string) {
   const seeds = [
     { name: "4 nights on, 3 off", shifts: night, n: 4, m: 3, after: afternoon?.id ?? null, pattern: [] as string[] },
     { name: "4 days on, 1 off", shifts: day, n: 4, m: 1, after: null, pattern: afternoon && morning ? [afternoon.id, morning.id] : [] },
-    // Closes the gap between the two: days followed by nights break both runs.
-    { name: "6 duties on, 2 off", shifts: [...day, ...night], n: 6, m: 2, after: null, pattern: [] as string[] },
   ].filter((s) => s.shifts.length > 0);
   let priority = 1;
   for (const s of seeds) {
@@ -258,6 +259,22 @@ cyclesRouter.patch("/:id/active", allowRoles(...ADMIN_ROLES), async (req, res) =
     summary: `${who.displayName} ${input.active ? "turned on" : "turned off"} the duty cycle rule "${rule.name}".`,
   });
   res.json({ rule: present(rule) });
+});
+
+cyclesRouter.delete("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const existing = (await loadRules(who.facilityId)).find((r) => r.id === String(req.params.id));
+  if (!existing) return res.status(404).json({ error: "not_found" });
+  await prisma.dutyCycleRule.delete({ where: { id: existing.id } });
+  await writeAuditLog({
+    facilityId: who.facilityId,
+    actorEmail: who.email,
+    action: "cycle_rule_deleted",
+    entityType: "DutyCycleRule",
+    entityId: existing.id,
+    summary: `${who.displayName} deleted the duty cycle rule "${existing.name}".`,
+  });
+  res.json({ ok: true });
 });
 
 // ------------------------------------------------------------- capacity check

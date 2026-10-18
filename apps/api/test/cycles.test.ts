@@ -37,17 +37,16 @@ describe("duty cycle rules", () => {
     expect(bad.body.fields.nextShiftAfterRestId).toBeTruthy();
   });
 
-  it("seeds the three starting rules, all preferring, with the right counting shifts", async () => {
+  it("seeds the two starting rules, all preferring, with the right counting shifts", async () => {
     const { api, midwife } = await setup();
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
     const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
     const { rules } = (await api.get("/api/facility/cycles")).body;
-    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 1 off", "6 duties on, 2 off"]);
+    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 1 off"]);
     expect(rules.every((r: { enforcement: string }) => r.enforcement === "PREFER")).toBe(true);
     expect(rules[0].countingShiftIds).toEqual([n.id]);
     expect(rules[1].countingShiftIds.sort()).toEqual([a.id, m.id].sort());
-    expect(rules[2].countingShiftIds).toHaveLength(3);
-    expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2, 3]);
+    expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2]);
     // the night rule sends people back on Afternoon; the day rule alternates Afternoon, Morning
     expect(rules[0].nextShiftAfterRestId).toBe(m.id);
     expect(rules[1].blockShiftPatternIds).toEqual([m.id, a.id]);
@@ -78,7 +77,7 @@ describe("duty cycle rules", () => {
   it("checks the numbers and that shifts, cadres and departments are the facility's own", async () => {
     const { api, midwife } = await setup();
     const { n } = await shiftsNeedingMidwives(api, midwife.id);
-    await api.get("/api/facility/cycles"); // seeds the three starting rules
+    await api.get("/api/facility/cycles"); // seeds the two starting rules
     const base = { name: "Custom", countingShiftIds: [n.id], consecutiveDuties: 3, offDaysRequired: 2, offDaysConsecutive: true, applicableCadreIds: [], applicableDepartmentIds: [], enforcement: "PREFER" };
     expect((await api.post("/api/facility/cycles", { ...base, consecutiveDuties: 0 })).body.fields.consecutiveDuties).toBe("At least 1.");
     expect((await api.post("/api/facility/cycles", { ...base, offDaysRequired: 9 })).body.fields.offDaysRequired).toBe("At most 7.");
@@ -89,18 +88,26 @@ describe("duty cycle rules", () => {
     expect((await api.post("/api/facility/cycles", { ...base, applicableCadreIds: [other.midwife.id] })).body.fields.applicableCadreIds).toMatch(/not in your facility/);
     const ok = await api.post("/api/facility/cycles", base);
     expect(ok.status).toBe(201);
-    expect(ok.body.rule.priority).toBe(4);
+    expect(ok.body.rule.priority).toBe(3);
   });
 
-  it("rules are turned off, never deleted, and a supervisor can read but not change them", async () => {
+  it("rules can be turned off or deleted, deleted presets stay gone, and a supervisor can read but not change them", async () => {
     const { api, midwife, facility } = await setup();
     await shiftsNeedingMidwives(api, midwife.id);
-    const rule = (await api.get("/api/facility/cycles")).body.rules[2];
+    const rule = (await api.get("/api/facility/cycles")).body.rules[1];
     expect((await api.patch(`/api/facility/cycles/${rule.id}/active`, { active: false })).body.rule.active).toBe(false);
     expect(await prisma.dutyCycleRule.count({ where: { id: rule.id } })).toBe(1);
     const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
     expect((await as(user).get("/api/facility/cycles")).status).toBe(200);
     expect((await as(user).patch(`/api/facility/cycles/${rule.id}/active`, { active: true })).status).toBe(403);
+    expect((await as(user).delete(`/api/facility/cycles/${rule.id}`)).status).toBe(403);
+    expect((await api.delete(`/api/facility/cycles/${rule.id}`)).status).toBe(200);
+    expect(await prisma.dutyCycleRule.count({ where: { id: rule.id } })).toBe(0);
+    expect((await api.delete(`/api/facility/cycles/${rule.id}`)).status).toBe(404);
+    const left = (await api.get("/api/facility/cycles")).body.rules;
+    expect(left).toHaveLength(1);
+    await api.delete(`/api/facility/cycles/${left[0].id}`);
+    expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
   });
 });
 
@@ -133,7 +140,7 @@ describe("capacity check", () => {
     const rules = (await api4.get("/api/facility/cycles")).body.rules;
     await api4.patch(`/api/facility/cycles/${rules[0].id}/active`, { active: false });
     const after = (await api4.get("/api/facility/cycles/capacity?month=2026-10")).body.cadres.find((c: { cadreId: string }) => c.cadreId === mw4.id);
-    expect(after.rule.name).toBe("6 duties on, 2 off");
+    expect(after.rule.name).toBe("4 days on, 1 off");
   });
 
   it("only counts active staff", async () => {

@@ -71,7 +71,7 @@ export function useOptionalFacility() {
 const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
 
 const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string }[] = [
-  { href: "/dashboard", label: "Overview", roles: READ_ROLES },
+  { href: "/dashboard", label: "Dashboard", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/today", label: "Today", roles: ["STAFF"] },
@@ -90,7 +90,6 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/rules", label: "Compliance rules", roles: ["ROSTER_MANAGER", "SUPERVISOR"], section: "settings" },
   { href: "/settings", label: "Facility settings", roles: ["FACILITY_ADMIN"], section: "settings" },
   { href: "/billing", label: "Billing", roles: ["FACILITY_ADMIN"] },
-  { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
 ];
 
 function UnreadCount() {
