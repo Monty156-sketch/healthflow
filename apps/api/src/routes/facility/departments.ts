@@ -3,6 +3,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
+import { defaultRunsNights } from "../../lib/dutyPlan.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400, requiredText, optionalText } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -14,6 +15,7 @@ const CURRENT_STAFF = ["ACTIVE", "ON_LEAVE", "PENDING"] as const;
 const departmentInput = z.object({
   name: requiredText(80, "Name"),
   code: optionalText(12, "Code"),
+  runsNights: z.boolean().optional(),
 });
 
 async function nameTaken(facilityId: string, name: string, exceptId?: string) {
@@ -42,6 +44,7 @@ departmentsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       id: d.id,
       name: d.name,
       code: d.code,
+      runsNights: d.runsNights,
       active: d.active,
       staffCount: d._count.staff,
     })),
@@ -56,7 +59,7 @@ departmentsRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
     return res.status(409).json({ error: "name_taken", fields: { name: "A department with this name already exists." } });
   }
   const dept = await prisma.department.create({
-    data: { facilityId: who.facilityId, name: input.name, code: input.code },
+    data: { facilityId: who.facilityId, name: input.name, code: input.code, runsNights: input.runsNights ?? defaultRunsNights(input.name) },
   });
   await writeAuditLog({
     facilityId: who.facilityId,
@@ -81,11 +84,12 @@ departmentsRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => 
   }
   const dept = await prisma.department.update({
     where: { id: existing.id },
-    data: { name: input.name, code: input.code },
+    data: { name: input.name, code: input.code, ...(input.runsNights !== undefined ? { runsNights: input.runsNights } : {}) },
   });
   const changes: string[] = [];
   if (existing.name !== dept.name) changes.push(`renamed it from ${existing.name} to ${dept.name}`);
   if (existing.code !== dept.code) changes.push(`changed its code to ${dept.code ?? "none"}`);
+  if (existing.runsNights !== dept.runsNights) changes.push(dept.runsNights ? "set it to run nights" : "set it to close at night");
   if (changes.length) {
     await writeAuditLog({
       facilityId: who.facilityId,

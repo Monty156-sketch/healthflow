@@ -15,6 +15,8 @@ const cadreInput = z.object({
   name: requiredText(80, "Name"),
   code: optionalText(12, "Code"),
   sortOrder: z.number({ invalid_type_error: "Order must be a number." }).int().min(0).max(999).optional(),
+  takesNights: z.boolean().optional(),
+  onRoster: z.boolean().optional(),
 });
 
 async function nameTaken(facilityId: string, name: string, exceptId?: string) {
@@ -44,6 +46,8 @@ cadresRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       name: c.name,
       code: c.code,
       sortOrder: c.sortOrder,
+      takesNights: c.takesNights,
+      onRoster: c.onRoster,
       active: c.active,
       staffCount: c._count.staff,
     })),
@@ -64,6 +68,8 @@ cadresRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       name: input.name,
       code: input.code,
       sortOrder: input.sortOrder ?? (last._max.sortOrder ?? 0) + 1,
+      takesNights: input.takesNights ?? true,
+      onRoster: input.onRoster ?? true,
     },
   });
   await writeAuditLog({
@@ -93,12 +99,16 @@ cadresRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       name: input.name,
       code: input.code,
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
+      ...(input.takesNights !== undefined ? { takesNights: input.takesNights } : {}),
+      ...(input.onRoster !== undefined ? { onRoster: input.onRoster } : {}),
     },
   });
   const changes: string[] = [];
   if (existing.name !== cadre.name) changes.push(`renamed it from ${existing.name} to ${cadre.name}`);
   if (existing.code !== cadre.code) changes.push(`changed its code to ${cadre.code ?? "none"}`);
   if (existing.sortOrder !== cadre.sortOrder) changes.push(`moved it to position ${cadre.sortOrder}`);
+  if (existing.takesNights !== cadre.takesNights) changes.push(cadre.takesNights ? "put it on night duty" : "took it off night duty");
+  if (existing.onRoster !== cadre.onRoster) changes.push(cadre.onRoster ? "put it on the duty roster" : "took it off the duty roster");
   if (changes.length) {
     await writeAuditLog({
       facilityId: who.facilityId,

@@ -2,6 +2,7 @@
 // (Inactive, Transferred, Resigned, Retired), which keeps their history and
 // immediately ends their access (Part 3, 0.3: "the most commonly missed
 // control in systems of this kind").
+import { isInCharge } from "../../lib/dutyPlan.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma, StaffStatus } from "@healthflow/db";
@@ -49,6 +50,7 @@ const staffInput = z
     emergencyContactPhone: optionalPhone("Emergency contact phone"),
     eligibleShiftIds: z.array(z.string()).max(50).default([]),
     excludedFromNights: z.boolean().default(false),
+    morningOnly: z.boolean().optional(),
     willingForExtraDuties: z.boolean().default(false),
     exclusionReason: optionalText(200, "Reason"),
     maxDutiesPerWeek: z
@@ -135,6 +137,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     emergencyContactPhone: s.emergencyContactPhone,
     eligibleShifts: s.eligibleForShifts,
     excludedFromNights: s.excludedFromNights,
+    morningOnly: s.morningOnly,
     willingForExtraDuties: s.willingForExtraDuties,
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
@@ -238,6 +241,7 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       emergencyContactName: input.emergencyContactName,
       emergencyContactPhone: input.emergencyContactPhone,
       excludedFromNights: input.excludedFromNights,
+      morningOnly: input.morningOnly ?? isInCharge(input.position),
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
@@ -273,6 +277,7 @@ const FIELD_LABEL: Record<string, string> = {
   emergencyContactName: "emergency contact name",
   emergencyContactPhone: "emergency contact phone",
   excludedFromNights: "night duty exclusion",
+  morningOnly: "weekday mornings only",
   willingForExtraDuties: "willingness to cover extra duties",
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
@@ -313,6 +318,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       emergencyContactName: input.emergencyContactName,
       emergencyContactPhone: input.emergencyContactPhone,
       excludedFromNights: input.excludedFromNights,
+      ...(input.morningOnly !== undefined ? { morningOnly: input.morningOnly } : {}),
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
@@ -355,6 +361,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
     }
     if (k === "willingForExtraDuties") return b ? "marked them willing to cover extra duties" : "marked them not available for extra duties";
+    if (k === "morningOnly") return b ? "set them to weekday mornings only" : "returned them to the full duty cycle";
     if (k === "excludedFromNights") return b ? "excluded them from night duty" : "returned them to night duty";
     if (k === "maxDutiesPerWeek") {
       const fmt = (v: unknown) => (v === 0 ? "no limit" : String(v));

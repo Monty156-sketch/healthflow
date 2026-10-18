@@ -3,6 +3,7 @@
 // Staff are matched on staff number, so importing again updates rather than
 // duplicates.
 import { Router } from "express";
+import { isInCharge } from "../../lib/dutyPlan.js";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
@@ -138,7 +139,7 @@ staffImportRouter.post("/commit", async (req, res) => {
     const { staffNo, ...rest } = r.data as { staffNo: string } & Record<string, unknown>;
     const prior = await prisma.staff.findFirst({ where: { facilityId: who.facilityId, staffNo: { equals: staffNo, mode: "insensitive" } }, select: { id: true } });
     if (prior) { await prisma.staff.update({ where: { id: prior.id }, data: rest }); updated++; }
-    else { await prisma.staff.create({ data: { facilityId: who.facilityId, staffNo, status: "ACTIVE", ...(rest as { fullName: string }) } }); created++; }
+    else { await prisma.staff.create({ data: { facilityId: who.facilityId, staffNo, status: "ACTIVE", morningOnly: isInCharge((rest as { position?: string }).position), ...(rest as { fullName: string }) } }); created++; }
   }
   const skipped = j.rows.filter((r) => r.action === "error").map((r) => ({ row: r.row, staffNo: r.staffNo, problems: r.problems }));
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "staff_imported", entityType: "Staff", summary: `${who.displayName} imported staff from a file: ${created} added, ${updated} updated, ${skipped.length} skipped.` });

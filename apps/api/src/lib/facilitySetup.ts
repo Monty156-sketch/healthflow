@@ -4,6 +4,7 @@
 // or written by the platform; staff are imported by the facility itself.
 import type { FacilityType } from "@healthflow/db";
 import { prisma } from "./prisma.js";
+import { defaultOnRoster, defaultRunsNights, defaultTakesNights } from "./dutyPlan.js";
 import { ensureRules } from "../routes/facility/rules.js";
 import { noticeTemplate } from "../routes/facility/privacy.js";
 import { randomToken, sha256 } from "./crypto.js";
@@ -24,8 +25,8 @@ export async function seedGroups(facilityId: string, _type?: FacilityType) {
   const haveCad = new Set(cads.map((c) => c.name.toLowerCase()));
   const newDeps = STANDARD_DEPARTMENTS.filter((n) => !haveDep.has(n.toLowerCase()));
   const newCads = STANDARD_CADRES.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
-  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name })) });
-  if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i })) });
+  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
+  if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, takesNights: defaultTakesNights(c.name) && defaultOnRoster(c.name), onRoster: defaultOnRoster(c.name) })) });
   return { departments: newDeps.length, cadres: newCads.length };
 }
 

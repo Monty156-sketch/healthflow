@@ -153,3 +153,25 @@ describe("rosters", () => {
     expect((await as(otherAdmin).get("/api/facility/rosters")).body.rosters).toHaveLength(0);
   });
 });
+
+describe("who is on the roster", () => {
+  it("keeps in-charges to weekday mornings, doctors off, and nights to cadres and departments that take them", async () => {
+    const { facility, api, nurse, shifts } = await setup(12);
+    const doctors = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Medical Officer", sortOrder: 2, onRoster: false, takesNights: false } });
+    const noNights = await prisma.department.create({ data: { facilityId: facility.id, name: "Eye", runsNights: false } });
+    const doctor = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "D01", fullName: "Dr Mensah", status: "ACTIVE", cadreId: doctors.id } });
+    const inCharge = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "IC1", fullName: "Sister Amina", position: "Nurse In-charge", status: "ACTIVE", cadreId: nurse.id, morningOnly: true } });
+    const eye = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "E01", fullName: "Eye Nurse", status: "ACTIVE", cadreId: nurse.id, departmentId: noNights.id } });
+    const id = (await api.post("/api/facility/rosters", { year: 2026, month: 11 })).body.roster.id;
+    const gen = await api.post(`/api/facility/rosters/${id}/generate`, {});
+    expect(gen.status).toBe(200);
+    const rows = await prisma.rosterAssignment.findMany({ where: { rosterId: id }, include: { shift: true } });
+    const duties = (staffId: string) => rows.filter((r) => r.staffId === staffId && r.shift.countsAsDuty);
+    expect(duties(doctor.id)).toHaveLength(0);
+    expect(rows.filter((r) => r.staffId === doctor.id)).toHaveLength(0);
+    expect(duties(inCharge.id).length).toBeGreaterThan(15);
+    expect(duties(inCharge.id).every((r) => r.shift.code === "A" && ![0, 6].includes(r.dutyDate.getUTCDay()))).toBe(true);
+    expect(duties(eye.id).some((r) => r.shift.isOvernight)).toBe(false);
+    expect(shifts.length).toBe(3);
+  });
+});
