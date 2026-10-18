@@ -432,6 +432,9 @@ model Department {
   runsNights Boolean   @default(true)
 
   staff Staff[]
+  rosters Roster[]
+  shiftDemand ShiftDemand[]
+  managers UserProfile[]
 
   @@index([facilityId])
 }
@@ -515,6 +518,9 @@ model UserProfile {
   passwordHash                  String
   staffId                       String?   @unique
   staff                         Staff?    @relation(fields: [staffId], references: [id])
+  /// A ward roster manager can work only on this department's rosters. Null means the whole facility.
+  departmentId                  String?
+  department                    Department? @relation(fields: [departmentId], references: [id])
   role                          Role
   scopeType                     ScopeType
   scopeId                       String?   // facilityId or districtId; null for platform
@@ -590,6 +596,20 @@ model Shift {
   @@index([facilityId])
 }
 
+/// How many people a ward needs on a shift, where it differs from the facility-wide minimum.
+model ShiftDemand {
+  id           String     @id @default(cuid())
+  facilityId   String
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+  shiftId      String
+  minStaff     Int        @default(0)
+  minByCadre   Json       @default("{}")
+
+  @@unique([departmentId, shiftId])
+  @@index([facilityId])
+}
+
 model ConstraintRule {
   id           String        @id @default(cuid())
   facilityId   String
@@ -654,6 +674,9 @@ model Roster {
   facility               Facility     @relation(fields: [facilityId], references: [id])
   month                  Int
   year                   Int
+  /// Null for a whole-facility roster. Set for a ward or department roster in a hospital.
+  departmentId           String?
+  department             Department?  @relation(fields: [departmentId], references: [id])
   title                  String?
   status                 RosterStatus @default(DRAFT)
   version                Int          @default(1)
@@ -674,7 +697,8 @@ model Roster {
   attendance  Attendance[]
   swaps       DutySwap[]
 
-  @@unique([facilityId, month, year])
+  // One whole-facility roster per month is kept by a partial index in the migration (a null department never clashes in a plain unique).
+  @@unique([facilityId, month, year, departmentId])
   @@index([facilityId])
 }
 

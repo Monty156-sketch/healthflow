@@ -37,12 +37,14 @@ export interface Facility {
   dataProtectionContactName: string | null;
   dataProtectionContactEmail: string | null;
   status: string;
+  /** Hospitals keep one roster per ward or department. */
+  rosterByWard?: boolean;
 }
 
 interface FacilityResponse {
   facility: Facility;
   setup: { departments: number; cadres: number; staff: number };
-  me: { role: string; displayName: string };
+  me: { role: string; displayName: string; departmentId?: string | null };
   /** Feature flags that exist, as key to on or off for this facility. A capability with no flag is on. */
   flags?: Record<string, boolean>;
 }

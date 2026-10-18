@@ -13,7 +13,8 @@ export const isNight = (s: EShift) => s.isOvernight || s.name.toLowerCase().incl
 export async function rosterForMonth(facilityId: string, year: number, month: number) {
   const rows = await prisma.roster.findMany({ where: { facilityId, year, month }, orderBy: { version: "desc" } });
   const rank = (s: string) => (s === "PUBLISHED" ? 0 : s === "APPROVED" ? 1 : 2);
-  return rows.sort((a, b) => rank(a.status) - rank(b.status) || b.version - a.version)[0] ?? null;
+  // A whole-facility roster first; a hospital's reports are read one ward at a time, starting with the first ward.
+  return rows.sort((a, b) => Number(a.departmentId !== null) - Number(b.departmentId !== null) || rank(a.status) - rank(b.status) || b.version - a.version)[0] ?? null;
 }
 
 export interface StaffFigures {

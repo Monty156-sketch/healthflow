@@ -32,6 +32,7 @@ export interface Staff {
     lastSignInAt: string | null;
     mfaEnabled: boolean;
     privacyNoticeVersionAccepted?: string | null;
+    wardDepartmentId?: string | null;
   } | null;
   hasPhoto?: boolean;
   /** Only on the detail record. */
@@ -124,6 +125,8 @@ export interface RosterSummary {
   year: number;
   month: number;
   label: string;
+  departmentId?: string | null;
+  department?: string | null;
   status: "DRAFT" | "GENERATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
   version: number;
   generatedAt: string | null;

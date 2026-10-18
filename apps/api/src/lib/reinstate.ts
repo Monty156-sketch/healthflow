@@ -47,14 +47,14 @@ export interface Plan {
 }
 
 async function context(facilityId: string, leaveRequestId: string) {
-  const r = await prisma.leaveRequest.findFirst({ where: { id: leaveRequestId, facilityId }, include: { staff: { select: { id: true, fullName: true, cadreId: true, status: true } } } });
+  const r = await prisma.leaveRequest.findFirst({ where: { id: leaveRequestId, facilityId }, include: { staff: { select: { id: true, fullName: true, cadreId: true, departmentId: true, status: true } } } });
   if (!r) throw new ReinstateError(404, "That leave was not found.");
   if (!r.actualReturnDate) throw new ReinstateError(409, "The return has not been confirmed yet, so there is nothing to put back on the roster.");
   if (r.staff.status !== "ACTIVE") throw new ReinstateError(409, `${r.staff.fullName} is not an active member of staff.`);
   const back = Math.floor(r.actualReturnDate.getTime() / DAY);
   const from = Math.max(back, Math.floor(Date.now() / DAY));
   const d = new Date(from * DAY);
-  const roster = await prisma.roster.findFirst({ where: { facilityId, year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, status: "PUBLISHED" } });
+  const roster = await prisma.roster.findFirst({ where: { facilityId, year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, status: "PUBLISHED", OR: [{ departmentId: r.staff.departmentId }, { departmentId: null }] }, orderBy: { departmentId: "asc" } });
   return { r, from, roster };
 }
 

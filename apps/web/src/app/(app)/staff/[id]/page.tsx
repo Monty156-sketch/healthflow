@@ -203,6 +203,46 @@ function ResetLink({ s }: { s: Staff }) {
   );
 }
 
+/** A roster manager at a hospital can be limited to one ward's rosters. */
+function WardLimit({ s }: { s: Staff & { account: NonNullable<Staff["account"]> } }) {
+  const { isAdmin, facility } = useFacility();
+  const depts = useResource<{ departments: { id: string; name: string; active: boolean }[] }>(isAdmin && facility.rosterByWard ? "/api/facility/departments" : null);
+  const [value, setValue] = useState(s.account.wardDepartmentId ?? "");
+  const [busy, setBusy] = useState(false);
+  const [say, setSay] = useState<string | null>(null);
+  if (!isAdmin || !facility.rosterByWard || !["ROSTER_MANAGER", "SUPERVISOR"].includes(s.account.role)) return null;
+  async function save(next: string) {
+    setValue(next);
+    setBusy(true);
+    setSay(null);
+    try {
+      await api.put(`/api/facility/staff/${s.id}/ward`, { departmentId: next || null });
+      setSay(next ? "Saved. They now see this ward's rosters only." : "Saved. They can work on every roster.");
+    } catch {
+      setSay("This could not be saved. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="mt-4">
+      <Field label="Rosters they work on" hint="Choose a ward to limit them to that ward's rosters, or leave it on every roster.">
+        {(a) => (
+          <Select {...a} value={value} disabled={busy} onChange={(e) => save(e.target.value)}>
+            <option value="">Every roster</option>
+            {(depts.data?.departments ?? []).filter((d) => d.active).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} only
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {say && <p className="mt-1 text-sm text-[var(--muted)]">{say}</p>}
+    </div>
+  );
+}
+
 function AccountPanel({ s }: { s: Staff & { account: NonNullable<Staff["account"]> } }) {
   return (
     <Panel title="HealthFlow account">
@@ -226,6 +266,7 @@ function AccountPanel({ s }: { s: Staff & { account: NonNullable<Staff["account"
           <dd className="figures">{s.account.lastSignInAt ? showDateTime(s.account.lastSignInAt) : "Never"}</dd>
         </div>
       </dl>
+      <WardLimit s={s} />
       <ResetLink s={s} />
     </Panel>
   );

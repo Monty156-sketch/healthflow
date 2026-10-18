@@ -21,7 +21,7 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const month = today.getUTCMonth() + 1;
   const year = today.getUTCFullYear();
 
-  const [statusGroups, shifts, todayAssignments, todayAttendance, onLeaveToday, roster, nextRoster, leavePending, swapsPending, returns, weekAssignments, weekAttendance] =
+  const [statusGroups, shifts, todayAssignments, todayAttendance, onLeaveToday, monthRosters, nextRosters, leavePending, swapsPending, returns, weekAssignments, weekAttendance] =
     await Promise.all([
       prisma.staff.groupBy({ by: ["status"], where: { facilityId }, _count: { _all: true } }),
       prisma.shift.findMany({
@@ -32,12 +32,12 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       prisma.rosterAssignment.groupBy({ by: ["shiftId"], where: { facilityId, dutyDate: today }, _count: { _all: true } }),
       prisma.attendance.groupBy({ by: ["status"], where: { facilityId, dutyDate: today }, _count: { _all: true } }),
       prisma.leaveRequest.count({ where: { facilityId, status: "APPROVED", startDate: { lte: today }, endDate: { gte: today } } }),
-      prisma.roster.findUnique({
-        where: { facilityId_month_year: { facilityId, month, year } },
+      prisma.roster.findMany({
+        where: { facilityId, month, year },
         select: { id: true, status: true, version: true, publishedAt: true, attendanceCompleteness: true, hasUnresolvedConflicts: true },
       }),
-      prisma.roster.findUnique({
-        where: { facilityId_month_year: { facilityId, month: month === 12 ? 1 : month + 1, year: month === 12 ? year + 1 : year } },
+      prisma.roster.findMany({
+        where: { facilityId, month: month === 12 ? 1 : month + 1, year: month === 12 ? year + 1 : year },
         select: { status: true },
       }),
       prisma.leaveRequest.count({ where: { facilityId, status: "SUBMITTED" } }),
@@ -47,8 +47,13 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       prisma.attendance.groupBy({ by: ["dutyDate", "status"], where: { facilityId, dutyDate: { gte: weekStart, lt: tomorrow } }, _count: { _all: true } }),
     ]);
 
-  const findings = roster
-    ? await prisma.complianceFinding.groupBy({ by: ["severity"], where: { rosterId: roster.id, status: "OPEN" }, _count: { _all: true } })
+  // A hospital has one roster per ward: show the one furthest from published, and count findings across all of them.
+  const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED", "ARCHIVED"];
+  const furthest = <T extends { status: string }>(rows: T[]) => [...rows].sort((a, b) => RANK.indexOf(a.status) - RANK.indexOf(b.status))[0] ?? null;
+  const roster = furthest(monthRosters);
+  const nextRoster = furthest(nextRosters);
+  const findings = monthRosters.length
+    ? await prisma.complianceFinding.groupBy({ by: ["severity"], where: { rosterId: { in: monthRosters.map((r) => r.id) }, status: "OPEN" }, _count: { _all: true } })
     : [];
 
   const staffBy = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));

@@ -25,9 +25,10 @@ const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const CODE: Record<AttendanceStatus, string> = { PRESENT: "P", LATE: "LT", ABSENT: "A", EXCUSED: "E", OFF_DUTY: "OD", ON_LEAVE: "OL", OFFICIAL_ASSIGNMENT: "OA" };
 const MARKABLE = ["PRESENT", "LATE", "ABSENT", "EXCUSED"] as const;
 
-async function rosterFor(facilityId: string, day: number) {
+/** Every published roster for the month: one for the facility, or one per ward in a hospital. */
+async function rostersFor(facilityId: string, day: number) {
   const d = dateOf(day);
-  return prisma.roster.findFirst({ where: { facilityId, status: "PUBLISHED", month: d.getUTCMonth() + 1, year: d.getUTCFullYear() } });
+  return prisma.roster.findMany({ where: { facilityId, status: "PUBLISHED", month: d.getUTCMonth() + 1, year: d.getUTCFullYear() } });
 }
 
 async function leaveOn(facilityId: string, from: number, to: number) {
@@ -45,20 +46,20 @@ attendanceRouter.get("/day", async (req, res) => {
   const q = z.object({ date: z.string().regex(ISO) }).safeParse(req.query);
   if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a date." });
   const day = dayOf(new Date(`${q.data.date}T00:00:00Z`));
-  const [facility, roster] = await Promise.all([prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { attendanceCutoffDays: true } }), rosterFor(facilityId, day)]);
+  const [facility, rosters] = await Promise.all([prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { attendanceCutoffDays: true } }), rostersFor(facilityId, day)]);
   const future = day > todayDay();
   const late = todayDay() - day > facility.attendanceCutoffDays;
   const base = { date: q.data.date, cutoffDays: facility.attendanceCutoffDays, needsReason: late };
 
   let blocked: string | null = null;
   if (future) blocked = "This date has not happened yet, so attendance cannot be recorded.";
-  else if (!roster) blocked = "There is no published roster for this month. Attendance is recorded against a published roster.";
+  else if (!rosters.length) blocked = "There is no published roster for this month. Attendance is recorded against a published roster.";
 
   const [leave, assignments, everyone] = await Promise.all([
     leaveOn(facilityId, day, day),
-    roster
+    rosters.length
       ? prisma.rosterAssignment.findMany({
-          where: { rosterId: roster.id, dutyDate: dateOf(day), shift: { countsAsDuty: true } },
+          where: { rosterId: { in: rosters.map((r) => r.id) }, dutyDate: dateOf(day), shift: { countsAsDuty: true } },
           include: { staff: { select: { id: true, fullName: true, cadre: { select: { name: true } } } }, shift: true },
           orderBy: [{ shift: { sortOrder: "asc" } }, { staff: { fullName: "asc" } }],
         })
@@ -125,13 +126,13 @@ attendanceRouter.put("/day", async (req, res) => {
   if (!input) return;
   const day = dayOf(new Date(`${input.date}T00:00:00Z`));
   if (day > todayDay()) return res.status(409).json({ error: "future", message: "That date has not happened yet." });
-  const roster = await rosterFor(who.facilityId, day);
-  if (!roster) return res.status(409).json({ error: "not_published", message: "There is no published roster for that month." });
+  const rosters = await rostersFor(who.facilityId, day);
+  if (!rosters.length) return res.status(409).json({ error: "not_published", message: "There is no published roster for that month." });
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { attendanceCutoffDays: true } });
   const late = todayDay() - day > facility.attendanceCutoffDays;
 
   const assignments = await prisma.rosterAssignment.findMany({
-    where: { id: { in: input.records.map((r) => r.assignmentId) }, rosterId: roster.id, dutyDate: dateOf(day) },
+    where: { id: { in: input.records.map((r) => r.assignmentId) }, rosterId: { in: rosters.map((r) => r.id) }, dutyDate: dateOf(day) },
     include: { staff: { select: { fullName: true } } },
   });
   if (assignments.length !== new Set(input.records.map((r) => r.assignmentId)).size) {
@@ -171,7 +172,7 @@ attendanceRouter.put("/day", async (req, res) => {
     if (!prev) {
       await prisma.attendance.create({
         data: {
-          facilityId: who.facilityId, staffId: a.staffId, rosterId: roster.id, rosterAssignmentId: a.id, dutyDate: a.dutyDate, shiftId: a.shiftId,
+          facilityId: who.facilityId, staffId: a.staffId, rosterId: a.rosterId, rosterAssignmentId: a.id, dutyDate: a.dutyDate, shiftId: a.shiftId,
           ...data, recordedBy: who.email, ...(late ? { correctedBy: who.email, correctedAt: new Date(), correctionReason: input.reason } : {}),
         },
       });
@@ -190,7 +191,7 @@ attendanceRouter.put("/day", async (req, res) => {
         : `${who.displayName} recorded ${a.staff.fullName} as ${r.status.toLowerCase()} on ${sayDay(day)}.`,
     });
   }
-  await refreshCompleteness(roster.id, who.facilityId, day);
+  for (const id of new Set(assignments.map((a) => a.rosterId))) await refreshCompleteness(id, who.facilityId, day);
   res.json({ saved: written });
 });
 
@@ -228,14 +229,15 @@ attendanceRouter.get("/month", async (req, res) => {
   const [y, m] = q.data.month.split("-").map(Number);
   const first = dayOf(new Date(Date.UTC(y, m - 1, 1)));
   const last = dayOf(new Date(Date.UTC(y, m, 0)));
-  const roster = await rosterFor(facilityId, first);
+  const rosters = await rostersFor(facilityId, first);
+  const roster = rosters.length ? rosters : null;
   const [staff, leave, assignments, records] = await Promise.all([
     prisma.staff.findMany({
       where: { facilityId, status: "ACTIVE" }, orderBy: { fullName: "asc" },
       select: { id: true, fullName: true, staffNo: true, cadre: { select: { name: true } }, department: { select: { id: true, name: true } } },
     }),
     leaveOn(facilityId, first, last),
-    roster ? prisma.rosterAssignment.findMany({ where: { rosterId: roster.id, shift: { countsAsDuty: true } }, select: { staffId: true, dutyDate: true } }) : Promise.resolve([]),
+    roster ? prisma.rosterAssignment.findMany({ where: { rosterId: { in: roster.map((r) => r.id) }, shift: { countsAsDuty: true } }, select: { staffId: true, dutyDate: true } }) : Promise.resolve([]),
     prisma.attendance.findMany({ where: { facilityId, dutyDate: { gte: dateOf(first), lte: dateOf(last) } }, select: { staffId: true, dutyDate: true, status: true, needsReview: true } }),
   ]);
   const cells: { staffId: string; date: string; code: string; needsReview?: boolean }[] = [];
@@ -253,7 +255,7 @@ attendanceRouter.get("/month", async (req, res) => {
     }
   }
   res.json({
-    month: q.data.month, published: Boolean(roster), completeness: roster?.attendanceCompleteness ?? null,
+    month: q.data.month, published: Boolean(roster), completeness: (() => { const v = (roster ?? []).map((r) => r.attendanceCompleteness).filter((x): x is number => x !== null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; })(),
     staff: staff.map((s) => ({ id: s.id, name: s.fullName, cadreName: s.cadre?.name ?? null, departmentId: s.department?.id ?? null, departmentName: s.department?.name ?? null })),
     departments: [...new Map(staff.filter((s) => s.department).map((s) => [s.department!.id, s.department!])).values()],
     cells,

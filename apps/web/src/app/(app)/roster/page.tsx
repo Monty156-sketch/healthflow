@@ -12,6 +12,10 @@ import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 import { Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll } from "@/components/ui";
 
 function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
+  const facility = useFacility();
+  const choose = Boolean(facility.facility.rosterByWard) && !facility.me.departmentId;
+  const wards = useResource<{ departments: { id: string; name: string; active: boolean }[] }>(choose ? "/api/facility/departments" : null);
+  const [departmentId, setDepartmentId] = useState("");
   const now = new Date();
   const next = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
   const [year, setYear] = useState(next.getUTCFullYear());
@@ -25,7 +29,7 @@ function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
     setBusy(true);
     setProblem(null);
     try {
-      const res = await api.post<{ roster: { id: string } }>("/api/facility/rosters", { year, month });
+      const res = await api.post<{ roster: { id: string } }>("/api/facility/rosters", { year, month, departmentId: choose ? departmentId : undefined });
       onCreated(res.roster.id);
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { message?: string; id?: string }) : undefined;
@@ -38,6 +42,21 @@ function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
 
   return (
     <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
+      {choose && (
+        <div>
+          <label htmlFor="new-ward" className="mb-1 block text-sm font-medium">
+            Ward or department
+          </label>
+          <Select id="new-ward" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+            <option value="">Choose one</option>
+            {(wards.data?.departments ?? []).filter((d) => d.active).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+      )}
       <div>
         <label htmlFor="new-month" className="mb-1 block text-sm font-medium">
           Month
@@ -85,10 +104,10 @@ export default function RosterListPage() {
 
   return (
     <>
-      <PageHeader title="Roster" description="One roster for each month. Start a month, generate it, and check it against the rules." />
+      <PageHeader title="Roster" description={facility.facility.rosterByWard ? "One roster for each ward or department each month. Start one, generate it, and check it against the rules." : "One roster for each month. Start a month, generate it, and check it against the rules."} />
       {canRoster && (
         <div className="mb-6">
-          <Panel title="Start a month">
+          <Panel title={facility.facility.rosterByWard ? "Start a ward roster" : "Start a month"}>
             <StartRoster onCreated={go} />
           </Panel>
         </div>

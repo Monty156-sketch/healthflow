@@ -27,6 +27,8 @@ export interface FacilityCaller {
   facilityId: string;
   /** The staff record linked to this account, if any. */
   staffId: string | null;
+  /** A ward roster manager works on this department's rosters only. Null means the whole facility. */
+  departmentId?: string | null;
   /** Set when PS Tech support is acting inside this facility through an open support session. */
   supportSessionId?: string;
 }
@@ -97,6 +99,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
       facilityId: true,
       active: true,
       staffId: true,
+      departmentId: true,
       staff: { select: { fullName: true } },
       facility: { select: { status: true } },
     },
@@ -129,6 +132,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     role: profile.role,
     facilityId: profile.facilityId,
     staffId: profile.staffId,
+    departmentId: profile.role === "FACILITY_ADMIN" ? null : profile.departmentId,
   };
   next();
 }
