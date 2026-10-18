@@ -16,7 +16,7 @@ type RuleRow = Awaited<ReturnType<typeof loadRules>>[number];
 function loadRules(facilityId: string) {
   return prisma.dutyCycleRule.findMany({
     where: { facilityId },
-    include: { countingShifts: { select: { id: true, code: true } } },
+    include: { countingShifts: { select: { id: true, code: true, isOvernight: true } } },
     orderBy: [{ active: "desc" }, { priority: "asc" }],
   });
 }
@@ -26,6 +26,8 @@ function present(r: RuleRow) {
     id: r.id,
     name: r.name,
     countingShiftIds: r.countingShifts.map((s) => s.id),
+    /** A night rule counts only overnight shifts; anything else is a day rule. The roster blends the two. */
+    kind: (r.countingShifts.length > 0 && r.countingShifts.every((s) => s.isOvernight) ? "NIGHT" : "DAY") as "NIGHT" | "DAY",
     consecutiveDuties: r.consecutiveDuties,
     offDaysRequired: r.offDaysRequired,
     offDaysConsecutive: r.offDaysConsecutive,
@@ -78,7 +80,7 @@ cyclesRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   await ensureSeeded(facilityId);
   const [rules, shifts, cadres, departments] = await Promise.all([
     loadRules(facilityId),
-    prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true } }),
+    prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true, isOvernight: true } }),
     prisma.cadre.findMany({ where: { facilityId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     prisma.department.findMany({ where: { facilityId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
@@ -176,7 +178,7 @@ cyclesRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       blockShiftPatternIds: input.blockShiftPatternIds,
       countingShifts: { connect: input.countingShiftIds.map((id) => ({ id })) },
     },
-    include: { countingShifts: { select: { id: true, code: true } } },
+    include: { countingShifts: { select: { id: true, code: true, isOvernight: true } } },
   });
   await writeAuditLog({
     facilityId: who.facilityId,
@@ -212,7 +214,7 @@ cyclesRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       blockShiftPatternIds: input.blockShiftPatternIds,
       countingShifts: { set: input.countingShiftIds.map((id) => ({ id })) },
     },
-    include: { countingShifts: { select: { id: true, code: true } } },
+    include: { countingShifts: { select: { id: true, code: true, isOvernight: true } } },
   });
   const before = present(existing);
   const after = present(rule);
@@ -248,7 +250,7 @@ cyclesRouter.patch("/:id/active", allowRoles(...ADMIN_ROLES), async (req, res) =
   const rule = await prisma.dutyCycleRule.update({
     where: { id: existing.id },
     data: { active: input.active },
-    include: { countingShifts: { select: { id: true, code: true } } },
+    include: { countingShifts: { select: { id: true, code: true, isOvernight: true } } },
   });
   await writeAuditLog({
     facilityId: who.facilityId,

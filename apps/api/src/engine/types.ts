@@ -61,6 +61,8 @@ export interface ECycleRule {
   nextShiftAfterRestId?: string | null;
   /** The order shifts take within a block, repeating until the block ends. */
   blockShiftPatternIds?: string[];
+  /** Set by the engine: true for a night rule (counts only overnight shifts), false for a day rule. */
+  night?: boolean;
 }
 
 /** The order shifts follow one another for the staff it covers (spec 2A.1). */

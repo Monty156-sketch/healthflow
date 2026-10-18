@@ -9,23 +9,26 @@ import { ShiftStrip, buildStrip } from "@/components/ShiftStrip";
 import { PatternPreview } from "@/components/PatternPreview";
 
 interface Lookups {
-  shifts: { id: string; code: string; name: string; colour: string | null }[];
+  shifts: { id: string; code: string; name: string; colour: string | null; isOvernight?: boolean }[];
   cadres: { id: string; name: string }[];
   departments: { id: string; name: string }[];
 }
 
-export function CycleForm({ rule, lookups, onSaved, onCancel }: { rule: CycleRule | null; lookups: Lookups; onSaved: () => void; onCancel: () => void }) {
-  const [name, setName] = useState(rule?.name ?? "");
-  const [n, setN] = useState(String(rule?.consecutiveDuties ?? 5));
-  const [m, setM] = useState(String(rule?.offDaysRequired ?? 2));
+export function CycleForm({ rule, kind, lookups, onSaved, onCancel }: { rule: CycleRule | null; kind?: "NIGHT" | "DAY" | null; lookups: Lookups; onSaved: () => void; onCancel: () => void }) {
+  // A new night or day rule starts with the right shifts ticked and the usual numbers; a saved rule keeps its own.
+  const preset = !rule && kind ? lookups.shifts.filter((s) => (kind === "NIGHT" ? s.isOvernight : !s.isOvernight)) : [];
+  const presetAfter = !rule && kind === "NIGHT" ? lookups.shifts.find((s) => !s.isOvernight && s.name.toLowerCase().includes("afternoon"))?.id ?? "" : "";
+  const [name, setName] = useState(rule?.name ?? (kind === "NIGHT" ? "4 nights on, 3 off" : kind === "DAY" ? "4 days on, 2 off" : ""));
+  const [n, setN] = useState(String(rule?.consecutiveDuties ?? (kind ? 4 : 5)));
+  const [m, setM] = useState(String(rule?.offDaysRequired ?? (kind === "NIGHT" ? 3 : 2)));
   const [consecutive, setConsecutive] = useState(rule?.offDaysConsecutive ?? true);
-  const [shiftIds, setShiftIds] = useState<string[]>(rule?.countingShiftIds ?? []);
+  const [shiftIds, setShiftIds] = useState<string[]>(rule?.countingShiftIds ?? preset.map((s) => s.id));
   const [cadreIds, setCadreIds] = useState<string[]>(rule?.applicableCadreIds ?? []);
   const [deptIds, setDeptIds] = useState<string[]>(rule?.applicableDepartmentIds ?? []);
   const [enforcement, setEnforcement] = useState<"BLOCK" | "PREFER">(rule?.enforcement ?? "PREFER");
   const [priority, setPriority] = useState(rule ? String(rule.priority) : "");
   const [confirmBlock, setConfirmBlock] = useState(false);
-  const [afterRest, setAfterRest] = useState(rule?.nextShiftAfterRestId ?? "");
+  const [afterRest, setAfterRest] = useState(rule?.nextShiftAfterRestId ?? presetAfter);
   const [pattern, setPattern] = useState<string[]>(rule?.blockShiftPatternIds ?? []);
 
   const nNum = Number(n);

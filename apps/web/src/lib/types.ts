@@ -95,6 +95,7 @@ export interface CycleRule {
   id: string;
   name: string;
   countingShiftIds: string[];
+  kind: "NIGHT" | "DAY";
   consecutiveDuties: number;
   offDaysRequired: number;
   offDaysConsecutive: boolean;
