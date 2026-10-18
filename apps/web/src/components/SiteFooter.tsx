@@ -46,6 +46,7 @@ export function SiteFooter() {
             <h2 className={H}>Contact</h2>
             <ul className="mt-2">
               <li><a href="tel:+233554571800" className={LINK}>+233 55 457 1800</a></li>
+              <li><a href="tel:+233246187422" className={LINK}>+233 24 618 7422</a></li>
               <li><a href="mailto:muslimfroko05@gmail.com" className={`${LINK} break-all`}>muslimfroko05@gmail.com</a></li>
               <li><Link href="/contact" className={LINK}>Wa, Upper West</Link></li>
             </ul>

@@ -13,7 +13,7 @@ import { Button, ConfirmDialog, EmptyState, Loading, LoadError, Notice, PageHead
 
 interface Data {
   rules: CycleRule[];
-  shifts: { id: string; code: string; name: string; colour: string | null }[];
+  shifts: { id: string; code: string; name: string; colour: string | null; isOvernight: boolean }[];
   cadres: { id: string; name: string }[];
   departments: { id: string; name: string }[];
 }
@@ -108,6 +108,7 @@ export default function DutyCyclesPage() {
   const { isAdmin } = useFacility();
   const { data, error, reload } = useResource<Data>("/api/facility/cycles");
   const [editing, setEditing] = useState<CycleRule | "new" | null>(null);
+  const [newKind, setNewKind] = useState<"NIGHT" | "DAY" | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [capKey, setCapKey] = useState(0);
@@ -161,8 +162,15 @@ export default function DutyCyclesPage() {
     <>
       <PageHeader
         title="Duty cycles"
-        description="How many duties in a row, and then how many days off. The roster follows these when it is built."
-        actions={isAdmin && editing === null && data.shifts.length > 0 && <Button onClick={() => setEditing("new")}>Add rule</Button>}
+        description="One rule for nights and one for days: how many duties in a row, then how many days off. The roster follows both and blends them."
+        actions={
+          isAdmin && editing === null && data.shifts.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => { setNewKind("NIGHT"); setEditing("new"); }}>Add night rule</Button>
+              <Button variant="secondary" onClick={() => { setNewKind("DAY"); setEditing("new"); }}>Add day rule</Button>
+            </div>
+          )
+        }
       />
       {problem && (
         <div className="mb-4">
@@ -171,18 +179,19 @@ export default function DutyCyclesPage() {
       )}
       <div className="mb-6">
         <Notice>
-          A rule counts only the shifts it names, and a run is broken by a day off, by leave, or by a duty that is not on its list. So three day duties followed
-          by three nights break both a day rule and a night rule, and neither fires, though the person has worked six in a row. Keep a rule that counts every
-          duty shift to close that gap.
+          A night rule counts overnight shifts and a day rule counts the rest. With both set, the roster blends them for each person: after a night block and
+          its days off the next block is a day block, and after a day block it goes back to nights, so nobody is given a whole month of either. Each facility
+          sets its own numbers. Change them here and the next roster uses them.
         </Notice>
       </div>
 
       {editing !== null && (
         <div className="mb-6">
-          <Panel title={editing === "new" ? "Add a duty cycle rule" : `Edit ${editing.name}`}>
+          <Panel title={editing === "new" ? (newKind === "NIGHT" ? "Add a night rule" : newKind === "DAY" ? "Add a day rule" : "Add a duty cycle rule") : `Edit ${editing.name}`}>
             <CycleForm
               key={editing === "new" ? "new" : editing.id}
               rule={editing === "new" ? null : editing}
+              kind={editing === "new" ? newKind : null}
               lookups={data}
               onSaved={() => {
                 setEditing(null);
@@ -201,7 +210,7 @@ export default function DutyCyclesPage() {
         </EmptyState>
       ) : (
         <ul className="space-y-4">
-          {data.rules.map((r) => {
+          {[...data.rules].sort((x, y) => (x.kind === y.kind ? 0 : x.kind === "NIGHT" ? -1 : 1)).map((r) => {
             const colour = data.shifts.find((s) => r.countingShiftIds.includes(s.id))?.colour ?? "#25619f";
             return (
               <li key={r.id} className={r.active ? "" : "opacity-70"}>
@@ -210,6 +219,7 @@ export default function DutyCyclesPage() {
                   description={`Priority ${r.priority}. Counts ${shiftCodes(r)}. Applies to ${applies(r)}.`}
                   actions={
                     <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="neutral">{r.kind === "NIGHT" ? "Night rule" : "Day rule"}</StatusBadge>
                       <StatusBadge tone={r.enforcement === "BLOCK" ? "warning" : "neutral"}>{r.enforcement === "BLOCK" ? "Block" : "Prefer"}</StatusBadge>
                       {!r.active && <StatusBadge tone="neutral">Off</StatusBadge>}
                     </div>

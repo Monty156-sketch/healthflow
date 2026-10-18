@@ -85,6 +85,12 @@ const WRONG_AFTER_REST = 15;
 const RIGHT_AFTER_REST = 4;
 /** Out of the order a rule sets for its block. The spec says 3; a little more is needed for the order to read clearly. */
 const OFF_PATTERN = 8;
+/**
+ * Starting a new block of the same kind (nights after nights, days after days) as the last one.
+ * Applies only to people who have both a night rule and a day rule, so their month is a blend.
+ * It stays below REST_BROKEN and above the night balance's pull, so it steers without breaking a rest.
+ */
+const SAME_KIND_BLOCK = 9;
 /** Each duty still owed to or from the ledger moves a person this far up or down the queue. */
 const LEDGER_WEIGHT = 5;
 /** Rotation order is a weak preference beside fairness: 2 either way against the ledger's 5 and a night's 10 (spec 2A.3). */
@@ -112,6 +118,8 @@ interface RunState {
   rest: Map<number, "BLOCK" | "PREFER">;
   /** Set when a rest block starts: what the first duty back must be, and from which day the rest is over. */
   back?: { shiftId: string; enforcement: "BLOCK" | "PREFER"; firedDay: number; restEnds: number };
+  /** The last duty worked: which day, and whether it was a night. Survives days off, so the next block knows what came before. */
+  last?: { day: number; night: boolean };
 }
 
 const freshState = (): RunState => ({ runs: new Map(), rest: new Map() });
@@ -132,6 +140,10 @@ function dutyCheck(st: RunState, rules: ECycleRule[], day: number, shift: EShift
       soft -= RIGHT_AFTER_REST;
     }
   }
+  // Blend: a block that starts after days off should not be the same kind as the block before it.
+  if (st.last && st.last.day < day - 1 && st.last.night === shift.isOvernight && rules.some((r) => r.night === true) && rules.some((r) => r.night === false)) {
+    soft += SAME_KIND_BLOCK;
+  }
   for (const r of rules) {
     const pattern = r.blockShiftPatternIds ?? [];
     if (!pattern.length || !r.countingShiftIds.includes(shift.id) || !pattern.includes(shift.id)) continue;
@@ -151,6 +163,7 @@ function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift |
     for (const r of rules) st.runs.set(r.id, 0);
     return;
   }
+  st.last = { day, night: shift.isOvernight };
   if (st.back && day > st.back.firedDay) st.back = undefined; // the first duty since the rule fired has now happened
   const fired: ECycleRule[] = [];
   for (const r of rules) {
@@ -211,7 +224,12 @@ export function generate(input: GenerateInput): GenerateResult {
   const dutyOn = (id: string, day: number) => by.get(id)!.get(day);
 
   // ---- Step 0: run state carried across the month boundary
-  const cycleRules = new Map(staff.map((s) => [s.id, rulesFor(s, input.cycles)]));
+  // A rule is a night rule when every shift it counts is overnight, otherwise a day rule.
+  const kinded: ECycleRule[] = input.cycles.map((r) => {
+    const counted = r.countingShiftIds.map((id) => shiftById.get(id)).filter((x): x is EShift => !!x);
+    return { ...r, night: counted.length > 0 && counted.every((x) => x.isOvernight) };
+  });
+  const cycleRules = new Map(staff.map((s) => [s.id, rulesFor(s, kinded)]));
   const state = new Map<string, RunState>();
   for (const s of staff) {
     const st = freshState();
