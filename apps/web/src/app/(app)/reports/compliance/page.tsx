@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { WardSelect } from "@/components/WardSelect";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { ComplianceReport } from "@/lib/types";
@@ -11,15 +12,17 @@ const thisMonth = () => new Date().toISOString().slice(0, 7);
 
 export default function CompliancePage() {
   const [month, setMonth] = useState(thisMonth());
+  const [ward, setWard] = useState("");
+  const q = `month=${month}${ward ? `&ward=${ward}` : ""}`;
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const { data, error, reload } = useResource<ComplianceReport>(`/api/facility/reports/compliance?month=${month}`);
+  const { data, error, reload } = useResource<ComplianceReport>(`/api/facility/reports/compliance?${q}`);
 
   async function get(kind: "pdf" | "csv") {
     setBusy(kind);
     setProblem(null);
     try {
-      await api.download(`/api/facility/reports/compliance.${kind}?month=${month}`, `compliance-${month}.${kind}`);
+      await api.download(`/api/facility/reports/compliance.${kind}?${q}`, `compliance-${month}.${kind}`);
     } catch {
       setProblem("The file could not be made. Check your connection and try again.");
     } finally {
@@ -34,6 +37,7 @@ export default function CompliancePage() {
         <div className="max-w-[12rem]">
           <Field label="Month">{(a) => <Input {...a} type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />}</Field>
         </div>
+        <WardSelect value={ward} onChange={setWard} />
         {data?.roster && (
           <>
             <Button variant="secondary" disabled={busy !== null} onClick={() => get("pdf")}>{busy === "pdf" ? "Preparing PDF…" : "Download PDF"}</Button>
@@ -51,7 +55,7 @@ export default function CompliancePage() {
       ) : (
         <div className="space-y-6">
           <p className="text-[15px] text-[var(--muted)]">
-            {data.title}, roster {data.roster.status.toLowerCase().replace("_", " ")}, version {data.roster.version}.
+            {data.title}{!data.ward && data.wards?.length ? `, ${data.wards.length} ward rosters` : ""}, roster {data.roster.status.toLowerCase().replace("_", " ")}, version {data.roster.version}.
             {["PUBLISHED", "APPROVED"].includes(data.roster.status) ? "" : " This roster is not approved yet, so the figures may change."}
           </p>
           <dl className="grid gap-3 sm:grid-cols-4">
@@ -80,7 +84,7 @@ export default function CompliancePage() {
               <tbody>
                 {data.rows!.map((r) => (
                   <tr key={r.staffId}>
-                    <th scope="row" className="border-b border-[var(--border)] px-3 py-2 font-medium">{r.name}{r.cadre && <span className="block text-sm font-normal text-[var(--muted)]">{r.cadre}</span>}</th>
+                    <th scope="row" className="border-b border-[var(--border)] px-3 py-2 font-medium">{r.name}{(r.cadre || r.ward) && <span className="block text-sm font-normal text-[var(--muted)]">{[r.cadre, r.ward].filter(Boolean).join(", ")}</span>}</th>
                     <td className="figures border-b border-[var(--border)] px-3 py-2 text-right">{r.hours}</td>
                     <td className="figures border-b border-[var(--border)] px-3 py-2 text-right">{r.dutyDays}</td>
                     <td className="figures border-b border-[var(--border)] px-3 py-2 text-right">{r.nights}</td>

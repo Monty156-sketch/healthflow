@@ -422,6 +422,7 @@ export interface ComplianceReport {
     staffNo: string;
     name: string;
     cadre: string | null;
+    ward?: string | null;
     hours: number;
     dutyDays: number;
     nights: number;
@@ -433,6 +434,8 @@ export interface ComplianceReport {
   overrides?: { rule: string; message: string; staff: string | null; reason: string; approver: string; date: string | null }[];
   summary?: { staffAboveNormalWeek: number; restBreaches: number; overridesGranted: number; unfilledShifts: number };
   normalWeek?: number;
+  wards?: { id: string; name: string; status: string }[];
+  ward?: string | null;
 }
 
 export interface FairMeans {

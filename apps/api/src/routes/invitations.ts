@@ -50,7 +50,8 @@ function loadStaffForInvite(facilityId: string, id: string) {
 async function issueInvitation(
   who: Who,
   s: StaffWithAccount,
-  role: (typeof INVITABLE_ROLES)[number]
+  role: (typeof INVITABLE_ROLES)[number],
+  ward: string | null = null
 ): Promise<{ refuse: string } | { url: string; expiresAt: Date; emailed: boolean }> {
   if (s.userProfile) return { refuse: `${s.fullName} already has a HealthFlow account.` };
   if (!["ACTIVE", "ON_LEAVE", "PENDING"].includes(s.status)) return { refuse: `${s.fullName} is not a current staff member.` };
@@ -78,6 +79,7 @@ async function issueInvitation(
         phone: s.phone,
         token: sha256(raw),
         role: role as Role,
+        wardDepartmentId: ward,
         sentAt: new Date(),
         expiresAt,
       },
@@ -112,7 +114,16 @@ export const staffInvitationRouter = Router({ mergeParams: true });
 
 const inviteInput = z.object({
   role: z.enum(INVITABLE_ROLES, { errorMap: () => ({ message: "Choose a role." }) }),
+  /** A roster manager at a hospital can be limited to one ward from the start. */
+  wardDepartmentId: z.string().trim().nullish().transform((v) => v || null),
 });
+
+/** The ward only applies to people who run rosters, and only if it is one of this facility's departments. */
+async function wardFor(facilityId: string, role: string, ward: string | null) {
+  if (!ward || !(["ROSTER_MANAGER", "SUPERVISOR"] as string[]).includes(role)) return null;
+  const d = await prisma.department.findFirst({ where: { id: ward, facilityId }, select: { id: true } });
+  return d?.id ?? null;
+}
 
 staffInvitationRouter.post("/:id/invite", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const who = caller(req);
@@ -120,7 +131,7 @@ staffInvitationRouter.post("/:id/invite", allowRoles(...ADMIN_ROLES), async (req
   if (!input) return;
   const s = await loadStaffForInvite(who.facilityId, String(req.params.id));
   if (!s) return res.status(404).json({ error: "not_found" });
-  const result = await issueInvitation(who, s, input.role);
+  const result = await issueInvitation(who, s, input.role, await wardFor(who.facilityId, input.role, input.wardDepartmentId));
   if ("refuse" in result) return res.status(409).json({ error: "cannot_invite", message: result.refuse });
   res.status(201).json({ url: result.url, expiresAt: result.expiresAt, emailed: result.emailed });
 });
@@ -162,6 +173,7 @@ const newInvitationInput = z.object({
   staffNo: optionalText(30, "Staff number"),
   cadreId: z.string().nullish(),
   departmentId: z.string().nullish(),
+  wardDepartmentId: z.string().trim().nullish().transform((v) => v || null),
 });
 
 /** Everyone invited: waiting, expired or joined. */
@@ -254,7 +266,7 @@ invitationAdminRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => 
 
   const s = await loadStaffForInvite(who.facilityId, staffRecord.id);
   if (!s) return res.status(404).json({ error: "not_found" });
-  const result = await issueInvitation(who, s, input.role);
+  const result = await issueInvitation(who, s, input.role, await wardFor(who.facilityId, input.role, input.wardDepartmentId));
   if ("refuse" in result) return res.status(409).json({ error: "cannot_invite", message: result.refuse });
   if (created) {
     await writeAuditLog({
@@ -296,7 +308,7 @@ invitationAdminRouter.post("/:id/resend", allowRoles(...ADMIN_ROLES), async (req
   const s = await loadStaffForInvite(who.facilityId, inv.staffId);
   if (!s) return res.status(404).json({ error: "not_found" });
   const role = INVITABLE_ROLES.find((r) => r === inv.role) ?? "STAFF";
-  const result = await issueInvitation(who, s, role);
+  const result = await issueInvitation(who, s, role, await wardFor(who.facilityId, role, inv.wardDepartmentId));
   if ("refuse" in result) return res.status(409).json({ error: "cannot_invite", message: result.refuse });
   res.status(201).json({ url: result.url, expiresAt: result.expiresAt, emailed: result.emailed, staffId: s.id, name: s.fullName });
 });
@@ -389,6 +401,7 @@ invitationRouter.post("/accept", authAttemptLimiter, async (req, res) => {
         scopeId: inv.facilityId,
         facilityId: inv.facilityId,
         staffId: inv.staffId,
+        departmentId: await wardFor(inv.facilityId, inv.role, inv.wardDepartmentId),
         privacyNoticeVersionAccepted: notice.version,
       },
     });

@@ -18,6 +18,8 @@ export async function rosterForMonth(facilityId: string, year: number, month: nu
 }
 
 export interface StaffFigures {
+  /** The ward or department the roster belongs to, when the facility keeps ward rosters. */
+  ward?: string | null;
   staffId: string;
   staffNo: string;
   name: string;
@@ -103,17 +105,17 @@ export interface FairRow {
 const plural = (w: string) => (/fe$/i.test(w) ? w.replace(/fe$/i, "ves") : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`);
 
 /** Three months ending at the given one, per cadre, against the cadre mean. */
-export async function fairnessFigures(facilityId: string, endYear: number, endMonth: number) {
+export async function fairnessFigures(facilityId: string, endYear: number, endMonth: number, departmentId?: string | null) {
   const months: { year: number; month: number }[] = [];
   for (let i = 2; i >= 0; i--) {
     const d = new Date(Date.UTC(endYear, endMonth - 1 - i, 1));
     months.push({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
   }
-  const rosters = (await Promise.all(months.map((m) => rosterForMonth(facilityId, m.year, m.month)))).filter((r): r is NonNullable<typeof r> => Boolean(r) && ["PUBLISHED", "APPROVED"].includes(r!.status));
+  const rosters = (await Promise.all(months.map((m) => rostersForMonth(facilityId, m.year, m.month, departmentId)))).flat().filter((r) => ["PUBLISHED", "APPROVED"].includes(r.status));
   const from = new Date(Date.UTC(months[0].year, months[0].month - 1, 1));
   const to = new Date(Date.UTC(endYear, endMonth, 0));
   const [staff, shifts, assignments, holidays, cadres] = await Promise.all([
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, select: { id: true, fullName: true, cadreId: true, staffNo: true } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(departmentId ? { departmentId } : {}) }, select: { id: true, fullName: true, cadreId: true, staffNo: true } }),
     prisma.shift.findMany({ where: { facilityId } }),
     prisma.rosterAssignment.findMany({ where: { rosterId: { in: rosters.map((r) => r.id) }, shift: { countsAsDuty: true } }, select: { staffId: true, shiftId: true, dutyDate: true } }),
     prisma.publicHoliday.findMany({ where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: from, lte: to } }, select: { date: true } }),
@@ -150,10 +152,44 @@ export async function fairnessFigures(facilityId: string, endYear: number, endMo
     .filter((g) => g.people.length > 0);
   return {
     period: { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) },
-    monthsCovered: rosters.length,
+    // Months with at least one published or approved roster.
+    monthsCovered: new Set(rosters.map((r) => `${r.year}-${r.month}`)).size,
     monthsAsked: months.length,
     byCadre,
     cadreOf: new Map(staff.map((s) => [s.id, s.cadreId])),
   };
 }
 
+
+// ------------------------------------------------------------- hospitals: one roster per ward
+
+/**
+ * Every roster to report on for a month. A health centre has one. A hospital
+ * has one per ward, each taken at its most advanced state, so the figures
+ * cover the whole hospital unless a single ward is asked for.
+ */
+export async function rostersForMonth(facilityId: string, year: number, month: number, departmentId?: string | null) {
+  const rows = await prisma.roster.findMany({
+    where: { facilityId, year, month, ...(departmentId ? { departmentId } : {}) },
+    include: { department: { select: { name: true } } },
+    orderBy: { version: "desc" },
+  });
+  const rank = (st: string) => (st === "PUBLISHED" ? 0 : st === "APPROVED" ? 1 : 2);
+  const best = new Map<string, (typeof rows)[number]>();
+  for (const r of [...rows].sort((a, b) => rank(a.status) - rank(b.status) || b.version - a.version)) if (!best.has(r.departmentId ?? "")) best.set(r.departmentId ?? "", r);
+  return [...best.values()].sort((a, b) => (a.department?.name ?? "").localeCompare(b.department?.name ?? ""));
+}
+
+/** One report over several ward rosters: people listed together, summaries added up. */
+export async function complianceForRosters(facilityId: string, rosters: Awaited<ReturnType<typeof rostersForMonth>>, year: number, month: number) {
+  const parts = await Promise.all(rosters.map(async (r) => ({ r, f: await complianceFigures(facilityId, r.id, year, month) })));
+  const rows = parts.flatMap(({ r, f }) => f.rows.map((x) => ({ ...x, ward: r.department?.name ?? null })));
+  rows.sort((a, b) => (a.ward ?? "").localeCompare(b.ward ?? "") || (a.cadre ?? "~").localeCompare(b.cadre ?? "~") || a.staffNo.localeCompare(b.staffNo, undefined, { numeric: true }));
+  const sum = (k: "staffAboveNormalWeek" | "restBreaches" | "overridesGranted" | "unfilledShifts") => parts.reduce((n, p) => n + p.f.summary[k], 0);
+  return {
+    rows,
+    overrides: parts.flatMap(({ r, f }) => f.overrides.map((o) => ({ ...o, ward: r.department?.name ?? null }))),
+    summary: { staffAboveNormalWeek: sum("staffAboveNormalWeek"), restBreaches: sum("restBreaches"), overridesGranted: sum("overridesGranted"), unfilledShifts: sum("unfilledShifts") },
+    normalWeek: NORMAL_WEEK,
+  };
+}
