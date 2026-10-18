@@ -37,6 +37,7 @@ import { swapsRouter } from "./swaps.js";
 import { coverRouter, ledgerRouter } from "./cover.js";
 import { reportsRouter } from "./reports.js";
 import { leaveSettingsRouter } from "./leaveSettings.js";
+import { meRouter } from "./me.js";
 import { directorateRouter } from "./directorate.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
@@ -60,6 +61,7 @@ facilityRouter.use("/my-duties", myDutiesRouter);
 facilityRouter.use("/swaps", swapsRouter);
 facilityRouter.use("/cover", coverRouter);
 facilityRouter.use("/directorate", directorateRouter);
+facilityRouter.use("/me", meRouter);
 facilityRouter.use("/ledger", ledgerRouter);
 facilityRouter.use("/reports", reportsRouter);
 facilityRouter.use("/", leaveSettingsRouter);
@@ -90,8 +92,13 @@ function presentFacility(f: Awaited<ReturnType<typeof prisma.facility.findUnique
 }
 
 /** The facility, plus how far its set-up has got (drives the set-up checklist). */
-facilityRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
+facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => {
   const { facilityId, role, displayName } = caller(req);
+  // Staff get the facility's name and settings so their own screens work, and none of the set-up counts.
+  if (role === "STAFF") {
+    const facility = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId } });
+    return res.json({ facility: presentFacility(facility), setup: { departments: 0, cadres: 0, staff: 0 }, me: { role, displayName } });
+  }
   const [facility, departments, cadres, staff] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId } }),
     prisma.department.count({ where: { facilityId, active: true } }),

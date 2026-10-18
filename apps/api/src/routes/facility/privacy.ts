@@ -7,6 +7,10 @@ import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES } from "../../middleware/facilityAccess.js";
+import { notifyStaff } from "../../lib/notify.js";
+import { applyErasure, erasurePlan, planSentence } from "../../lib/erasure.js";
+import { confirmRetention, expiredFor } from "../../lib/retention.js";
+import { exportFacilityData, rowsToCsv } from "../../lib/exportFacility.js";
 
 export const privacyRouter = Router();
 
@@ -207,4 +211,113 @@ privacyRouter.post("/retention/:id/approve", allowRoles(...ADMIN_ROLES), async (
     summary: `${who.displayName} approved keeping ${(RETENTION_LABEL[row.entityType] ?? row.entityType).toLowerCase()} for ${describeMonths(row.retentionMonths)}.`,
   });
   res.json({ ok: true });
+});
+
+// ------------------------------------------------------------- data subject requests
+
+const DAYMS = 86_400_000;
+
+privacyRouter.get("/requests", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const { facilityId } = caller(req);
+  const rows = await prisma.dataSubjectRequest.findMany({ where: { facilityId }, include: { staff: { select: { fullName: true } } }, orderBy: { receivedAt: "desc" } });
+  const now = Date.now();
+  res.json({
+    requests: rows.map((r) => {
+      const open = r.status === "RECEIVED" || r.status === "IN_PROGRESS";
+      const left = r.dueAt ? Math.ceil((r.dueAt.getTime() - now) / DAYMS) : null;
+      return { id: r.id, staff: r.staff.fullName, type: r.requestType, description: r.description, status: r.status, receivedAt: r.receivedAt, dueAt: r.dueAt, daysLeft: open ? left : null, overdue: open && left !== null && left < 0, completedAt: r.completedAt, outcomeNote: r.outcomeNote };
+    }),
+  });
+});
+
+privacyRouter.get("/requests/:id/erasure-plan", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const r = await prisma.dataSubjectRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId, requestType: "ERASURE" } });
+  if (!r) return res.status(404).json({ error: "not_found" });
+  res.json({ plan: await erasurePlan(r.staffId, who.facilityId) });
+});
+
+async function close(req: Parameters<typeof caller>[0], id: string, status: "COMPLETED" | "REFUSED", outcomeNote: string, apply?: boolean) {
+  const who = caller(req);
+  const r = await prisma.dataSubjectRequest.findFirst({ where: { id, facilityId: who.facilityId } });
+  if (!r) return null;
+  if (r.status === "COMPLETED" || r.status === "REFUSED") return "closed" as const;
+  if (apply) await applyErasure(r.staffId, who.facilityId);
+  await prisma.dataSubjectRequest.update({ where: { id: r.id }, data: { status, completedAt: new Date(), handledBy: who.email, outcomeNote } });
+  await notifyStaff(who.facilityId, r.staffId, { type: "dsr_answered", title: status === "REFUSED" ? "Your data request was not granted" : "Your data request was answered", body: outcomeNote, linkUrl: "/my-data", severity: "INFO" });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: `dsr_${status.toLowerCase()}`, entityType: "DataSubjectRequest", entityId: r.id, summary: `${who.displayName} ${status === "REFUSED" ? "refused" : "completed"} a ${r.requestType.toLowerCase()} request. ${outcomeNote}` });
+  return "ok" as const;
+}
+
+const outcome = z.object({ outcomeNote: z.string().trim().min(10, "Say what was done, in a sentence.").max(1000) });
+
+privacyRouter.post("/requests/:id/complete", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const input = parseOr400(outcome, req.body, res);
+  if (!input) return;
+  const out = await close(req, String(req.params.id), "COMPLETED", input.outcomeNote);
+  if (!out) return res.status(404).json({ error: "not_found" });
+  if (out === "closed") return res.status(409).json({ error: "closed", message: "This request is already closed." });
+  res.json({ ok: true });
+});
+
+/** A refusal is allowed. A refusal with no reason is not. */
+privacyRouter.post("/requests/:id/refuse", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const input = parseOr400(z.object({ reason: z.string().trim().min(10, "Give the reason, in a sentence. A refusal needs one.").max(1000) }), req.body, res);
+  if (!input) return;
+  const out = await close(req, String(req.params.id), "REFUSED", input.reason);
+  if (!out) return res.status(404).json({ error: "not_found" });
+  if (out === "closed") return res.status(409).json({ error: "closed", message: "This request is already closed." });
+  res.json({ ok: true });
+});
+
+/** Carries out the erasure that is possible, keeps the rest, and tells the person both. */
+privacyRouter.post("/requests/:id/erase", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const r = await prisma.dataSubjectRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId, requestType: "ERASURE" } });
+  if (!r) return res.status(404).json({ error: "not_found" });
+  const note = planSentence(await erasurePlan(r.staffId, who.facilityId));
+  const out = await close(req, r.id, "COMPLETED", note, true);
+  if (out === "closed") return res.status(409).json({ error: "closed", message: "This request is already closed." });
+  res.json({ ok: true, outcomeNote: note });
+});
+
+// ------------------------------------------------------------- retention job
+
+privacyRouter.get("/retention-due", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  res.json({ expired: await expiredFor(caller(req).facilityId) });
+});
+
+privacyRouter.post("/retention-due/confirm", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ entityType: z.string() }), req.body, res);
+  if (!input) return;
+  try {
+    res.json({ deleted: await confirmRetention(who.facilityId, input.entityType, who) });
+  } catch {
+    res.status(409).json({ error: "not_removable", message: "That kind is not removed by the job, or its period is not approved." });
+  }
+});
+
+// ------------------------------------------------------------- facility export
+
+privacyRouter.get("/export.json", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "facility_exported", entityType: "Facility", entityId: who.facilityId, summary: `${who.displayName} exported all of the facility's data.` });
+  res.setHeader("Content-Disposition", `attachment; filename="facility-data.json"`);
+  res.json(await exportFacilityData(who.facilityId));
+});
+
+privacyRouter.get("/export/:entity.csv", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const data = await exportFacilityData(who.facilityId);
+  const rows = (data.entities as Record<string, Record<string, unknown>[]>)[String(req.params.entity)];
+  if (!rows) return res.status(404).json({ error: "not_found" });
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${String(req.params.entity)}.csv"`);
+  res.send(rowsToCsv(rows));
+});
+
+privacyRouter.get("/export", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const data = await exportFacilityData(caller(req).facilityId);
+  res.json({ entities: Object.entries(data.entities).map(([name, rows]) => ({ name, rows: (rows as unknown[]).length })) });
 });

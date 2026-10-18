@@ -70,6 +70,7 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
+  { href: "/today", label: "Today", roles: ["STAFF"] },
   { href: "/my-duties", label: "My duties", roles: [...READ_ROLES, "STAFF"] },
   { href: "/swaps", label: "Duty swaps", roles: [...READ_ROLES, "STAFF"] },
   { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
@@ -78,7 +79,8 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/cover", label: "Cover", roles: READ_ROLES },
   { href: "/ledger", label: "Duty ledger", roles: READ_ROLES },
   { href: "/reports", label: "Reports", roles: READ_ROLES },
-  { href: "/reports/fairness", label: "My share of duties", roles: ["STAFF"] },
+  { href: "/reports/fairness", label: "Why this duty", roles: ["STAFF"] },
+  { href: "/my-data", label: "My data", roles: ["STAFF"] },
   { href: "/attendance", label: "Daily attendance", roles: READ_ROLES },
   { href: "/attendance/month", label: "Monthly attendance", roles: READ_ROLES },
   { href: "/notifications", label: "Notifications", roles: [...READ_ROLES, "STAFF"] },
@@ -257,6 +259,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!authLoading && !user) router.replace("/login");
     // The platform console is where a platform admin starts.
     if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard") router.replace("/admin");
+    if (user?.role === "STAFF" && pathname === "/dashboard") router.replace("/today");
     if (user?.role === "DISTRICT_OFFICER" && pathname === "/dashboard") router.replace("/district");
   }, [authLoading, user, router, pathname]);
 
@@ -267,7 +270,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMenuOpen(false);
   }
 
-  const facilityRole = user && READ_ROLES.includes(user.role);
+  const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "STAFF");
   const resource = useResource<FacilityResponse>(facilityRole ? "/api/facility" : null);
 
   if (authLoading || !user) {

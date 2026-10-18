@@ -61,7 +61,7 @@ export default function FairnessPage() {
   return (
     <>
       <PageHeader
-        title={manager ? "Fairness report" : "My share of duties"}
+        title={manager ? "Fairness report" : "Why this duty"}
         description={manager ? "Three months up to the month chosen, because one month is too short to judge fairness. Published and approved rosters only." : "Your duties over three months against the average for your cadre. You see yourself only, not your colleagues."}
       />
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -90,6 +90,17 @@ export default function FairnessPage() {
                   <Bar key={m.key} label={m.label} value={data.mine!.me[m.key]} mean={data.mine!.means[m.key]} max={Math.max(data.mine!.me[m.key], data.mine!.means[m.key]) * 1.25} />
                 ))}
               </div>
+            </Panel>
+          )}
+          {!manager && (
+            <Panel title="How duties are allocated">
+              <ol className="list-decimal space-y-1 pl-5 text-[15px]">
+                <li>Who is eligible for the shift, by cadre and department.</li>
+                <li>Who is on leave, and who has other approved time away.</li>
+                <li>The rest rules: the minimum rest between duties, a weekly rest, and limits on duty days and nights in a row.</li>
+                <li>Then an even spread of nights, weekends and holidays across everyone left, counted over three months.</li>
+              </ol>
+              <p className="mt-3 text-sm text-[var(--muted)]">If a figure above looks wrong to you, say so to your in-charge. It is a conversation about coverage, not a ranking of colleagues.</p>
             </Panel>
           )}
           {data.cadres?.map((c) => {
