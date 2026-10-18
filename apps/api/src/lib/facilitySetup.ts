@@ -10,25 +10,23 @@ import { randomToken, sha256 } from "./crypto.js";
 import { appUrl, sendEmail } from "./email.js";
 import { INVITATION_DAYS } from "../routes/invitations.js";
 
-const SMALL = { departments: ["General"], cadres: ["Community Health Nurse", "Enrolled Nurse", "Health Assistant"] };
-const MEDIUM = { departments: ["Outpatient", "Maternity", "Laboratory", "Pharmacy", "Administration"], cadres: ["Medical Officer", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Pharmacist", "Laboratory Scientist", "Health Assistant"] };
-const LARGE = { departments: ["Outpatient", "Maternity", "Surgery", "Medicine", "Paediatrics", "Emergency", "Theatre", "Laboratory", "Pharmacy", "Administration"], cadres: ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Anaesthetist", "Pharmacist", "Laboratory Scientist", "Radiographer", "Health Assistant"] };
+/** Every cadre and department a health facility in Ghana is likely to have. Added to each facility, so staff imports are not turned away for a missing one. */
+export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security"];
+export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Accounts", "Stores", "Transport", "Mortuary", "Support Services"];
 
-export const SEEDS: Record<FacilityType, { departments: string[]; cadres: string[] }> = {
-  CHPS_COMPOUND: SMALL,
-  HEALTH_CENTRE: MEDIUM,
-  CLINIC: MEDIUM,
-  POLYCLINIC: MEDIUM,
-  HOSPITAL: LARGE,
-  PRIVATE_HOSPITAL: LARGE,
-};
-
-export async function seedGroups(facilityId: string, type: FacilityType) {
-  const seed = SEEDS[type];
-  const [deps, cads] = await Promise.all([prisma.department.count({ where: { facilityId } }), prisma.cadre.count({ where: { facilityId } })]);
-  if (deps === 0) await prisma.department.createMany({ data: seed.departments.map((name) => ({ facilityId, name })) });
-  if (cads === 0) await prisma.cadre.createMany({ data: seed.cadres.map((name, i) => ({ facilityId, name, sortOrder: i })) });
-  return { departments: deps === 0 ? seed.departments.length : 0, cadres: cads === 0 ? seed.cadres.length : 0 };
+/** Adds any standard cadre or department the facility does not already have, by name, leaving everything it has as it is. */
+export async function seedGroups(facilityId: string, _type?: FacilityType) {
+  const [deps, cads] = await Promise.all([
+    prisma.department.findMany({ where: { facilityId }, select: { name: true } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { name: true } }),
+  ]);
+  const haveDep = new Set(deps.map((d) => d.name.toLowerCase()));
+  const haveCad = new Set(cads.map((c) => c.name.toLowerCase()));
+  const newDeps = STANDARD_DEPARTMENTS.filter((n) => !haveDep.has(n.toLowerCase()));
+  const newCads = STANDARD_CADRES.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
+  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name })) });
+  if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i })) });
+  return { departments: newDeps.length, cadres: newCads.length };
 }
 
 /** Copies shifts and rule settings. Cadres in a shift's lists are matched by name. */

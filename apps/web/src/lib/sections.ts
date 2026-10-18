@@ -6,10 +6,12 @@ export interface Tab {
   href: string;
   label: string;
   roles: string[];
+  /** Hidden while this feature flag exists and is off for the facility. */
+  flag?: string;
 }
 
 export interface Section {
-  id: "duties" | "leave" | "platform" | "district";
+  id: "duties" | "leave" | "attendance" | "settings" | "platform" | "district";
   tabs: Tab[];
 }
 
@@ -25,6 +27,7 @@ export const SECTIONS: Section[] = [
     tabs: [
       { href: "/my-duties", label: "My duties", roles: EVERYONE },
       { href: "/swaps", label: "Duty swaps", roles: EVERYONE },
+      { href: "/cover", label: "Cover", roles: READ },
       { href: "/ledger", label: "Duty ledger", roles: READ },
       { href: "/duty-cycles", label: "Duty cycles", roles: READ },
     ],
@@ -37,6 +40,23 @@ export const SECTIONS: Section[] = [
       { href: "/settings/leave-types", label: "Leave types", roles: ADMIN },
       { href: "/settings/entitlements", label: "Leave entitlements", roles: ADMIN },
       { href: "/settings/holidays", label: "Public holidays", roles: ADMIN },
+    ],
+  },
+  {
+    id: "attendance",
+    tabs: [
+      { href: "/attendance", label: "Daily attendance", roles: READ },
+      { href: "/attendance/month", label: "Monthly attendance", roles: READ },
+    ],
+  },
+  {
+    id: "settings",
+    tabs: [
+      { href: "/settings", label: "Facility settings", roles: ADMIN },
+      { href: "/settings/establishment", label: "Approved posts", roles: ADMIN },
+      { href: "/rules", label: "Compliance rules", roles: READ },
+      { href: "/directorate-access", label: "Directorate access", roles: ADMIN, flag: "district.oversight" },
+      { href: "/privacy-and-data", label: "Privacy and data protection", roles: ADMIN },
     ],
   },
   {
@@ -70,11 +90,13 @@ export const SECTIONS: Section[] = [
 
 const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
 
-/** The section a page belongs to, and which of its tabs is the current one (the longest match). */
+/** The section a page belongs to, and which of its tabs is the current one (the longest match across all sections). */
 export function sectionFor(pathname: string): { section: Section; current: string } | null {
+  let best: { section: Section; current: string } | null = null;
   for (const section of SECTIONS) {
-    const hit = section.tabs.filter((t) => within(pathname, t.href)).sort((a, b) => b.href.length - a.href.length)[0];
-    if (hit) return { section, current: hit.href };
+    for (const t of section.tabs) {
+      if (within(pathname, t.href) && (!best || t.href.length > best.current.length)) best = { section, current: t.href };
+    }
   }
-  return null;
+  return best;
 }
