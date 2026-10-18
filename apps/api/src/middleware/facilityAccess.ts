@@ -37,6 +37,9 @@ declare global {
   }
 }
 
+/** Writes that stay open on a suspended facility: a person's own data rights and reading notifications. */
+const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications"];
+
 export async function requireFacilityUser(req: Request, res: Response, next: NextFunction) {
   if (!req.auth) return res.status(401).json({ error: "unauthenticated" });
 
@@ -51,6 +54,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
       active: true,
       staffId: true,
       staff: { select: { fullName: true } },
+      facility: { select: { status: true } },
     },
   });
 
@@ -59,6 +63,12 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
   }
   if (profile.scopeType !== "FACILITY" || !profile.facilityId) {
     return res.status(403).json({ error: "no_facility_access" });
+  }
+
+  // A suspended facility keeps read access and keeps its export. It cannot
+  // generate or edit. Staff can still use their own data rights.
+  if (profile.facility?.status === "SUSPENDED" && !["GET", "HEAD"].includes(req.method) && !SUSPENDED_OK.some((p) => req.originalUrl.startsWith(p))) {
+    return res.status(403).json({ error: "suspended", message: "This facility's account is suspended, so changes are paused. Everything can still be read and exported. Contact PS Tech." });
   }
 
   req.caller = {

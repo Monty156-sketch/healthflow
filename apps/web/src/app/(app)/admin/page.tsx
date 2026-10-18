@@ -46,9 +46,9 @@ export default function ConsolePage() {
           tone={r.late ? "block" : undefined}
         />
         <Count href="/admin/facilities?health=AT_RISK" label="Facilities at risk" value={String(data.atRisk)} note={data.atRisk ? "Telephone them" : "None"} tone={data.atRisk ? "block" : undefined} />
-        <Count href="/admin/facilities" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
+        <Count href="/admin/billing" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
         <Count href="/system-health" label="Errors in the last 24 hours" value={String(data.errors24h)} />
-        <Count href="/admin/facilities" label="Active facilities" value={String(data.activeFacilities)} note={`Monthly recurring revenue ${cedi(data.mrrGhs)}`} />
+        <Count href="/admin/billing" label="Active facilities" value={String(data.activeFacilities)} note={`Monthly recurring revenue ${cedi(data.mrrGhs)}`} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Panel title="Latest access requests" actions={<Link href="/admin/requests" className="text-sm text-[var(--accent-text)] underline underline-offset-2">All requests</Link>}>
