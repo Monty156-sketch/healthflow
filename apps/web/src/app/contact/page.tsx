@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { PublicNav } from "@/components/PublicNav";
 
 export const metadata: Metadata = { title: "Contact | HealthFlow" };
 
@@ -7,15 +8,12 @@ const A = "text-[var(--accent-text)] underline underline-offset-2";
 
 export default function ContactPage() {
   return (
+    <>
+    <PublicNav />
     <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-12">
-      <p className="mb-6 text-sm">
-        <Link href="/" className="text-[var(--accent-text)] underline-offset-2 hover:underline">
-          HealthFlow
-        </Link>
-      </p>
       <h1 className="text-3xl font-semibold leading-tight">Contact</h1>
       <p className="mt-3 leading-relaxed">
-        HealthFlow is built and run by PS Tech in Wa, Upper West Region, Ghana. Write or call for a demonstration, for help using HealthFlow, or about your data.
+        HealthFlow is built and run by PS Tech in Wa, Upper West Region, Ghana. Write or call for help using HealthFlow or about your data. We reply within 48 hours, usually sooner. To ask for a demonstration, use the <Link href="/request-access" className={A}>request access form</Link>.
       </p>
 
       <dl className="mt-6 divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
@@ -72,5 +70,6 @@ export default function ContactPage() {
         </p>
       </section>
     </main>
+    </>
   );
 }

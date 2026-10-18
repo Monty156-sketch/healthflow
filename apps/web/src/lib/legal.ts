@@ -272,3 +272,127 @@ export const PRIVACY: LegalDoc = {
     },
   ],
 };
+
+const t = (head: string[], rows: string[][]): Block => ({ table: { head, rows } });
+
+export const DPA: LegalDoc = {
+  title: "HealthFlow Data Processing Agreement",
+  version: "1.0 (draft)",
+  effective: "{{to be confirmed: effective date}}",
+  intro: "Forms part of the HealthFlow Terms of Service.",
+  sections: [
+    {
+      title: "Parties and roles",
+      blocks: [
+        p("**The Controller:** the facility named in its subscription, at the address given there."),
+        p("**The Processor:** PS Tech, {{to be confirmed: registration details}}, of {{to be confirmed: registered address}}, Ghana."),
+        p("The Controller determines the purposes and means of processing staff personal data. The Processor processes it only on the Controller's documented instructions. Both are bound by the Data Protection Act 2012 (Act 843) and each is responsible for its own registration with the Data Protection Commission."),
+      ],
+    },
+    {
+      title: "Subject matter, duration, nature and purpose",
+      blocks: [
+        p("**Subject matter:** personal data of the Controller's staff, processed through the HealthFlow application."),
+        p("**Duration:** the term of the subscription, plus the export and deletion periods in clause 12."),
+        p("**Nature and purpose:** duty rostering, labour-compliance checking, leave administration, attendance recording, duty swaps, workforce reporting and, where the Controller grants it, district oversight."),
+      ],
+    },
+    {
+      title: "Categories of data subject and personal data",
+      blocks: [
+        p("**Data subjects:** the Controller's employed and engaged staff, and its system users."),
+        p("**Personal data:** name, staff number, telephone, email, address, emergency contact, photograph (where consented), cadre, department, position, employment type and status, date joined, duty assignments, attendance records, duty swaps, leave type and dates, and system access records."),
+        p("**Special personal data:** leave records of a type that indicates health, such as sick leave and maternity leave, constitute data concerning health. **The application provides no field for a diagnosis, symptom, condition or medical note, and the Processor will not introduce one.**"),
+      ],
+    },
+    {
+      title: "The Controller's instructions and responsibilities",
+      blocks: [
+        p("The Controller instructs the Processor to process personal data as necessary to provide HealthFlow, and as further instructed in writing."),
+        p("The Controller is responsible for: the lawfulness of its own processing and lawful basis; informing its staff through a privacy notice; its own registration with the Data Protection Commission; approving the retention schedule; deciding who receives access and removing it when staff leave; and deciding whether to grant district visibility and on what scope."),
+      ],
+    },
+    {
+      title: "The Processor's obligations",
+      blocks: [p("The Processor shall: process only on documented instruction and tell the Controller if an instruction appears unlawful; ensure everyone with access is under a duty of confidentiality; implement the measures in clause 6; not engage a sub-processor except under clause 7; assist the Controller with data subject requests under clause 8; notify breaches under clause 9; make available the information needed to demonstrate compliance; and delete or return the data under clause 12.")],
+    },
+    {
+      title: "Security measures",
+      blocks: [
+        p("The Processor shall maintain, as a minimum:"),
+        {
+          ul: [
+            "Encryption of personal data in transit and at rest, including backups",
+            "Role-based access control on the principle of least privilege, enforced server-side and not in the user interface alone",
+            "Strict isolation between facilities, verified by automated testing, such that no facility can access another's data by any route",
+            "Multi-factor authentication required for administrative and district accounts",
+            "Audit logging of access and changes, readable by the Controller, including any access by the Processor's own support staff",
+            "Automated backups with periodically tested restores",
+            "Immediate revocation of access when a staff member is deactivated",
+            "A documented incident response procedure with named roles",
+            "Secure development practice, including vulnerability scanning of dependencies",
+          ],
+        },
+      ],
+    },
+    {
+      title: "Sub-processors",
+      blocks: [p("The Controller authorises the sub-processors listed in Schedule 1. The Processor shall impose equivalent obligations on each, remains fully liable for their performance, and shall give the Controller at least **30 days' written notice** before adding or replacing one. The Controller may object on reasonable data-protection grounds, and if the matter cannot be resolved, may terminate without penalty.")],
+    },
+    {
+      title: "Data subject requests",
+      blocks: [
+        p("The application allows each staff member to view and download their own complete record immediately, without needing to make a request."),
+        p("For anything further, the Processor shall notify the Controller promptly of any request received directly, shall not respond to it itself except to confirm receipt and redirect, and shall assist the Controller in responding within these targets:"),
+        t(["Request", "Target"], [["Access and portability", "Immediate, by self-service"], ["Correction", "14 days"], ["Objection", "14 days"], ["Erasure", "30 days"]]),
+      ],
+    },
+    {
+      title: "Breach notification",
+      blocks: [
+        p("The Processor shall notify the Controller **without undue delay and in any event within 48 hours** of becoming aware of a personal data breach affecting the Controller's data, providing: what happened and when, the categories and approximate number of data subjects and records, the likely consequences, the containment and remedial measures taken, and a contact point."),
+        p("Notification to the Data Protection Commission and to affected data subjects is the Controller's decision. The Processor shall provide the written report needed to make it, and shall maintain a breach register available to the Controller on request."),
+      ],
+    },
+    {
+      title: "Audit",
+      blocks: [p("The Processor shall make available the information necessary to demonstrate compliance, and shall permit the Controller, on reasonable notice and no more than once a year unless a breach has occurred, to audit compliance with this agreement.")],
+    },
+    {
+      title: "Hosting and transfers",
+      blocks: [
+        p("The data is hosted by the services in Schedule 1, in {{to be confirmed: region}}. The Processor shall give the Controller written notice before any change of hosting region."),
+        p("Where personal data is transferred outside Ghana, the Processor shall ensure protection equivalent to that required by the Data Protection Act 2012."),
+      ],
+    },
+    {
+      title: "Retention, return and deletion",
+      blocks: [
+        p("Retention follows the schedule approved by the Controller within the application. Records past retention are deleted only after the Controller confirms; the Processor shall not delete the Controller's data automatically."),
+        p("On termination: the Controller may export all data for **30 days**. The Processor shall then delete it, including from backups on its ordinary backup cycle, within **90 days**, and confirm the deletion in writing."),
+        p("The Processor shall not withhold data for any reason, including unpaid fees."),
+      ],
+    },
+    {
+      title: "Liability and law",
+      blocks: [
+        p("Liability under this agreement is subject to the limitations in the Terms of Service, except where the Act imposes liability that cannot be limited."),
+        p("This agreement is governed by the laws of the Republic of Ghana."),
+      ],
+    },
+    {
+      title: "Schedule 1: sub-processors",
+      blocks: [
+        t(["Sub-processor", "Purpose", "Location", "Data accessed"], [
+          ["Render", "Runs the HealthFlow server", "{{to be confirmed: region}}", "All application data"],
+          ["Neon", "Holds the database", "{{to be confirmed: region}}", "All application data"],
+          ["Resend", "Sends system email, when switched on", "{{to be confirmed: region}}", "Name, email, notification content"],
+        ]),
+      ],
+    },
+    {
+      title: "Schedule 2: technical and organisational measures",
+      blocks: [p("As set out in clause 6, and on the [Security page](/security), which forms part of this agreement.")],
+    },
+  ],
+};
