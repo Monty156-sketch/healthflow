@@ -1,0 +1,230 @@
+// The district's view: read only, and only of what each facility has granted.
+// A facility with no grant is not here at all, not even as a locked row. Every
+// response says which grants it was read under, and every read is written to
+// the facility's own audit log.
+import { Router, type Request } from "express";
+import { prisma } from "../lib/prisma.js";
+import { auditDistrictRead, grantedFor, readingUnder, type Granted } from "../lib/district.js";
+import { requireAuth } from "../middleware/auth.js";
+import { requireDistrictOfficer } from "../middleware/districtAccess.js";
+import { sayDay } from "../engine/time.js";
+
+export const districtRouter = Router();
+districtRouter.use(requireAuth, requireDistrictOfficer);
+
+const DAY = 86_400_000;
+const today = () => Math.floor(Date.now() / DAY);
+const iso = (d: number) => new Date(d * DAY).toISOString().slice(0, 10);
+
+async function read(req: Request, scope: "COVERAGE" | "STAFFING" | "ATTENDANCE" | "COMPLIANCE", screen: string) {
+  const granted = await grantedFor(req.district!.districtId, scope);
+  await auditDistrictRead(req, granted, screen, scope);
+  return granted;
+}
+
+// ------------------------------------------------------------- coverage
+
+export type DayState = "OK" | "SHORT" | "CADRE" | "NO_ROSTER";
+interface Day { date: string; state: DayState; staffed: number; required: number; cadres: string[] }
+
+/** Staffed against required, for each of the next days, from the published roster only. */
+export async function coverageFor(facilityId: string, from: number, days: number): Promise<Day[]> {
+  const [shifts, cadres, rosters] = await Promise.all([
+    prisma.shift.findMany({ where: { facilityId, active: true, countsAsDuty: true, isOnCall: false }, select: { id: true, minStaff: true, minByCadre: true } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, name: true } }),
+    prisma.roster.findMany({ where: { facilityId, status: "PUBLISHED" }, select: { id: true, year: true, month: true } }),
+  ]);
+  const needy = shifts.filter((s) => s.minStaff > 0 || Object.keys((s.minByCadre ?? {}) as object).length > 0);
+  const published = new Set(rosters.map((r) => `${r.year}-${r.month}`));
+  const assigned = await prisma.rosterAssignment.findMany({
+    where: { facilityId, rosterId: { in: rosters.map((r) => r.id) }, shiftId: { in: needy.map((s) => s.id) }, dutyDate: { gte: new Date(from * DAY), lte: new Date((from + days - 1) * DAY) } },
+    select: { shiftId: true, dutyDate: true, staff: { select: { cadreId: true } } },
+  });
+  const cadreName = new Map(cadres.map((c) => [c.id, c.name]));
+  const out: Day[] = [];
+  for (let d = from; d < from + days; d++) {
+    const dt = new Date(d * DAY);
+    if (!published.has(`${dt.getUTCFullYear()}-${dt.getUTCMonth() + 1}`)) { out.push({ date: iso(d), state: "NO_ROSTER", staffed: 0, required: 0, cadres: [] }); continue; }
+    let staffed = 0, required = 0, short = false;
+    const cadreShort = new Set<string>();
+    for (const s of needy) {
+      const here = assigned.filter((a) => a.shiftId === s.id && Math.floor(a.dutyDate.getTime() / DAY) === d);
+      const byCadre = Object.entries((s.minByCadre ?? {}) as Record<string, number>);
+      const need = Math.max(s.minStaff, byCadre.reduce((n, [, v]) => n + v, 0));
+      required += need;
+      staffed += Math.min(here.length, need);
+      if (here.length < s.minStaff) short = true;
+      for (const [cid, v] of byCadre) if (here.filter((a) => a.staff.cadreId === cid).length < v) cadreShort.add(cadreName.get(cid) ?? "a cadre");
+    }
+    out.push({ date: iso(d), state: short ? "SHORT" : cadreShort.size ? "CADRE" : "OK", staffed, required, cadres: [...cadreShort] });
+  }
+  return out;
+}
+
+districtRouter.get("/coverage", async (req, res) => {
+  const granted = await read(req, "COVERAGE", "the coverage monitor");
+  const from = today();
+  const rows = await Promise.all(granted.map(async (g) => ({ facilityId: g.facilityId, name: g.name, days: await coverageFor(g.facilityId, from, 7) })));
+  res.json({ reading: readingUnder(granted, "COVERAGE"), dates: Array.from({ length: 7 }, (_, i) => ({ date: iso(from + i), label: sayDay(from + i) })), facilities: rows });
+});
+
+// ------------------------------------------------------------- establishment
+
+districtRouter.get("/establishment", async (req, res) => {
+  const granted = await read(req, "STAFFING", "establishment and vacancies");
+  const ids = granted.map((g) => g.facilityId);
+  const [cadres, posts, filled] = await Promise.all([
+    prisma.cadre.findMany({ where: { facilityId: { in: ids }, active: true }, select: { id: true, name: true, facilityId: true } }),
+    prisma.establishmentPost.findMany({ where: { facilityId: { in: ids } } }),
+    prisma.staff.groupBy({ by: ["facilityId", "cadreId"], where: { facilityId: { in: ids }, status: "ACTIVE" }, _count: { _all: true } }),
+  ]);
+  const facilities = granted.map((g) => ({
+    facilityId: g.facilityId, name: g.name,
+    cadres: cadres.filter((c) => c.facilityId === g.facilityId).map((c) => {
+      const approved = posts.find((p) => p.facilityId === g.facilityId && p.cadreId === c.id)?.approvedCount ?? 0;
+      const have = filled.find((f) => f.facilityId === g.facilityId && f.cadreId === c.id)?._count._all ?? 0;
+      return { cadre: c.name, approved, filled: have, vacancies: Math.max(0, approved - have) };
+    }).filter((c) => c.approved > 0 || c.filled > 0),
+  }));
+  res.json({ reading: readingUnder(granted, "STAFFING"), facilities });
+});
+
+// ------------------------------------------------------------- dashboard
+
+const minutes = (hhmm: string | null) => (hhmm ? Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5)) : null);
+
+districtRouter.get("/dashboard", async (req, res) => {
+  const granted = await read(req, "COVERAGE", "the district dashboard");
+  const ids = granted.map((g) => g.facilityId);
+  const now = new Date();
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const d0 = today();
+  const duties = await prisma.rosterAssignment.findMany({
+    where: { facilityId: { in: ids }, roster: { status: "PUBLISHED" }, dutyDate: { in: [new Date((d0 - 1) * DAY), new Date(d0 * DAY)] }, shift: { countsAsDuty: true, isOnCall: false } },
+    select: { dutyDate: true, shift: { select: { startTime: true, endTime: true, isOvernight: true } } },
+  });
+  const onDutyNow = duties.filter((a) => {
+    const s = minutes(a.shift.startTime), e = minutes(a.shift.endTime);
+    if (s === null || e === null) return false;
+    const isToday = Math.floor(a.dutyDate.getTime() / DAY) === d0;
+    const overnight = a.shift.isOvernight || e <= s;
+    return isToday ? (overnight ? nowMin >= s : nowMin >= s && nowMin < e) : overnight && nowMin < e;
+  }).length;
+  let unfilled = 0;
+  for (const g of granted) unfilled += (await coverageFor(g.facilityId, d0, 2)).filter((d) => d.state === "SHORT" || d.state === "CADRE").length;
+  const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const publishedNext = await prisma.roster.findMany({ where: { facilityId: { in: ids }, year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, status: "PUBLISHED" }, select: { facilityId: true } });
+  const notPublished = granted.filter((g) => !publishedNext.some((r) => r.facilityId === g.facilityId)).map((g) => g.name);
+  res.json({ reading: readingUnder(granted, "COVERAGE"), facilitiesGranted: granted.length, staffOnDutyNow: onDutyNow, shortDaysNext24Hours: unfilled, nextMonthNotPublished: notPublished });
+});
+
+// ------------------------------------------------------------- leave concentration
+
+const MIN_GROUP = 3;
+const THRESHOLD = 0.25;
+
+districtRouter.get("/leave-concentration", async (req, res) => {
+  const granted = await read(req, "STAFFING", "leave concentration");
+  const ids = granted.map((g) => g.facilityId);
+  const d0 = today();
+  const monday = d0 - ((new Date(d0 * DAY).getUTCDay() + 6) % 7);
+  const staff = await prisma.staff.findMany({ where: { facilityId: { in: ids }, status: "ACTIVE", cadreId: { not: null } }, select: { id: true, facilityId: true, cadre: { select: { name: true } } } });
+  // A cadre with fewer than three staff at a facility is left out entirely: its leave would point at a person.
+  const group = new Map<string, typeof staff>();
+  for (const s of staff) group.set(`${s.facilityId}|${s.cadre!.name}`, [...(group.get(`${s.facilityId}|${s.cadre!.name}`) ?? []), s]);
+  const kept = [...group.values()].filter((g) => g.length >= MIN_GROUP).flat();
+  const suppressed = [...group.values()].filter((g) => g.length < MIN_GROUP).length;
+  const leave = await prisma.leaveRequest.findMany({
+    where: { facilityId: { in: ids }, status: "APPROVED", staffId: { in: kept.map((k) => k.id) }, endDate: { gte: new Date(monday * DAY) }, startDate: { lte: new Date((monday + 8 * 7 - 1) * DAY) } },
+    select: { staffId: true, startDate: true, endDate: true }, // never the type
+  });
+  const cadreNames = [...new Set(kept.map((k) => k.cadre!.name))].sort();
+  const weeks = Array.from({ length: 8 }, (_, w) => {
+    const from = monday + w * 7, to = from + 6;
+    return {
+      from: iso(from), label: `Week of ${sayDay(from)}`,
+      cadres: cadreNames.map((c) => {
+        const members = kept.filter((k) => k.cadre!.name === c);
+        const away = new Set(leave.filter((l) => members.some((m) => m.id === l.staffId) && Math.floor(l.startDate.getTime() / DAY) <= to && Math.floor(l.endDate.getTime() / DAY) >= from).map((l) => l.staffId)).size;
+        return { cadre: c, away, total: members.length, concern: members.length > 0 && away / members.length >= THRESHOLD };
+      }),
+    };
+  });
+  res.json({ reading: readingUnder(granted, "STAFFING"), weeks, threshold: THRESHOLD, suppressedGroups: suppressed, note: "Counts of people and their cadres only. No names and no kind of leave. A cadre with fewer than three staff at a facility is left out." });
+});
+
+// ------------------------------------------------------------- report pack
+
+export async function reportPack(req: Request) {
+  const reportMonth = new Date();
+  const year = reportMonth.getUTCFullYear(), month = reportMonth.getUTCMonth() + 1;
+  const sections: Record<string, unknown> = {};
+  const used: { scope: string; facilities: number }[] = [];
+
+  const staffing = await grantedFor(req.district!.districtId, "STAFFING");
+  await auditDistrictRead(req, staffing, "the report pack (establishment and staffing)", "STAFFING");
+  used.push({ scope: "staffing", facilities: staffing.length });
+  {
+    const ids = staffing.map((g) => g.facilityId);
+    const [cadres, posts, filled] = await Promise.all([
+      prisma.cadre.findMany({ where: { facilityId: { in: ids }, active: true }, select: { id: true, name: true, facilityId: true } }),
+      prisma.establishmentPost.findMany({ where: { facilityId: { in: ids } } }),
+      prisma.staff.groupBy({ by: ["facilityId", "cadreId"], where: { facilityId: { in: ids }, status: "ACTIVE" }, _count: { _all: true } }),
+    ]);
+    sections.establishment = staffing.flatMap((g) => cadres.filter((c) => c.facilityId === g.facilityId).map((c) => {
+      const approved = posts.find((p) => p.facilityId === g.facilityId && p.cadreId === c.id)?.approvedCount ?? 0;
+      const have = filled.find((f) => f.facilityId === g.facilityId && f.cadreId === c.id)?._count._all ?? 0;
+      return { facility: g.name, cadre: c.name, approved, filled: have, vacancies: Math.max(0, approved - have) };
+    }).filter((r) => r.approved > 0 || r.filled > 0));
+  }
+
+  const coverage = await grantedFor(req.district!.districtId, "COVERAGE");
+  await auditDistrictRead(req, coverage, "the report pack (coverage summary)", "COVERAGE");
+  used.push({ scope: "coverage", facilities: coverage.length });
+  sections.coverage = await Promise.all(coverage.map(async (g) => {
+    const days = await coverageFor(g.facilityId, today(), 7);
+    return { facility: g.name, daysFullyStaffed: days.filter((d) => d.state === "OK").length, daysShort: days.filter((d) => d.state === "SHORT").length, daysShortOfACadre: days.filter((d) => d.state === "CADRE").length, daysWithNoPublishedRoster: days.filter((d) => d.state === "NO_ROSTER").length };
+  }));
+
+  const attendance = await grantedFor(req.district!.districtId, "ATTENDANCE");
+  await auditDistrictRead(req, attendance, "the report pack (attendance completeness)", "ATTENDANCE");
+  used.push({ scope: "attendance", facilities: attendance.length });
+  const rostersA = await prisma.roster.findMany({ where: { facilityId: { in: attendance.map((g) => g.facilityId) }, year, month, status: "PUBLISHED" }, select: { facilityId: true, attendanceCompleteness: true } });
+  sections.attendance = attendance.map((g) => ({ facility: g.name, completenessPercent: (() => { const v = rostersA.find((r) => r.facilityId === g.facilityId)?.attendanceCompleteness; return v === null || v === undefined ? null : Math.round(v * 100); })() }));
+
+  const compliance = await grantedFor(req.district!.districtId, "COMPLIANCE");
+  await auditDistrictRead(req, compliance, "the report pack (compliance summary)", "COMPLIANCE");
+  used.push({ scope: "compliance", facilities: compliance.length });
+  const rostersC = await prisma.roster.findMany({ where: { facilityId: { in: compliance.map((g) => g.facilityId) }, year, month, status: "PUBLISHED" }, select: { id: true, facilityId: true } });
+  const findings = await prisma.complianceFinding.groupBy({ by: ["rosterId", "severity", "status"], where: { rosterId: { in: rostersC.map((r) => r.id) } }, _count: { _all: true } });
+  sections.compliance = compliance.map((g) => {
+    const r = rostersC.find((x) => x.facilityId === g.facilityId);
+    const f = findings.filter((x) => x.rosterId === r?.id);
+    const n = (pred: (x: (typeof f)[number]) => boolean) => f.filter(pred).reduce((t, x) => t + x._count._all, 0);
+    return { facility: g.name, published: Boolean(r), blockingOpen: n((x) => x.severity === "BLOCK" && x.status === "OPEN"), warningsOpen: n((x) => x.severity === "WARN" && x.status === "OPEN"), overridden: n((x) => x.status === "OVERRIDDEN") };
+  });
+  return { generatedOn: new Date().toISOString().slice(0, 10), district: req.district!.districtName, period: `${year}-${String(month).padStart(2, "0")}`, used, sections };
+}
+
+districtRouter.get("/report-pack", async (req, res) => {
+  res.json(await reportPack(req));
+});
+
+districtRouter.get("/report-pack.csv", async (req, res) => {
+  const pack = await reportPack(req);
+  const esc = (v: unknown) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
+  const lines: string[] = [`District report pack,${esc(pack.district)},${pack.period},generated ${pack.generatedOn}`, ""];
+  for (const [name, rows] of Object.entries(pack.sections)) {
+    const list = rows as Record<string, unknown>[];
+    lines.push(name.toUpperCase());
+    if (list.length === 0) { lines.push("No facility has granted this information.", ""); continue; }
+    lines.push(Object.keys(list[0]).join(","));
+    for (const r of list) lines.push(Object.values(r).map(esc).join(","));
+    lines.push("");
+  }
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="district-report-pack-${pack.period}.csv"`);
+  res.send(lines.join("\n"));
+});
+
+export type { Granted };

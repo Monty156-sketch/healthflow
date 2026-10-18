@@ -11,6 +11,9 @@ import { adoptionFor } from "../lib/adoption.js";
 import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
 import { RESPONSE_HOURS } from "./public.js";
+import { hashPassword } from "../lib/password.js";
+import { makeResetToken } from "../lib/signedTokens.js";
+import { appUrl } from "../lib/email.js";
 
 export const consoleRouter = Router();
 
@@ -195,4 +198,55 @@ consoleRouter.get("/facilities/:id", async (req, res) => {
     activity: audit,
     supportSessions: sessions.map((s) => ({ id: s.id, by: s.platformUserEmail, reason: s.reason, level: s.accessLevel, startedAt: s.startedAt, endedAt: s.endedAt })),
   });
+});
+
+// ------------------------------------------------------------- districts
+
+consoleRouter.get("/districts", async (_req, res) => {
+  const districts = await prisma.district.findMany({
+    orderBy: { name: "asc" },
+    include: { facilities: { select: { id: true, name: true }, orderBy: { name: "asc" } } },
+  });
+  const officers = await prisma.userProfile.findMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT" }, select: { id: true, userEmail: true, scopeId: true, active: true, lastSignInAt: true } });
+  const unassigned = await prisma.facility.findMany({ where: { districtId: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  res.json({
+    districts: districts.map((d) => ({ id: d.id, name: d.name, region: d.region, facilities: d.facilities, officers: officers.filter((o) => o.scopeId === d.id).map((o) => ({ id: o.id, email: o.userEmail, active: o.active, lastSignInAt: o.lastSignInAt })) })),
+    unassigned,
+  });
+});
+
+consoleRouter.post("/districts", async (req, res) => {
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(120), region: z.string().trim().min(2).max(120) }), req.body, res);
+  if (!input) return;
+  const d = await prisma.district.create({ data: input });
+  await platformAudit(req, "district_created", `${liveUser(req).displayName} created the district ${d.name}.`, { entityType: "District", entityId: d.id });
+  res.status(201).json({ district: d });
+});
+
+consoleRouter.put("/facilities/:id/district", async (req, res) => {
+  const input = parseOr400(z.object({ districtId: z.string().nullable() }), req.body, res);
+  if (!input) return;
+  const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
+  if (!f) return res.status(404).json({ error: "not_found" });
+  if (input.districtId && !(await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true } }))) return res.status(404).json({ error: "not_found" });
+  // Moving a facility ends what it granted to the old district.
+  await prisma.districtGrant.updateMany({ where: { facilityId: f.id, status: "ACTIVE" }, data: { status: "REVOKED", revokedAt: new Date() } });
+  await prisma.facility.update({ where: { id: f.id }, data: { districtId: input.districtId } });
+  await platformAudit(req, "facility_district", `${liveUser(req).displayName} ${input.districtId ? "assigned" : "removed"} the district for ${f.name}. Any earlier access grant was ended.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
+  res.json({ ok: true });
+});
+
+/** Creates the login for a district officer. They set their own password from the link. */
+consoleRouter.post("/districts/:id/officers", async (req, res) => {
+  const input = parseOr400(z.object({ email: z.string().trim().toLowerCase().email("Enter a valid email address.") }), req.body, res);
+  if (!input) return;
+  const d = await prisma.district.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
+  if (!d) return res.status(404).json({ error: "not_found" });
+  if (await prisma.userProfile.findUnique({ where: { userEmail: input.email }, select: { id: true } })) return res.status(409).json({ error: "email_taken", message: "That email address already has an account." });
+  const { randomBytes } = await import("node:crypto");
+  const hash = await hashPassword(randomBytes(24).toString("hex"));
+  const u = await prisma.userProfile.create({ data: { userEmail: input.email, passwordHash: hash, role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id, facilityId: null } });
+  const { token, expiresAt } = makeResetToken(u.id, hash);
+  await platformAudit(req, "district_officer_created", `${liveUser(req).displayName} created a district officer account for ${d.name}.`, { entityType: "UserProfile", entityId: u.id });
+  res.status(201).json({ url: appUrl(`/reset-password?token=${encodeURIComponent(token)}`), expiresAt });
 });
