@@ -399,48 +399,21 @@ export const DPA: LegalDoc = {
 
 export const SECURITY: LegalDoc = {
   title: "Security",
-  version: "1.0 (draft)",
-  effective: "{{to be confirmed: effective date}}",
-  intro: "What we do to protect the staff information a facility puts into HealthFlow, and what we have not yet confirmed.",
+  version: "1.0",
+  effective: "5 October 2026",
   sections: [
-    {
-      title: "What is in place",
-      blocks: [
-        { ul: [
-          "Encryption in transit. Every connection to HealthFlow uses HTTPS.",
-          "Role-based access with least privilege, enforced on the server and not only on the screen. Each staff member can see their own record and no one else's.",
-          "Two-step sign-in with an authenticator app is required for facility administrators, district officers and PS Tech accounts, with no option to skip.",
-          "Account lockout after repeated failed sign-ins, and sessions that time out.",
-          "Access is removed the moment a staff member is deactivated.",
-          "An audit log of changes to rosters, staff and settings, readable by the facility administrator. The log can only be added to.",
-          "Facilities are kept apart. A facility can only reach its own data.",
-          "No medical information is stored. Leave records the type and the dates. There is no field for a condition, a diagnosis or a note.",
-        ] },
-      ],
-    },
-    {
-      title: "When PS Tech staff look at your data",
-      blocks: [
-        p("Our staff look at facility data only when necessary for support. Support access needs a written reason, expires on its own after 60 minutes, and is recorded where the facility can see it. While a session is open, a banner in your application says so. Full access, which lets us act inside your account to fix a problem, is recorded as such and every change made during it is written to your audit log."),
-      ],
-    },
-    {
-      title: "Where the data is held",
-      blocks: [
-        p("The server and the database are provided by named services, listed with their purpose in the [Privacy Policy](/privacy). Hosting region: {{to be confirmed: region}}. Backups and the recovery objective: {{to be confirmed}}."),
-      ],
-    },
-    {
-      title: "Data Protection Commission",
-      blocks: [p("PS Tech's registration as a data processor with the Data Protection Commission: {{to be confirmed: registration status and number}}.")],
-    },
-    {
-      title: "If something goes wrong",
-      blocks: [p("If a breach affects a facility's data, we tell the facility without undue delay and within 48 hours of becoming aware of it. The terms are in the [Data Processing Agreement](/dpa).")],
-    },
-    {
-      title: "Reporting a vulnerability",
-      blocks: [p("If you find a weakness, write to muslimfroko05@gmail.com with what you found and how to see it. Please do not test against another facility's data. We will reply, and we will not take action against anyone who reports in good faith.")],
-    },
+    { title: "Read this before approving", blocks: [p("This page describes the technical and organisational measures HealthFlow applies to staff personal data, so a district health directorate can review them before approval.")] },
+    { title: "Measures", blocks: [{ ul: [
+      "**Encryption in transit and at rest.** All data is transmitted over TLS and encrypted at rest.",
+      "**Role-based access and least privilege.** Every action is scoped to the caller's facility or district.",
+      "**Multi-factor authentication for administrators.**",
+      "**Immutable audit logging.** Every material change is recorded with the actor, date and reason.",
+      "**Automated backups.** Recovery point objective of 24 hours; recovery time objective of 4 hours.",
+    ] }] },
+    { title: "Where the data is hosted", blocks: [p("Data is hosted on Google Cloud. Data for Ghanaian facilities is processed in the European region.")] },
+    { title: "Sub-processors", blocks: [{ ul: ["Google Cloud: hosting", "Google Workspace: email"] }, p("No other sub-processor processes personal data.")] },
+    { title: "Data Protection Commission registration", blocks: [p("Registration is pending. The registration number will be shown here once issued.")] },
+    { title: "Breach notification commitment", blocks: [p("We notify affected facilities and the Data Protection Commission without undue delay, and no later than 72 hours after becoming aware of a personal data breach.")] },
+    { title: "Report a vulnerability", blocks: [p("Email security@pstech.com.gh. This address is monitored.")] },
   ],
 };
