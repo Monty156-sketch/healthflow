@@ -2,14 +2,16 @@
 // behind the platform-only guard. There is no delete anywhere in it: things
 // are deactivated, suspended, archived or written off. Anything that touches a
 // facility is also written to that facility's own audit log.
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
-import { writeAuditLog } from "../lib/audit.js";
 import { adoptionFor } from "../lib/adoption.js";
 import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
+import { billingConsole } from "./platformBilling.js";
+import { platformAudit } from "../lib/platformAudit.js";
+export { platformAudit };
 import { RESPONSE_HOURS } from "./public.js";
 import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facilitySetup.js";
 import { ensureRules } from "./facility/rules.js";
@@ -18,20 +20,12 @@ import { makeResetToken } from "../lib/signedTokens.js";
 import { appUrl } from "../lib/email.js";
 
 export const consoleRouter = Router();
+consoleRouter.use(billingConsole);
 
 const HOUR = 3_600_000;
 
 /** What the console never reads out of a facility's audit log: people, their leave, attendance and consents. Only a logged support session shows those. */
 const PRIVATE_ENTITIES = ["Staff", "LeaveRequest", "Attendance", "DutySwap", "RosterAssignment", "DutyLedgerEntry", "DataSubjectRequest", "ConsentRecord", "StaffInvitation", "UserProfile"];
-
-/** One entry in the platform's own log, and, when a facility is touched, one in the facility's. */
-export async function platformAudit(req: Request, action: string, summary: string, opts: { facilityId?: string | null; entityType: string; entityId?: string }) {
-  const who = liveUser(req);
-  await writeAuditLog({ facilityId: null, actorEmail: who.email, action: `platform_${action}`, entityType: opts.entityType, entityId: opts.entityId, summary });
-  if (opts.facilityId) {
-    await writeAuditLog({ facilityId: opts.facilityId, actorEmail: who.email, action: `platform_${action}`, entityType: opts.entityType, entityId: opts.entityId, summary: `PS Tech (support access): ${summary}` });
-  }
-}
 
 // ------------------------------------------------------------- dashboard
 
