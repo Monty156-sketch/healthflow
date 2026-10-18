@@ -21,6 +21,7 @@ export interface Staff {
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
   excludedFromNights: boolean;
+  morningOnly: boolean;
   willingForExtraDuties: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
@@ -44,10 +45,14 @@ export interface Department {
   code: string | null;
   active: boolean;
   staffCount: number;
+  /** Departments only. False for one that closes at night. */
+  runsNights?: boolean;
 }
 
 export interface Cadre extends Department {
   sortOrder: number;
+  takesNights?: boolean;
+  onRoster?: boolean;
 }
 
 export interface Shift {

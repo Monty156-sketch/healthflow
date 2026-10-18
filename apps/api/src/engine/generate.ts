@@ -70,6 +70,8 @@ export interface GenerateResult {
 }
 
 const LOOKBACK = 14;
+/** Pull towards the people with the fewest nights this month. */
+const NIGHT_BALANCE = 3;
 /**
  * How strongly a run already under way is rewarded. The spec gives 3, but at
  * that weight it is smaller than the 6 charged for each consecutive day
@@ -176,6 +178,7 @@ function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift |
 type ByStaff = Map<string, Map<number, string>>;
 
 function rulesFor(staff: EStaff, cycles: ECycleRule[]): ECycleRule[] {
+  if (staff.morningOnly) return []; // in-charges are outside the duty cycles
   return cycles
     .filter((r) => (!r.cadreIds.length || (staff.cadreId && r.cadreIds.includes(staff.cadreId))) && (!r.departmentIds.length || (staff.departmentId && r.departmentIds.includes(staff.departmentId))))
     .sort((a, b) => a.priority - b.priority || a.id.localeCompare(b.id));
@@ -219,9 +222,22 @@ export function generate(input: GenerateInput): GenerateResult {
     state.set(s.id, st);
   }
 
+  // ---- In-charges: the morning shift on every weekday they are not on leave, before anyone else is placed
+  const fixed: GeneratedCell[] = [];
+  for (const s of staff) {
+    const morningId = s.morningOnly ? s.eligibleShiftIds[0] : undefined;
+    if (!morningId) continue;
+    for (let day = period.startDay; day <= period.endDay; day++) {
+      if (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day) || onLeave(s, day) || by.get(s.id)!.has(day)) continue;
+      by.get(s.id)!.set(day, morningId);
+      fixed.push({ staffId: s.id, shiftId: morningId, day, source: "GENERATED" });
+    }
+  }
+
   // ---- Step 2 and 3: who could work what, and whether it can be done at all
   const staticReason = (s: EStaff, shift: EShift, day: number): string | null => {
     if (onLeave(s, day)) return "leave";
+    if (s.morningOnly && (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day))) return "in-charges work weekday mornings only";
     return ineligibleReason(s, shift);
   };
 
@@ -391,7 +407,7 @@ export function generate(input: GenerateInput): GenerateResult {
     }
     const cadres = new Set(staff.map((s) => s.cadreId));
     for (const c of cadres) {
-      const group = staff.filter((s) => s.cadreId === c && hist.has(s.id));
+      const group = staff.filter((s) => s.cadreId === c && !s.morningOnly && hist.has(s.id));
       if (group.length < 2) continue;
       const meanTotal = group.reduce((n, s) => n + hist.get(s.id)!.total, 0) / group.length;
       const meanSpecial = group.reduce((n, s) => n + hist.get(s.id)!.special, 0) / group.length;
@@ -434,7 +450,7 @@ export function generate(input: GenerateInput): GenerateResult {
    */
   const deficitPull = (s: EStaff, day: number): number => {
     if (day === period.startDay) return 0;
-    const peers = staff.filter((p) => p.cadreId === s.cadreId);
+    const peers = staff.filter((p) => p.cadreId === s.cadreId && !p.morningOnly);
     let given = 0;
     let available = 0;
     const mineAvail = (p: EStaff) => {
@@ -464,6 +480,22 @@ export function generate(input: GenerateInput): GenerateResult {
     return n;
   };
 
+  /**
+   * Nights are shared in blocks, so the people with the fewest nights this
+   * month start the next block. A person part-way through a block is held there
+   * by the cycle reward, not by this.
+   */
+  const monthNights = new Map<string, number>();
+  for (const s of staff) monthNights.set(s.id, dutyCount(s.id, period.startDay, period.endDay, (sh) => sh.isOvernight));
+  const nightTakers = (cadreId: string | null) => staff.filter((p) => p.cadreId === cadreId && !p.excludedFromNights && !p.morningOnly);
+  const nightBalance = (s: EStaff, shift: EShift): number => {
+    if (!shift.isOvernight) return 0;
+    const group = nightTakers(s.cadreId);
+    if (group.length < 2) return 0;
+    const mean = group.reduce((n, p) => n + (monthNights.get(p.id) ?? 0), 0) / group.length;
+    return NIGHT_BALANCE * Math.max(-8, Math.min(8, (monthNights.get(s.id) ?? 0) - mean));
+  };
+
   const score = (s: EStaff, shift: EShift, day: number): number => {
     const mine = by.get(s.id)!;
     const elapsed = Math.max(7, Math.min(90, day - knownFrom));
@@ -476,7 +508,7 @@ export function generate(input: GenerateInput): GenerateResult {
     const st = state.get(s.id)!;
     let run = 0;
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
-    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day) + carryPull(s) + deficitPull(s, day);
+    return nightWeight * (nights / elapsed) + nightBalance(s, shift) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day) + carryPull(s) + deficitPull(s, day);
   };
 
   /**
@@ -488,7 +520,7 @@ export function generate(input: GenerateInput): GenerateResult {
   const ledgerPull = (s: EStaff, day: number): number => {
     const owed = input.settlement?.[s.id] ?? 0;
     if (owed === 0) return 0;
-    const peers = staff.filter((p) => p.cadreId === s.cadreId);
+    const peers = staff.filter((p) => p.cadreId === s.cadreId && !p.morningOnly);
     const count = (id: string) => dutyCount(id, period.startDay, day - 1, () => true);
     const average = peers.reduce((n, p) => n + count(p.id), 0) / Math.max(1, peers.length);
     const remaining = owed - (count(s.id) - average);
@@ -516,6 +548,7 @@ export function generate(input: GenerateInput): GenerateResult {
       }
       if (best) {
         by.get(best.s.id)!.set(day, slot.shift.id);
+        if (slot.shift.isOvernight) monthNights.set(best.s.id, (monthNights.get(best.s.id) ?? 0) + 1);
         generated.push({ staffId: best.s.id, shiftId: slot.shift.id, day, source: "GENERATED" });
       } else {
         unfilled.push({ day, shiftId: slot.shift.id, cadreId: slot.cadreId, required: 1, available: 0 });
@@ -627,8 +660,33 @@ export function generate(input: GenerateInput): GenerateResult {
     }
   }
 
+  // ---- Step 5b: hand a duty from someone with two or more above a colleague to that colleague
+  if (generated.length > 1) {
+    const total = (id: string) => dutyCount(id, period.startDay, period.endDay, () => true);
+    for (let i = 0; i < 400; i++) {
+      const a = generated[Math.floor(random() * generated.length)];
+      const from = staffById.get(a.staffId)!;
+      const peers = staff.filter((p) => p.cadreId === from.cadreId && p.id !== from.id && !p.morningOnly && total(p.id) <= total(from.id) - 2);
+      if (!peers.length) continue;
+      const to = peers[Math.floor(random() * peers.length)];
+      const shift = shiftById.get(a.shiftId)!;
+      if (staticReason(to, shift, a.day) || by.get(to.id)!.has(a.day) || lockedKeys.has(`${from.id}:${a.day}`)) continue;
+      const before = cost(from) + cost(to);
+      const vBefore = violations(from) + violations(to);
+      by.get(from.id)!.delete(a.day);
+      by.get(to.id)!.set(a.day, a.shiftId);
+      if (cost(from) + cost(to) < before && violations(from) + violations(to) <= vBefore) {
+        a.staffId = to.id;
+        improvements++;
+      } else {
+        by.get(to.id)!.delete(a.day);
+        by.get(from.id)!.set(a.day, a.shiftId);
+      }
+    }
+  }
+
   // ---- Step 6: every blank cell becomes Off Duty, and rest blocks are marked
-  const cells: GeneratedCell[] = [...generated].sort((x, y) => x.day - y.day || x.shiftId.localeCompare(y.shiftId) || x.staffId.localeCompare(y.staffId));
+  const cells: GeneratedCell[] = [...generated, ...fixed].sort((x, y) => x.day - y.day || x.shiftId.localeCompare(y.shiftId) || x.staffId.localeCompare(y.staffId));
   if (input.offShiftId) {
     for (const s of staff) {
       const st = freshState();
@@ -649,5 +707,5 @@ export function generate(input: GenerateInput): GenerateResult {
   const findings = evaluateCompliance(input.rules, {
     staff, shifts: input.shifts, assignments, leave: input.leave, period, weekStartsOn: input.weekStartsOn, referenceWeeks: input.referenceWeeks, cadreNames: input.cadreNames,
   });
-  return { feasible: true, shortfalls: [], cells, unfilled, findings, stats: { duties: generated.length, unfilled: unfilled.length, improvements, carried: Object.values(carryTotal).filter((n) => n !== 0).length } };
+  return { feasible: true, shortfalls: [], cells, unfilled, findings, stats: { duties: generated.length + fixed.length, unfilled: unfilled.length, improvements, carried: Object.values(carryTotal).filter((n) => n !== 0).length } };
 }

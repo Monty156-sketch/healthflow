@@ -26,6 +26,8 @@ export interface EStaff {
   cadreId: string | null;
   departmentId: string | null;
   excludedFromNights: boolean;
+  /** In-charges: weekday mornings only, outside the duty cycles. */
+  morningOnly?: boolean;
   /** 0 means no limit. */
   maxDutiesPerWeek: number;
   /** Empty means every shift their cadre allows. */

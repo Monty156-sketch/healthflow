@@ -44,7 +44,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { staffNo: "asc" } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true } }, department: { select: { runsNights: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -68,12 +68,22 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const eligibleByStaff = new Map<string, string[]>();
   for (const s of shiftRows) for (const e of s.eligibleStaff) eligibleByStaff.set(e.id, [...(eligibleByStaff.get(e.id) ?? []), s.id]);
 
-  const staff: EStaff[] = staffRows.map((s) => ({
-    id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
-    excludedFromNights: s.excludedFromNights, maxDutiesPerWeek: s.maxDutiesPerWeek, eligibleShiftIds: eligibleByStaff.get(s.id) ?? [],
-  }));
-
   const toMin = (t: string | null) => (t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : null);
+  // The morning shift: the earliest day shift that is not overnight or on call. In-charges work it, and only it.
+  const morning = shiftRows
+    .filter((x) => x.active && x.countsAsDuty && !x.isOvernight && !x.isOnCall && x.startTime)
+    .sort((a, b) => (toMin(a.startTime) ?? 0) - (toMin(b.startTime) ?? 0))[0];
+  // Doctors and other cadres kept off the roster are left out. Nights are not given to cadres or departments that do not take them.
+  const staff: EStaff[] = staffRows
+    .filter((s) => s.cadre?.onRoster !== false)
+    .map((s) => ({
+      id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
+      excludedFromNights: s.excludedFromNights || s.cadre?.takesNights === false || s.department?.runsNights === false || s.morningOnly,
+      morningOnly: s.morningOnly && Boolean(morning),
+      maxDutiesPerWeek: s.maxDutiesPerWeek,
+      eligibleShiftIds: s.morningOnly && morning ? [morning.id] : eligibleByStaff.get(s.id) ?? [],
+    }));
+
   const shifts: EShift[] = shiftRows.map((s) => ({
     id: s.id, code: s.code, name: s.name, startMin: toMin(s.startTime), durationMin: Math.round(s.durationHours * 60), isOvernight: s.isOvernight,
     isOnCall: s.isOnCall, onCallFactor: s.onCallHoursFactor, countsAsDuty: s.countsAsDuty,

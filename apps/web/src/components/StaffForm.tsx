@@ -21,6 +21,7 @@ interface FormValues {
   emergencyContactPhone: string;
   eligibleShiftIds: string[];
   excludedFromNights: boolean;
+  morningOnly: boolean;
   willingForExtraDuties: boolean;
   exclusionReason: string;
   maxDutiesPerWeek: string;
@@ -41,6 +42,7 @@ function initialValues(s?: Staff): FormValues {
     emergencyContactPhone: s?.emergencyContactPhone ?? "",
     eligibleShiftIds: (s?.eligibleShifts ?? []).map((x) => x.id),
     excludedFromNights: s?.excludedFromNights ?? false,
+    morningOnly: s?.morningOnly ?? false,
     willingForExtraDuties: s?.willingForExtraDuties ?? false,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
@@ -81,6 +83,8 @@ export function StaffForm({
     async (v: FormValues) => {
       const body = {
         ...v,
+        // A new person whose position says in-charge is set to mornings by the server; ticking it here does the same.
+        morningOnly: staff ? v.morningOnly : v.morningOnly || undefined,
         maxDutiesPerWeek: v.maxDutiesPerWeek === "" ? 0 : Number(v.maxDutiesPerWeek),
         exclusionReason: v.excludedFromNights ? v.exclusionReason : "",
       };
@@ -201,6 +205,10 @@ export function StaffForm({
             checked={values.excludedFromNights}
             onChange={set("excludedFromNights")}
           />
+        </div>
+        <div className="sm:col-span-2">
+          <Checkbox label="In-charge: weekday mornings only" checked={values.morningOnly} onChange={set("morningOnly")} />
+          <p className="mt-1 text-sm text-[var(--muted)]">Works the morning shift every weekday, no nights or afternoons, and sits outside the duty cycles. Set automatically when the position says in-charge.</p>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="Willing to cover extra duties" checked={values.willingForExtraDuties} onChange={set("willingForExtraDuties")} />

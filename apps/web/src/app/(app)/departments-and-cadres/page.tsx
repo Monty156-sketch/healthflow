@@ -7,6 +7,7 @@ import { useResource, useSave } from "@/lib/useApi";
 import type { Cadre, Department } from "@/lib/types";
 import {
   Button,
+  Checkbox,
   EmptyState,
   Field,
   Input,
@@ -100,6 +101,9 @@ function AddForm({ kind, onAdded }: { kind: Kind; onAdded: () => void }) {
 function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (changed: boolean) => void }) {
   const [name, setName] = useState(item.name);
   const [code, setCode] = useState(item.code ?? "");
+  const [runsNights, setRunsNights] = useState((item as Department).runsNights !== false);
+  const [takesNights, setTakesNights] = useState((item as Cadre).takesNights !== false);
+  const [onRoster, setOnRoster] = useState((item as Cadre).onRoster !== false);
   const update = useCallback(
     (body: { name: string; code: string }) => api.patch(`/api/facility/${kind.key}/${item.id}`, body),
     [kind.key, item.id]
@@ -108,7 +112,8 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (await save.run({ name, code })) onDone(true);
+    const flags = kind.key === "departments" ? { runsNights } : { takesNights: takesNights && onRoster, onRoster };
+    if (await save.run({ name, code, ...flags } as { name: string; code: string })) onDone(true);
   }
 
   return (
@@ -121,6 +126,19 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
           <Field label="Code" optional error={save.fieldErrors.code}>
             {(a) => <Input {...a} className="figures" value={code} onChange={(e) => setCode(e.target.value)} />}
           </Field>
+          <div className="space-y-1 sm:col-span-3">
+            {kind.key === "departments" ? (
+              <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} />
+            ) : (
+              <>
+                <Checkbox label="On the duty roster" checked={onRoster} onChange={setOnRoster} />
+                {onRoster && <Checkbox label="Takes night duty" checked={takesNights} onChange={setTakesNights} />}
+              </>
+            )}
+            <p className="text-sm text-[var(--muted)]">
+              {kind.key === "departments" ? "Switch off for a department that closes at night, such as the eye clinic. Nobody in it is given nights." : "Nights go to general nurses and midwives by default. Doctors are kept off the roster."}
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2 sm:pt-6">
             <Button type="submit" disabled={save.state === "saving"}>
               Save
@@ -218,6 +236,9 @@ function GroupSection({ kind }: { kind: Kind }) {
                     <td className={TD}>
                       <div className="flex flex-wrap items-center gap-2">
                         {!item.active && <StatusBadge tone="neutral">Inactive</StatusBadge>}
+                        {kind.key === "departments" && (item as Department).runsNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
+                        {kind.key === "cadres" && (item as Cadre).onRoster === false && <StatusBadge tone="neutral">Not on roster</StatusBadge>}
+                        {kind.key === "cadres" && (item as Cadre).onRoster !== false && (item as Cadre).takesNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
                         {isAdmin && (
                           <>
                             {item.active && (

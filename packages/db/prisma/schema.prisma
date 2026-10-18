@@ -428,6 +428,8 @@ model Department {
   code       String?
   active     Boolean   @default(true)
   archivedAt DateTime?
+  /// False for departments that close at night, such as the eye clinic.
+  runsNights Boolean   @default(true)
 
   staff Staff[]
 
@@ -443,6 +445,10 @@ model Cadre {
   sortOrder  Int       @default(0)
   active     Boolean   @default(true)
   archivedAt DateTime?
+  /// Nights are given only to cadres that take them (general nurses and midwives by default).
+  takesNights Boolean  @default(true)
+  /// False for cadres who do not work the duty roster, such as doctors.
+  onRoster   Boolean   @default(true)
 
   staff             Staff[]
   establishmentPosts EstablishmentPost[]
@@ -472,6 +478,8 @@ model Staff {
   emergencyContactName  String?
   emergencyContactPhone String?
   excludedFromNights   Boolean          @default(false)
+  /// In-charges: weekday mornings only, outside the duty cycles.
+  morningOnly          Boolean          @default(false)
   willingForExtraDuties Boolean         @default(false)
   exclusionReason      String?          // operational only — never a medical reason
   maxDutiesPerWeek     Int              @default(0) // 0 = no limit
