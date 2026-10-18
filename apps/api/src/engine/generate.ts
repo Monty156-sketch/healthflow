@@ -35,6 +35,11 @@ export interface GenerateInput {
    * a person's share this month, from the duty ledger. Already clamped.
    */
   settlement?: Record<string, number>;
+  /**
+   * 0 keeps the plain order. Any other number breaks near-ties differently, so
+   * generating again gives another lawful roster built from the same rules.
+   */
+  variation?: number;
 }
 
 export interface Shortfall {
@@ -492,6 +497,10 @@ export function generate(input: GenerateInput): GenerateResult {
 
   const generated: GeneratedCell[] = [];
   const unfilled: Shortfall[] = [];
+  const variation = input.variation ?? 0;
+  const jitterRandom = mulberry32(period.startDay * 31 + variation);
+  // Under one point, so it only reorders staff whose costs are otherwise level.
+  const jitter = () => (variation ? jitterRandom() * 0.9 : 0);
   for (let day = period.startDay; day <= period.endDay; day++) {
     for (const slot of daySlots.get(day)!) {
       let best: { s: EStaff; score: number } | null = null;
@@ -502,7 +511,7 @@ export function generate(input: GenerateInput): GenerateResult {
         if (check.hard) continue;
         const rot = rotationCheck(s, slot.shift, day);
         if (rot.hard) continue;
-        const sc = score(s, slot.shift, day) + check.soft + rot.soft;
+        const sc = score(s, slot.shift, day) + check.soft + rot.soft + jitter();
         if (!best || sc < best.score) best = { s, score: sc }; // staff are already in staff-number order, so ties keep the earlier number
       }
       if (best) {
@@ -580,7 +589,7 @@ export function generate(input: GenerateInput): GenerateResult {
   };
 
   const lockedKeys = new Set(input.locked.map((l) => `${l.staffId}:${l.day}`));
-  const random = mulberry32(period.startDay);
+  const random = mulberry32(period.startDay + (input.variation ?? 0) * 7919);
   let improvements = 0;
   if (generated.length > 1) {
     for (let i = 0; i < 300; i++) {

@@ -360,7 +360,12 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   const settlement = await settlementFor(who.facilityId);
   const started = Date.now();
   const locked = data.current.filter((a) => a.locked);
+  // The first generation is the plain order. Every later one is a new variation, unless the caller pins one.
+  const hadBefore = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
+  const asked = Number((req.body as { variation?: unknown } | undefined)?.variation);
+  const variation = Number.isInteger(asked) && asked >= 0 && asked < 1_000_000 ? asked : hadBefore ? 1 + Math.floor(Math.random() * 99_999) : 0;
   const result = generate({
+    variation,
     staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations, leave: data.leave, holidays: data.holidays,
     period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames, settlement,
   });
@@ -399,9 +404,18 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   await flagReview(who, roster, loose);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_generated", entityType: "Roster", entityId: roster.id,
-    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.${Object.keys(settlement).length ? ` The duty ledger moved ${Object.keys(settlement).length} ${Object.keys(settlement).length === 1 ? "person's" : "people's"} share.` : ""}${result.stats.carried ? ` Duties from the last three months moved ${result.stats.carried} ${result.stats.carried === 1 ? "person's" : "people's"} share.` : ""}`,
+    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.${Object.keys(settlement).length ? ` The duty ledger moved ${Object.keys(settlement).length} ${Object.keys(settlement).length === 1 ? "person's" : "people's"} share.` : ""}${` Applied ${data.cycles.length} duty ${data.cycles.length === 1 ? "cycle" : "cycles"} and ${data.rotations.length} rotation ${data.rotations.length === 1 ? "order" : "orders"}, variation ${variation}.`}${result.stats.carried ? ` Duties from the last three months moved ${result.stats.carried} ${result.stats.carried === 1 ? "person's" : "people's"} share.` : ""}`,
   });
+  const applied = {
+    cycles: data.cycles.map((c) => ({ name: c.name, rule: `${c.consecutiveDuties} on, ${c.offDaysRequired} off`, enforcement: c.enforcement })),
+    rotations: data.rotations.map((r) => ({ name: r.name, enforcement: r.enforcement })),
+    ledgerPeople: Object.keys(settlement).length,
+    carriedPeople: result.stats.carried,
+    lockedKept: locked.length,
+    variation,
+  };
   res.json({
+    applied,
     roster: presentRoster({ ...roster, status: "GENERATED" }),
     summary: { ...(await summaryOf(roster.id)) },
     unfilled: result.unfilled.map((s) => sayShortfall(s, data)),

@@ -103,3 +103,28 @@ describe("carry-over from earlier months", () => {
     expect(generate(base({ rotations: [] })).stats.carried).toBe(0);
   });
 });
+
+describe("generating again", () => {
+  const key = (r: ReturnType<typeof generate>) => r.cells.map((c) => `${c.staffId}:${c.day}:${c.shiftId}`).sort().join("|");
+
+  it("gives the same roster for the same variation", () => {
+    expect(key(generate(base({ variation: 7 })))).toBe(key(generate(base({ variation: 7 }))));
+  });
+
+  it("gives a different lawful roster for another variation, still following the cycles", () => {
+    const a = generate(base());
+    const b = generate(base({ variation: 12345 }));
+    expect(b.feasible).toBe(true);
+    expect(key(b)).not.toBe(key(a));
+    // No run of nights longer than four in either, so the cycle rule still holds.
+    for (const r of [a, b]) {
+      for (const s of base().staff) {
+        let run = 0;
+        for (let d = period.startDay; d <= period.endDay; d++) {
+          run = r.cells.some((c) => c.staffId === s.id && c.day === d && c.shiftId === "N") ? run + 1 : 0;
+          expect(run).toBeLessThanOrEqual(4);
+        }
+      }
+    }
+  });
+});
