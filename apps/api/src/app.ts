@@ -13,6 +13,7 @@ import { errorReportRouter, platformRouter, recordServerError } from "./routes/e
 import { internalRouter } from "./routes/internal.js";
 import { districtRouter } from "./routes/district.js";
 import { publicRouter } from "./routes/public.js";
+import { webhookRouter } from "./routes/webhooks.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 export function createApp() {
@@ -27,7 +28,8 @@ export function createApp() {
       credentials: true, // the refresh-token cookie needs this
     })
   );
-  app.use(express.json({ limit: "100kb" }));
+  // The raw bytes are kept for the payment webhook, whose signature is over them.
+  app.use(express.json({ limit: "100kb", verify: (req, _res, buf) => { (req as unknown as { rawBody?: Buffer }).rawBody = buf; } }));
   app.use(cookieParser());
   if (process.env.NODE_ENV !== "test") {
     app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie"] }));
@@ -49,6 +51,7 @@ export function createApp() {
   app.use("/api/public", publicRouter);
   app.use("/api/district", districtRouter);
   app.use("/api/internal", internalRouter);
+  app.use("/api/webhooks", webhookRouter);
   app.use("/api/platform", platformRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));

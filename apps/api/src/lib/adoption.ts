@@ -15,6 +15,8 @@ export interface Adoption {
   staffActive: number;
   lastRosterPublishedAt: Date | null;
   lastSignInAt: Date | null;
+  /** Average attendance completeness of the last two published rosters, 0 to 1, or null when none has been measured. */
+  attendanceCompleteness: number | null;
   errorsLast30Days: number;
   supportSessionsLast30Days: number;
 }
@@ -30,7 +32,7 @@ export async function adoptionFor(facilityIds?: string[], now = new Date()): Pro
   const monthAgo = new Date(now.getTime() - 30 * DAY);
 
   const [published, signIns, accounts, staff, errors, sessions] = await Promise.all([
-    prisma.roster.findMany({ where: { facilityId: { in: ids }, status: "PUBLISHED", OR: [{ year: y, month: m }, { year: last.year, month: last.month }] }, select: { facilityId: true, year: true, month: true } }),
+    prisma.roster.findMany({ where: { facilityId: { in: ids }, status: "PUBLISHED", OR: [{ year: y, month: m }, { year: last.year, month: last.month }] }, select: { facilityId: true, year: true, month: true, attendanceCompleteness: true } }),
     prisma.userProfile.groupBy({ by: ["facilityId"], where: { facilityId: { in: ids } }, _max: { lastSignInAt: true } }),
     prisma.userProfile.groupBy({ by: ["facilityId"], where: { facilityId: { in: ids }, active: true, staffId: { not: null } }, _count: { _all: true } }),
     prisma.staff.groupBy({ by: ["facilityId"], where: { facilityId: { in: ids }, status: "ACTIVE" }, _count: { _all: true } }),
@@ -61,7 +63,9 @@ export async function adoptionFor(facilityIds?: string[], now = new Date()): Pro
       if (daysSince !== null && daysSince >= 10) { health = "WATCH"; why.push(`Last sign-in was ${daysSince} days ago.`); }
     }
     if (health === "HEALTHY") why.push(thisMonth > 0 ? "A roster is published this month." : "Set up recently.");
+    const measured = published.filter((r) => r.facilityId === f.id && r.attendanceCompleteness !== null).map((r) => r.attendanceCompleteness as number);
     out.set(f.id, {
+      attendanceCompleteness: measured.length ? measured.reduce((a, b) => a + b, 0) / measured.length : null,
       health, why, rostersThisMonth: thisMonth, rostersLastMonth: lastMonth, daysSinceSignIn: daysSince,
       accountsActive: accounts.find((a) => a.facilityId === f.id)?._count._all ?? 0,
       staffActive: staff.find((a) => a.facilityId === f.id)?._count._all ?? 0,

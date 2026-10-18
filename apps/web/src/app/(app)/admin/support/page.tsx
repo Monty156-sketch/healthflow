@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { setSupport } from "@/lib/supportSession";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDateTime } from "@/lib/format";
@@ -16,7 +17,7 @@ export default function SupportPage() {
   const [reason, setReason] = useState("");
   const [level, setLevel] = useState("READ_ONLY");
   const [say, setSay] = useState<Say>(null);
-  const [view, setView] = useState<{ id: string; title: string; rows: string[] } | null>(null);
+    const [view, setView] = useState<{ id: string; title: string; rows: string[] } | null>(null);
   if (sessions.error && !sessions.data) return <LoadError onRetry={sessions.reload} />;
   if (!sessions.data || !facs.data) return <Loading />;
 
@@ -49,7 +50,7 @@ export default function SupportPage() {
           <form onSubmit={start} className="max-w-xl space-y-3">
             <Field label="Facility">{(a) => <Select {...a} value={facilityId} onChange={(e) => setFacilityId(e.target.value)} required><option value="">Choose</option>{facs.data!.facilities.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</Select>}</Field>
             <Field label="Reason" hint="The facility reads this exactly as written.">{(a) => <Textarea {...a} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} required />}</Field>
-            <Field label="Access">{(a) => <Select {...a} value={level} onChange={(e) => setLevel(e.target.value)}><option value="READ_ONLY">Read only</option><option value="FULL">Full, can change data (recorded as such)</option></Select>}</Field>
+            <Field label="Access">{(a) => <Select {...a} value={level} onChange={(e) => setLevel(e.target.value)}><option value="READ_ONLY">Read only</option><option value="FULL">Full: open the facility as its administrator and change things. Every change is written to the facility&apos;s audit log. Personal-data requests, invitations and billing stay with the facility.</option></Select>}</Field>
             <Button type="submit" disabled={!facilityId || reason.trim().length < 10}>Start session</Button>
           </form>
         </Panel>
@@ -60,7 +61,7 @@ export default function SupportPage() {
                 <li key={s.id} className="py-3">
                   <p><strong>{s.facility}</strong> <StatusBadge tone="warning">{s.accessLevel === "FULL" ? "full" : "read only"}</StatusBadge> <span className="text-sm text-[var(--muted)]">ends {showDateTime(s.expiresAt)}</span></p>
                   <p className="text-[var(--muted)]">{s.reason}</p>
-                  <div className="mt-2 flex flex-wrap gap-2"><Button variant="secondary" onClick={() => open(s.id, "staff")}>View staff list</Button><Button variant="secondary" onClick={() => open(s.id, "rosters")}>View rosters</Button><Button variant="secondary" onClick={() => end(s.id)}>End session</Button></div>
+                  <div className="mt-2 flex flex-wrap gap-2"><Button onClick={() => { setSupport({ id: s.id, facility: s.facility, level: s.accessLevel === "FULL" ? "FULL" : "READ_ONLY", expiresAt: s.expiresAt }); window.location.assign("/dashboard"); }}>{s.accessLevel === "FULL" ? "Open facility with full access" : "Open facility, read only"}</Button><Button variant="secondary" onClick={() => open(s.id, "staff")}>View staff list</Button><Button variant="secondary" onClick={() => open(s.id, "rosters")}>View rosters</Button><Button variant="secondary" onClick={() => end(s.id)}>End session</Button></div>
                 </li>
               ))}
             </ul>

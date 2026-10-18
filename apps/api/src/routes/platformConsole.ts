@@ -159,7 +159,7 @@ consoleRouter.get("/facilities", async (_req, res) => {
       return {
         id: f.id, name: f.name, district: f.district?.name ?? null, status: f.status, active: f.active,
         plan: f.subscription?.plan.name ?? null, subscriptionStatus: f.subscription?.status ?? null,
-        staff: a.staffActive, lastRosterPublishedAt: a.lastRosterPublishedAt, lastSignInAt: a.lastSignInAt, health: a.health, healthWhy: a.why,
+        staff: a.staffActive, accounts: a.accountsActive, attendanceCompleteness: a.attendanceCompleteness, lastRosterPublishedAt: a.lastRosterPublishedAt, lastSignInAt: a.lastSignInAt, health: a.health, healthWhy: a.why,
       };
     }),
   });

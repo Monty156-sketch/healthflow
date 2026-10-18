@@ -15,6 +15,8 @@ interface Row {
   plan: string | null;
   subscriptionStatus: string | null;
   staff: number;
+  accounts: number;
+  attendanceCompleteness: number | null;
   lastRosterPublishedAt: string | null;
   lastSignInAt: string | null;
   health: string;
@@ -48,10 +50,10 @@ export default function FacilitiesPage() {
         <EmptyState title="No facilities match" />
       ) : (
         <TableScroll label="Facilities">
-          <table className="w-full min-w-[52rem] border-collapse text-[15px]">
+          <table className="w-full min-w-[64rem] border-collapse text-[15px]">
             <thead>
               <tr>
-                {["Facility", "District", "Plan", "Subscription", "Staff", "Last roster published", "Last sign-in", "Health"].map((h) => (
+                {["Facility", "District", "Plan", "Subscription", "Staff", "With accounts", "Attendance records", "Last roster published", "Last sign-in", "Health"].map((h) => (
                   <th key={h} scope="col" className={TH}>{h}</th>
                 ))}
               </tr>
@@ -66,6 +68,8 @@ export default function FacilitiesPage() {
                   <td className={TD}>{f.plan ?? "None"}</td>
                   <td className={TD}>{f.subscriptionStatus ? f.subscriptionStatus.replace(/_/g, " ").toLowerCase() : f.status.toLowerCase()}</td>
                   <td className={`${TD} figures`}>{f.staff}</td>
+                  <td className={`${TD} figures`}>{f.staff > 0 ? `${Math.min(100, Math.round((f.accounts / f.staff) * 100))}%` : ""}</td>
+                  <td className={`${TD} figures`}>{f.attendanceCompleteness === null ? "Not measured" : `${Math.round(f.attendanceCompleteness * 100)}% complete`}</td>
                   <td className={`${TD} figures whitespace-nowrap`}>{f.lastRosterPublishedAt ? showDate(f.lastRosterPublishedAt) : "Never"}</td>
                   <td className={`${TD} figures whitespace-nowrap`}>{f.lastSignInAt ? showDate(f.lastSignInAt) : "Never"}</td>
                   <td className={TD} title={f.healthWhy.join(" ")}><StatusBadge tone={HEALTH_TONE[f.health]}>{HEALTH_WORD[f.health]}</StatusBadge></td>

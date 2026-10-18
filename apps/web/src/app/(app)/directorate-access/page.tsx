@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useFacility } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDateTime } from "@/lib/format";
@@ -20,9 +21,11 @@ const CHOICES: { scope: string; label: string; says: string }[] = [
 ];
 
 export default function DirectorateAccess() {
+  const { flags } = useFacility();
   const { data, error, reload } = useResource<Data>("/api/facility/directorate");
   const [picked, setPicked] = useState<string[] | null>(null);
   const [msg, setMsg] = useState<{ tone: "success" | "block"; text: string } | null>(null);
+  if (flags?.["district.oversight"] === false) return <><PageHeader title="Directorate access" /><Notice tone="neutral">District oversight is not switched on for your facility yet. PS Tech is introducing it directorate by directorate. Call us if you would like it.</Notice></>;
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading directorate access" />;
   if (!data.district) {

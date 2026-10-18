@@ -10,6 +10,7 @@ import { parseOr400 } from "../lib/validate.js";
 import { consoleRouter } from "./platformConsole.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
+import { jobStatus } from "../lib/scheduler.js";
 
 /** Keeps the technical context small and free of anything that looks like a secret. */
 function safeContext(value: unknown): Prisma.InputJsonValue | undefined {
@@ -87,6 +88,13 @@ errorReportRouter.post("/", reportLimiter, async (req, res) => {
   res.status(201).json({ id: report.id });
 });
 
+/** What this person reported, and what PS Tech answered. */
+errorReportRouter.get("/mine", async (req, res) => {
+  const me = liveUser(req);
+  const rows = await prisma.errorReport.findMany({ where: { reportedBy: me.email }, orderBy: { createdAt: "desc" }, take: 50 });
+  res.json({ reports: rows.map((r) => ({ id: r.id, createdAt: r.createdAt, screen: r.screen, description: r.description, status: r.status, reply: r.reply, repliedAt: r.repliedAt })) });
+});
+
 // ------------------------------------------------------------- platform: system health
 
 export const platformRouter = Router();
@@ -123,7 +131,7 @@ platformRouter.get("/health", async (_req, res) => {
     database,
     errors: { last24h, open },
     // Not built yet; listed so the screen shows what it will cover.
-    jobs: { status: "none_yet" },
+    jobs: await jobStatus(),
     notifications: { status: "none_yet" },
     reports: recent.map((r) => ({
       id: r.id,

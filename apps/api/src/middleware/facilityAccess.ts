@@ -16,6 +16,7 @@
 import type { NextFunction, Request, Response } from "express";
 import type { Role } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
+import { writeAuditLog } from "../lib/audit.js";
 
 export interface FacilityCaller {
   userId: string;
@@ -26,6 +27,8 @@ export interface FacilityCaller {
   facilityId: string;
   /** The staff record linked to this account, if any. */
   staffId: string | null;
+  /** Set when PS Tech support is acting inside this facility through an open support session. */
+  supportSessionId?: string;
 }
 
 declare global {
@@ -37,8 +40,49 @@ declare global {
   }
 }
 
-/** Writes that stay open on a suspended facility: a person's own data rights and reading notifications. */
-const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications"];
+/** Writes that stay open on a suspended facility: a person's own data rights, reading notifications, and paying an invoice. */
+const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications", "/api/facility/billing"];
+
+/** What full-access support may not do even inside a session: hand out access, touch personal-data rights, billing, or take a copy of everything. */
+const SUPPORT_NEVER = ["/api/facility/privacy", "/api/facility/invitations", "/api/facility/billing", "/api/facility/notices/legal", "/api/facility/directorate", "/api/facility/me/"];
+const SUPPORT_NEVER_READ = ["/api/facility/privacy/export", "/api/facility/me/data"];
+
+/**
+ * PS Tech support acting inside a facility. The platform account sends the
+ * id of its own open session; the facility is the session's, never the
+ * request's. Read-only sessions can read. Full sessions can also change
+ * things, each change is written to the facility's own audit log, and the
+ * session ends by itself after an hour.
+ */
+async function supportCaller(req: Request, res: Response, email: string, userId: string, sessionId: string) {
+  const s = await prisma.supportSession.findFirst({
+    where: { id: sessionId, platformUserEmail: email, endedAt: null, expiresAt: { gt: new Date() } },
+    include: { facility: { select: { status: true } } },
+  });
+  if (!s) {
+    res.status(403).json({ error: "support_session_ended", message: "This support session has ended. Start another from Support access." });
+    return null;
+  }
+  const write = !["GET", "HEAD"].includes(req.method);
+  const url = req.originalUrl.split("?")[0];
+  if (write && s.accessLevel !== "FULL") {
+    res.status(403).json({ error: "support_read_only", message: "This support session is read only. Start a full access session to make changes." });
+    return null;
+  }
+  if ((write && SUPPORT_NEVER.some((p) => url.startsWith(p))) || SUPPORT_NEVER_READ.some((p) => url.startsWith(p))) {
+    res.status(403).json({ error: "support_not_allowed", message: "Support access cannot do this. The facility's own administrator has to." });
+    return null;
+  }
+  if (write) {
+    res.on("finish", () => {
+      if (res.statusCode < 400) {
+        writeAuditLog({ facilityId: s.facilityId, actorEmail: email, action: "support_change", entityType: "SupportSession", entityId: s.id, summary: `PS Tech support (${email}) made a change during a full access session: ${req.method} ${url.replace("/api/facility", "") || "/"}.` }).catch(() => undefined);
+      }
+    });
+  }
+  const caller: FacilityCaller = { userId, email, displayName: `PS Tech support (${email})`, role: "FACILITY_ADMIN", facilityId: s.facilityId, staffId: null, supportSessionId: s.id };
+  return caller;
+}
 
 export async function requireFacilityUser(req: Request, res: Response, next: NextFunction) {
   if (!req.auth) return res.status(401).json({ error: "unauthenticated" });
@@ -60,6 +104,13 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
 
   if (!profile || !profile.active) {
     return res.status(401).json({ error: "session_ended" });
+  }
+  const sessionHeader = req.header("x-support-session");
+  if (sessionHeader && profile.role === "PLATFORM_ADMIN") {
+    const c = await supportCaller(req, res, profile.userEmail, profile.id, sessionHeader);
+    if (!c) return;
+    req.caller = c;
+    return next();
   }
   if (profile.scopeType !== "FACILITY" || !profile.facilityId) {
     return res.status(403).json({ error: "no_facility_access" });

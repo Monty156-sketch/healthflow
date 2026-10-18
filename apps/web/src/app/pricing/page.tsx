@@ -21,10 +21,10 @@ const band = (p: Plan) => (p.staffBandMin && p.staffBandMax ? `${p.staffBandMin}
 export default function PricingPage() {
   const { data, error } = useResource<{ plans: Plan[] }>("/api/public/plans");
   return (
-    <PublicPage title="Pricing" intro="Prices are in Ghana cedis and depend on the number of staff at the facility. Setup and data migration are quoted separately." wide>
+    <PublicPage title="Pricing" intro="Prices are in Ghana cedis and depend on the number of staff at the facility. A one-off setup fee applies to the larger plans. If your staff count falls between two plans or above 2,000, call us and we will quote." wide>
       {!data && !error && <Loading label="Loading plans" />}
       {data && data.plans.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {data.plans.map((p) => (
             <section key={p.id} className="flex flex-col rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby={`plan-${p.id}`}>
               <h2 id={`plan-${p.id}`} className="text-lg font-semibold">
@@ -35,7 +35,7 @@ export default function PricingPage() {
                 {cedi(p.monthlyPriceGhs)}
                 <span className="text-base font-normal text-[var(--muted)]"> a month</span>
               </p>
-              {p.setupPriceGhs ? <p className="text-sm text-[var(--muted)]">Setup: {cedi(p.setupPriceGhs)}, once</p> : null}
+              <p className="text-sm text-[var(--muted)]">{p.setupPriceGhs ? `Setup: ${cedi(p.setupPriceGhs)}, once` : "No setup fee"}</p>
               {p.features.length > 0 && (
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-[15px]">
                   {p.features.map((f) => (

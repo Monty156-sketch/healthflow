@@ -4,7 +4,15 @@
 // injected by any means has nothing to steal. A silent refresh against the
 // httpOnly refresh cookie restores it on load.
 
+import { getSupport } from "@/lib/supportSession";
+
 let accessToken: string | null = null;
+
+/** Tells the API which support session a platform account is acting in, on facility calls only. */
+function supportHeader(path: string): Record<string, string> {
+  const s = path.startsWith("/api/facility") ? getSupport() : null;
+  return s ? { "x-support-session": s.id } : {};
+}
 
 export function setAccessToken(token: string | null) {
   accessToken = token;
@@ -48,6 +56,7 @@ async function request<T>(
     headers: {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...supportHeader(path),
       ...options.headers,
     },
   });
@@ -74,7 +83,7 @@ async function request<T>(
 async function download(path: string, fallbackName: string, retry = true): Promise<void> {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: "include",
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    headers: { ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...supportHeader(path) },
   });
   if (res.status === 401 && retry) {
     if (await refreshSession()) return download(path, fallbackName, false);

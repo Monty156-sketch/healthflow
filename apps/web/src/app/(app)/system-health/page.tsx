@@ -22,8 +22,7 @@ interface Health {
   api: { ok: boolean; upSinceSeconds: number };
   database: { ok: boolean; ms: number | null };
   errors: { last24h: number; open: number };
-  jobs: { status: string };
-  notifications: { status: string };
+  jobs: { name: string; label: string; everyMinutes: number; lastRunAt: string | null; lastOk: boolean | null; lastDetail: string | null; failedLast7Days: number; late: boolean }[];
   reports: Report[];
 }
 
@@ -83,8 +82,10 @@ export default function SystemHealthPage() {
               ok={data.database.ok}
               detail={data.database.ok ? `Answered in ${data.database.ms} ms.` : "The database did not answer."}
             />
-            <Check label="Background jobs" ok={data.jobs.status === "none_yet" ? null : true} detail="There are no scheduled jobs yet." />
-            <Check label="Notifications" ok={data.notifications.status === "none_yet" ? null : true} detail="Notifications are not sent yet." />
+            {data.jobs.map((j) => (
+              <Check key={j.name} label={j.label} ok={j.lastRunAt === null ? null : !j.late && j.lastOk !== false} detail={j.lastRunAt === null ? "Has not run yet." : `Every ${j.everyMinutes >= 60 ? `${Math.round(j.everyMinutes / 60)} hours` : `${j.everyMinutes} minutes`}. Last ran ${new Date(j.lastRunAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${j.lastOk === false ? `, and failed: ${j.lastDetail}` : j.late ? ", and is late" : ""}.${j.failedLast7Days ? ` ${j.failedLast7Days} failed in the last 7 days.` : ""}`} />
+            ))}
+            <Check label="Notifications" ok={null} detail="Notices appear in the application. Email delivery is not tracked here." />
           </div>
         </Panel>
         <Panel title="Errors">
