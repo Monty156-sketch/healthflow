@@ -131,13 +131,20 @@ export default function LoginPage() {
   const wide = stage === "enrol" || stage === "codes";
 
   return (
-    <main id="main" className="flex flex-1 items-center justify-center px-4 py-10">
-      <Card className={`w-full ${wide ? "max-w-lg" : "max-w-sm"}`}>
-        <p className="mb-4 flex items-center gap-2 font-semibold">
+    <main id="main" className="flex flex-1 flex-col lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+      <div className="on-ink grid-paper flex flex-col justify-between gap-10 px-6 py-8 sm:px-10 lg:py-12">
+        <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" width={22} height={22} />
+          <img src="/favicon.svg" alt="" width={30} height={30} />
           HealthFlow
-        </p>
+        </Link>
+        <div className="max-w-md">
+          <p className="text-2xl leading-snug font-semibold sm:text-3xl">A duty roster you can defend.</p>
+          <p className="mt-3 hidden leading-relaxed text-[var(--muted)] sm:block">Built from your own shifts and rules, checked against the Labour Act before it is published, and printed on the A4 sheet your staff already read.</p>
+        </div>
+      </div>
+      <div className="flex items-start justify-center px-4 py-10 lg:items-center">
+      <Card className={`w-full ${wide ? "max-w-lg" : "max-w-sm"}`}>
 
         {stage === "enrol" && pending && (
           <>
@@ -238,6 +245,7 @@ export default function LoginPage() {
           </>
         )}
       </Card>
+    </div>
     </main>
   );
 }

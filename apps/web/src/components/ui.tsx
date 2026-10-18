@@ -26,7 +26,7 @@ const BUTTON_BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-[var(--radius)] px-4 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
 const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
-  primary: "bg-[var(--accent)] text-[var(--on-accent)] hover:brightness-110",
+  primary: "bg-[var(--accent)] text-[var(--on-accent)] hover:brightness-110 active:brightness-95",
   secondary:
     "border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--accent-soft)]",
   quiet: "text-[var(--accent-text)] hover:bg-[var(--accent-soft)]",
@@ -295,7 +295,7 @@ export function Panel({
   return (
     <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
       {(title || actions) && (
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-t-[var(--radius)] border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 sm:px-5">
           <div>
             {title && <h2 className="text-base font-semibold">{title}</h2>}
             {description && <p className="text-sm text-[var(--muted)]">{description}</p>}
@@ -322,7 +322,7 @@ export function TableScroll({ children, label }: { children: ReactNode; label: s
   );
 }
 
-export const TH = "border-b border-[var(--border)] px-3 py-2.5 text-left text-[13px] font-medium text-[var(--muted)] whitespace-nowrap";
+export const TH = "border-b border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-[13px] font-semibold text-[var(--muted)] whitespace-nowrap";
 export const TD = "border-b border-[var(--border)] px-3 py-3 align-top";
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {

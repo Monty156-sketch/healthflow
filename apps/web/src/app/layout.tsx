@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { SiteFooter } from "@/components/SiteFooter";
 
-const inter = Inter({
-  variable: "--font-inter",
+const publicSans = Public_Sans({
+  variable: "--font-public",
   subsets: ["latin"],
 });
 
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${publicSans.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <AuthProvider>{children}</AuthProvider>

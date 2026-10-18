@@ -120,7 +120,7 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
               href={n.href}
               onClick={onNavigate}
               aria-current={current ? "page" : undefined}
-              className={`flex min-h-11 items-center rounded-[var(--radius)] px-3 text-[15px] ${
+              className={`flex min-h-10 items-center rounded-[var(--radius)] px-3 text-[15px] ${
                 current
                   ? "bg-[var(--accent-soft)] font-medium text-[var(--accent-text)]"
                   : "text-[var(--foreground)] hover:bg-[var(--accent-soft)]"
@@ -164,15 +164,21 @@ function OfflineBanner() {
 
 // ------------------------------------------------------------- shell
 
-function Brand() {
+function Brand({ area }: { area: Area }) {
+  const href = area === "platform" ? "/platform" : area === "district" ? "/district" : "/dashboard";
   return (
-    <Link href="/dashboard" className="flex min-h-11 items-center gap-2 font-semibold">
+    <Link href={href} className="flex min-h-11 items-center gap-2.5 font-semibold">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/favicon.svg" alt="" width={22} height={22} />
-      HealthFlow
+      <img src="/favicon.svg" alt="" width={26} height={26} />
+      <span className="leading-tight">
+        HealthFlow
+        {area !== "facility" && <span className="block text-[13px] font-normal text-[var(--muted)]">{area === "platform" ? "Platform console" : "District directorate"}</span>}
+      </span>
     </Link>
   );
 }
+
+type Area = "facility" | "platform" | "district";
 
 function AccountBlock({
   name,
@@ -295,6 +301,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     : null;
   const role = data?.me.role ?? user.role;
   const name = data?.me.displayName ?? user.email;
+  const area: Area =
+    user.role === "PLATFORM_ADMIN" && !supporting ? "platform" : user.role === "DISTRICT_OFFICER" ? "district" : "facility";
   const facilityName = data?.facility.name;
 
   return (
@@ -319,8 +327,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
       <div className="app-frame lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
         {/* Wide screens: a fixed sidebar. */}
-        <aside className="no-print hidden border-r border-[var(--border)] bg-[var(--surface)] lg:flex lg:flex-col lg:gap-6 lg:px-4 lg:py-5">
-          <Brand />
+        <aside data-area={area} className="on-ink no-print hidden lg:sticky lg:self-start lg:top-0 lg:flex lg:h-screen lg:flex-col lg:gap-6 lg:overflow-y-auto lg:px-4 lg:py-5">
+          <Brand area={area} />
           {facilityName && (
             <div>
               <p className="px-3 text-sm text-[var(--muted)]">Facility</p>
@@ -336,9 +344,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </aside>
 
         {/* Phones and tablets: a top bar with a menu. */}
-        <header className="no-print sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)] lg:hidden">
+        <header data-area={area} className="on-ink no-print sticky top-0 z-30 lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4">
-            <Brand />
+            <Brand area={area} />
             <Button
               variant="secondary"
               aria-expanded={menuOpen}

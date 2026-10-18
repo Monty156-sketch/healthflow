@@ -16,7 +16,7 @@ const COLOUR: Record<Exclude<Cell, "">, string> = { M: "var(--shift-morning)", A
 
 export function RosterExample() {
   return (
-    <figure className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-3 sm:p-4">
+    <figure className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4 sm:p-5">
       <figcaption className="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 text-sm text-[var(--muted)]">
         <span className="font-medium text-[var(--foreground)]">Example roster, one week</span>
         <span>Invented staff, to show the checks</span>

@@ -1,19 +1,24 @@
 import { ReactNode } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui";
 
-/** The narrow centred frame used by the signed-out pages. */
+/** The narrow centred frame used by the signed-out pages: a card on a band of ink. */
 export function PublicCard({ title, children, wide }: { title: string; children: ReactNode; wide?: boolean }) {
   return (
-    <main id="main" className="flex flex-1 items-center justify-center px-4 py-10">
-      <Card className={`w-full ${wide ? "max-w-lg" : "max-w-sm"}`}>
-        <p className="mb-4 flex items-center gap-2 font-semibold">
+    <main id="main" className="flex flex-1 flex-col">
+      <div className="on-ink grid-paper h-44 px-4 pt-8 sm:h-52">
+        <Link href="/" className="mx-auto flex w-full max-w-lg items-center gap-2.5 text-lg font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" width={22} height={22} />
+          <img src="/favicon.svg" alt="" width={30} height={30} />
           HealthFlow
-        </p>
-        <h1 className="mb-4 text-lg font-semibold">{title}</h1>
-        {children}
-      </Card>
+        </Link>
+      </div>
+      <div className="-mt-24 flex flex-1 justify-center px-4 pb-12 sm:-mt-28">
+        <Card className={`h-fit w-full ${wide ? "max-w-lg" : "max-w-sm"}`}>
+          <h1 className="mb-4 text-xl font-semibold">{title}</h1>
+          {children}
+        </Card>
+      </div>
     </main>
   );
 }

@@ -19,11 +19,11 @@ const LEGAL = [
 /** Under every page: what HealthFlow is, where to go, the legal pages, and how to reach PS Tech. */
 export function SiteFooter() {
   return (
-    <footer className="no-print mt-auto border-t border-[var(--border)] bg-[var(--surface)] px-5 pt-10 pb-6">
+    <footer className="on-ink no-print mt-auto px-5 pt-10 pb-6">
       <div className="mx-auto max-w-5xl">
         <div className="grid gap-x-8 gap-y-8 grid-cols-2 lg:grid-cols-4">
           <div className="col-span-2 lg:col-span-1">
-            <p className="text-lg font-semibold text-[var(--accent-text)]">HealthFlow</p>
+            <p className="text-lg font-semibold text-[var(--foreground)]">HealthFlow</p>
             <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-[var(--muted)]">A duty roster you can defend, for Ghana&apos;s health facilities.</p>
           </div>
           <nav aria-label="Product">

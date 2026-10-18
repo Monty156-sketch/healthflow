@@ -6,67 +6,140 @@
  * Every text colour here is checked at 4.5:1 or better against the ground
  * and the surface it sits on, in light and dark.
  */
+/* Colour grade
+ * Ink green is the deep colour of the product: the sidebar, the public header,
+ * the footer and the sign-in panel. Teal is the working colour for actions.
+ * Gold is used sparingly, as the one warm note, for the current item and for
+ * the call to action on ink. The ground is a cool paper grey, so white
+ * panels read as the sheets on a desk. Shift colours follow the paper
+ * roster: amber morning, blue afternoon, navy night. */
 :root {
-  --background: #f4f7f5; /* warm off-white ground */
+  --background: #eef2ef; /* paper-grey ground */
   --surface: #ffffff; /* tables, forms and panels sit on this */
-  --foreground: #12262b; /* petrol-black text */
-  --muted: #4f5e5b; /* secondary text */
-  --border: #d3dcd9;
-  --border-strong: #869692; /* form controls: edges at 3:1 or better */
+  --surface-2: #f6f8f6; /* table heads, panel heads, quiet fills */
+  --foreground: #10242a; /* petrol-black text */
+  --muted: #475856; /* secondary text */
+  --border: #d4dcd8;
+  --border-strong: #84938f; /* form controls: edges at 3:1 or better */
 
-  --accent: #0e6b6b; /* the one accent: buttons, links, focus */
-  --accent-text: #0e6b6b; /* accent used as text */
-  --accent-soft: #e3efee; /* selected row, current nav item */
+  --accent: #0b6560; /* actions, links, focus */
+  --accent-text: #0b6560; /* accent used as text */
+  --accent-soft: #e0eeeb; /* selected row, hover */
   --on-accent: #ffffff;
 
-  --shift-morning: #b56b12;
-  --shift-afternoon: #25619f;
-  --shift-night: #463a85;
+  --ink: #0a2f2c; /* sidebar, public header, footer */
+  --ink-soft: #0f3d39;
+  --gold: #d9ac3c; /* on ink only */
+  --gold-text: #7b5a10; /* gold as text on light grounds */
+  --gold-soft: #f6edd5;
+
+  --shift-morning: #b36a0f;
+  --shift-afternoon: #1f5f9e;
+  --shift-night: #2a3a66;
   --shift-off-duty: #77878a;
 
   --status-block: #9e2b2b;
-  --status-warning: #8a5c0e; /* darkened from #A87111 so text passes 4.5:1 */
-  --status-success: #2a7049;
-  --status-neutral: #5d6c69;
+  --status-warning: #84570b; /* text passes 4.5:1 on white and on the soft fill */
+  --status-success: #226a45;
+  --status-neutral: #55655f;
   --status-block-soft: #f6e7e7;
   --status-warning-soft: #f7efdf;
 
-  --radius: 6px; /* small and consistent, never pill-shaped */
+  --radius: 7px; /* small and consistent, never pill-shaped */
   --focus: 0 0 0 2px var(--background), 0 0 0 4px var(--accent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0d1416;
-    --surface: #131d20;
-    --foreground: #f4f7f5;
-    --muted: #a3b2af;
-    --border: #25343a;
-    --border-strong: #667c80;
+    --background: #0b1315;
+    --surface: #111b1e;
+    --surface-2: #162327;
+    --foreground: #f1f5f3;
+    --muted: #a0b1ad;
+    --border: #243338;
+    --border-strong: #657b7f;
 
-    --accent: #0e6b6b;
-    --accent-text: #5fc4c1;
-    --accent-soft: #15302f;
+    --accent: #148a83;
+    --accent-text: #62cbc4;
+    --accent-soft: #14302f;
     --on-accent: #ffffff;
+
+    --ink: #061f1d;
+    --ink-soft: #0a2c29;
+    --gold-text: #e3bd62;
+    --gold-soft: #2b2515;
 
     --status-block: #ec8b8b;
     --status-warning: #e3b45a;
     --status-success: #74c79a;
-    --status-neutral: #a3b2af;
+    --status-neutral: #a0b1ad;
     --status-block-soft: #2c1a1a;
     --status-warning-soft: #2b2416;
     --focus: 0 0 0 2px var(--background), 0 0 0 4px var(--accent-text);
   }
 }
 
+/* Each area of the product has its own ink, so you always know where you are. */
+[data-area="platform"] {
+  --ink: #161b22; /* the console: graphite */
+  --ink-soft: #1f2630;
+}
+[data-area="district"] {
+  --ink: #0c3040; /* the directorate: deep blue-green */
+  --ink-soft: #123e51;
+}
+
+/* Anything on ink: the colour tokens flip so every component inside adapts. */
+.on-ink {
+  --foreground: #eef4f2;
+  --muted: #a9c0bb;
+  --border: #25524c;
+  --border-strong: #5a8982;
+  --surface: var(--ink);
+  --surface-2: var(--ink-soft);
+  --accent: var(--gold);
+  --accent-text: #ecc971;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --on-accent: #1a1405;
+  --focus: 0 0 0 2px var(--ink), 0 0 0 4px var(--gold);
+  background-color: var(--ink);
+  color: var(--foreground);
+}
+
+/* A sheet laid on ink: it keeps the light tokens even in dark mode, like paper. */
+.on-paper {
+  --background: #eef2ef;
+  --surface: #ffffff;
+  --surface-2: #f6f8f6;
+  --foreground: #10242a;
+  --muted: #475856;
+  --border: #d4dcd8;
+  --border-strong: #84938f;
+  --accent: #0b6560;
+  --accent-text: #0b6560;
+  --accent-soft: #e0eeeb;
+  --status-block: #9e2b2b;
+  --focus: 0 0 0 2px #fff, 0 0 0 4px #0b6560;
+  color: var(--foreground);
+}
+
+/* The roster grid, as a faint pattern on ink. Lines, not a gradient wash. */
+.grid-paper {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
   --color-border: var(--border);
   --color-muted: var(--muted);
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-public);
   --font-mono: var(--font-plex-mono);
   --radius-default: var(--radius);
 }
@@ -75,10 +148,17 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+h1,
+h2,
+h3 {
+  letter-spacing: -0.012em;
+  text-wrap: balance;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-public), ui-sans-serif, system-ui, sans-serif;
   font-size: 15px;
   line-height: 1.5;
 }
