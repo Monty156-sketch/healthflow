@@ -64,6 +64,7 @@ export function useOptionalFacility() {
 
 const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
 const PLATFORM = ["PLATFORM_ADMIN"];
+const DISTRICT = ["DISTRICT_OFFICER"];
 
 const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
@@ -89,11 +90,19 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/settings/leave-types", label: "Leave types", roles: ["FACILITY_ADMIN"] },
   { href: "/settings/entitlements", label: "Leave entitlements", roles: ["FACILITY_ADMIN"] },
   { href: "/settings/holidays", label: "Public holidays", roles: ["FACILITY_ADMIN"] },
+  { href: "/directorate-access", label: "Directorate access", roles: ["FACILITY_ADMIN"] },
+  { href: "/settings/establishment", label: "Approved posts", roles: ["FACILITY_ADMIN"] },
   { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
   { href: "/admin", label: "Console", roles: PLATFORM },
   { href: "/admin/requests", label: "Access requests", roles: PLATFORM },
   { href: "/admin/facilities", label: "Facilities", roles: PLATFORM },
+  { href: "/admin/districts", label: "Districts", roles: PLATFORM },
+  { href: "/district", label: "District overview", roles: DISTRICT },
+  { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
+  { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
+  { href: "/district/leave", label: "Leave concentration", roles: DISTRICT },
+  { href: "/district/reports", label: "Report pack", roles: DISTRICT },
   { href: "/system-health", label: "System health", roles: PLATFORM },
 ];
 
@@ -248,6 +257,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!authLoading && !user) router.replace("/login");
     // The platform console is where a platform admin starts.
     if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard") router.replace("/admin");
+    if (user?.role === "DISTRICT_OFFICER" && pathname === "/dashboard") router.replace("/district");
   }, [authLoading, user, router, pathname]);
 
   // Close the phone menu when the page changes.
@@ -357,7 +367,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
               </div>
             )}
-            {ctx || pathname === "/account" || (role === "PLATFORM_ADMIN" && (pathname === "/system-health" || pathname === "/admin" || pathname.startsWith("/admin/"))) ? children : <NoFacilityNotice role={role} />}
+            {ctx || pathname === "/account" || (role === "DISTRICT_OFFICER" && (pathname === "/district" || pathname.startsWith("/district/"))) || (role === "PLATFORM_ADMIN" && (pathname === "/system-health" || pathname === "/admin" || pathname.startsWith("/admin/"))) ? children : <NoFacilityNotice role={role} />}
           </div>
         </main>
       </div>
