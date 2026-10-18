@@ -32,6 +32,8 @@ export async function writeAuditLog(entry: {
   after?: unknown;
   /** A readable sentence — "A. Dery's duty on 14 August changed from Night to Off Duty by K. Bawa" — not a record type and an id. */
   summary: string;
+  /** Why, as the person gave it. Kept apart from the sentence so it can be read and filtered on its own. */
+  reason?: string | null;
 }): Promise<void> {
   await prisma.auditLog.create({
     data: {
@@ -43,6 +45,7 @@ export async function writeAuditLog(entry: {
       before: entry.before ? (strip(entry.before) as object) : undefined,
       after: entry.after ? (strip(entry.after) as object) : undefined,
       summary: entry.summary,
+      reason: entry.reason ?? null,
     },
   });
 }

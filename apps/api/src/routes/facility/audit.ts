@@ -57,7 +57,7 @@ auditRouter.get("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       orderBy: { createdAt: "desc" },
       skip: (params.page - 1) * params.pageSize,
       take: params.pageSize,
-      select: { id: true, createdAt: true, actorEmail: true, action: true, entityType: true, summary: true },
+      select: { id: true, createdAt: true, actorEmail: true, action: true, entityType: true, summary: true, reason: true },
     }),
   ]);
 

@@ -173,6 +173,7 @@ rulesRouter.patch("/:code", allowRoles(...ADMIN_ROLES), async (req, res) => {
       entityId: rule.id,
       before: { thresholdValue: rule.thresholdValue, behaviour: rule.behaviour, enabled: rule.enabled },
       after: { thresholdValue: updated.thresholdValue, behaviour: updated.behaviour, enabled: updated.enabled },
+      reason: rule.ruleType === "STATUTORY" && thresholdChanged ? input.reason : null,
       summary: `${who.displayName} changed rule ${rule.code} (${rule.name}): ${parts.join("; ")}.${
         rule.ruleType === "STATUTORY" && thresholdChanged && input.reason ? ` Advice recorded: ${input.reason}` : ""
       }`,
