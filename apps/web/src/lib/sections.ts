@@ -57,6 +57,7 @@ export const SECTIONS: Section[] = [
       { href: "/rules", label: "Compliance rules", roles: READ },
       { href: "/directorate-access", label: "Directorate access", roles: ADMIN, flag: "district.oversight" },
       { href: "/privacy-and-data", label: "Privacy and data protection", roles: ADMIN },
+      { href: "/audit-log", label: "Audit log", roles: ADMIN },
     ],
   },
   {

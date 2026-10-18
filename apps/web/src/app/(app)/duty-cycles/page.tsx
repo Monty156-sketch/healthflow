@@ -9,7 +9,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS } from "@/lib/format";
 import type { CapacityRow, CycleRule } from "@/lib/types";
-import { Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
 
 interface Data {
   rules: CycleRule[];
@@ -111,6 +111,7 @@ export default function DutyCyclesPage() {
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [capKey, setCapKey] = useState(0);
+  const [deleting, setDeleting] = useState<CycleRule | null>(null);
 
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading duty cycles" />;
@@ -133,6 +134,24 @@ export default function DutyCyclesPage() {
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { message?: string }) : undefined;
       setProblem(body?.message ?? "This could not be changed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!deleting) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.delete(`/api/facility/cycles/${deleting.id}`);
+      setDeleting(null);
+      reload();
+      setCapKey((k) => k + 1);
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { message?: string }) : undefined;
+      setProblem(body?.message ?? "This could not be deleted. Try again.");
+      setDeleting(null);
     } finally {
       setBusy(false);
     }
@@ -178,7 +197,7 @@ export default function DutyCyclesPage() {
 
       {data.rules.length === 0 && editing === null ? (
         <EmptyState title="No duty cycle rules yet">
-          {data.shifts.length === 0 ? "Add your shifts first, under Shifts. Three starting rules are then set up for you." : "Add a rule to set how many days off follow a run of duties."}
+          {data.shifts.length === 0 ? "Add your shifts first, under Shifts. Two starting rules are then set up for you." : "Add a rule to set how many days off follow a run of duties."}
         </EmptyState>
       ) : (
         <ul className="space-y-4">
@@ -224,6 +243,9 @@ export default function DutyCyclesPage() {
                       <Button variant="quiet" disabled={busy} onClick={() => toggleActive(r)}>
                         {r.active ? "Turn off" : "Turn on"}
                       </Button>
+                      <Button variant="quiet" disabled={busy} onClick={() => setDeleting(r)}>
+                        Delete
+                      </Button>
                     </div>
                   )}
                 </Panel>
@@ -236,6 +258,18 @@ export default function DutyCyclesPage() {
       <div className="mt-6">
         <CapacityPanel key={capKey} />
       </div>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting?.name ?? "this rule"}?`}
+        confirmLabel="Delete rule"
+        tone="danger"
+        busy={busy}
+        onConfirm={remove}
+        onCancel={() => setDeleting(null)}
+      >
+        The roster will no longer follow this rule, and it will not be set up again. Past rosters are not changed. You can add a rule of your own at any time. Turn it off instead if you may want it back.
+      </ConfirmDialog>
     </>
   );
 }

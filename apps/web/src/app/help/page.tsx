@@ -8,7 +8,7 @@ const A = "text-[var(--accent-text)] underline underline-offset-2";
 
 const ARTICLES: { id: string; title: string; body: string[] }[] = [
   { id: "setup", title: "Setting up your facility", body: [
-    "Sign in as the facility administrator and open Overview. It lists the set-up steps in the order they should be done: facility details, departments, cadres, then staff.",
+    "Sign in as the facility administrator and open Dashboard. It shows today's cover, the month's roster and what is waiting for you, and lists the set-up steps (facility details, departments, cadres, then staff) until they are done.",
     "Departments group the roster. Cadres are the professional groups, such as midwives or nurses, and each staff member belongs to one. Add staff once these exist.",
   ] },
   { id: "shifts", title: "Configuring shifts", body: [
