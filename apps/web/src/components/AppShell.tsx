@@ -79,12 +79,10 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/leave", label: "Leave", roles: [...READ_ROLES, "STAFF"], section: "leave" },
   { href: "/returns", label: "Returns due", roles: READ_ROLES },
   { href: "/coverage", label: "Coverage", roles: READ_ROLES },
-  { href: "/reports", label: "Reports", roles: READ_ROLES },
   { href: "/reports/fairness", label: "Why this duty", roles: ["STAFF"] },
   { href: "/my-data", label: "My data", roles: ["STAFF"] },
   { href: "/attendance", label: "Attendance", roles: READ_ROLES, section: "attendance" },
   { href: "/my-reports", label: "Reports I sent", roles: [...READ_ROLES, "STAFF"] },
-  { href: "/notifications", label: "Notifications", roles: [...READ_ROLES, "STAFF"] },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/duty-patterns", label: "Duty patterns", roles: READ_ROLES },
   { href: "/rules", label: "Compliance rules", roles: ["ROSTER_MANAGER", "SUPERVISOR"], section: "settings" },
@@ -92,14 +90,50 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/billing", label: "Billing", roles: ["FACILITY_ADMIN"] },
 ];
 
-function UnreadCount() {
+function IconLink({ href, label, active, children, badge }: { href: string; label: string; active: boolean; children: ReactNode; badge?: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      aria-label={label}
+      title={label}
+      aria-current={active ? "page" : undefined}
+      className={`relative inline-flex size-11 items-center justify-center rounded-[var(--radius)] text-[var(--foreground)] hover:bg-[var(--accent-soft)] ${active ? "bg-[var(--accent-soft)] text-[var(--accent-text)]" : ""}`}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+      </svg>
+      {badge}
+    </Link>
+  );
+}
+
+function BellBadge() {
   const { data } = useResource<{ unread: number }>("/api/facility/notifications/count");
   if (!data || data.unread === 0) return null;
   return (
-    <span className="figures ml-2 rounded-[4px] bg-[var(--accent)] px-1.5 text-sm text-white">
-      {data.unread}
-      <span className="sr-only"> unread</span>
+    <span className="figures absolute top-1 right-0.5 min-w-[1.25rem] rounded-[4px] bg-[var(--gold)] px-1 text-center text-[12px] leading-5 font-semibold text-[var(--ink)]">
+      {data.unread > 99 ? "99+" : data.unread}
+      <span className="sr-only"> unread notifications</span>
     </span>
+  );
+}
+
+/** The bell and the Reports link, kept out of the sidebar. */
+function HeaderActions({ role }: { role: string }) {
+  const pathname = usePathname();
+  const on = (p: string) => pathname === p || pathname.startsWith(`${p}/`);
+  const reports = READ_ROLES.includes(role);
+  return (
+    <div className="flex items-center gap-1">
+      {reports && (
+        <IconLink href="/reports" label="Reports" active={on("/reports")}>
+          <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+        </IconLink>
+      )}
+      <IconLink href="/notifications" label="Notifications" active={on("/notifications")} badge={<BellBadge />}>
+        <path d="M6 9a6 6 0 1 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9ZM10 20a2 2 0 0 0 4 0" />
+      </IconLink>
+    </div>
   );
 }
 
@@ -128,7 +162,6 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
               style={current ? { boxShadow: "inset 3px 0 0 var(--accent)" } : undefined}
             >
               {n.label}
-              {n.href === "/notifications" && <UnreadCount />}
             </Link>
           </li>
         );
@@ -347,6 +380,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header data-area={area} className="on-ink no-print sticky top-0 z-30 lg:hidden">
           <div className="flex items-center justify-between gap-3 px-4">
             <Brand area={area} />
+            <div className="flex items-center gap-2">
+              {ctx && <HeaderActions role={role} />}
             <Button
               variant="secondary"
               aria-expanded={menuOpen}
@@ -355,6 +390,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               {menuOpen ? "Close menu" : "Menu"}
             </Button>
+            </div>
           </div>
           {menuOpen && (
             <div id="mobile-menu" className="border-t border-[var(--border)] px-4 pt-3 pb-4">
@@ -369,8 +405,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main id="main" className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+        <main id="main" className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-5">
           <div className="mx-auto max-w-[72rem]">
+            {ctx && (
+              <div className="no-print mb-3 hidden justify-end lg:flex">
+                <HeaderActions role={role} />
+              </div>
+            )}
             {data?.facility.status === "SUSPENDED" && (
               <div className="mb-4">
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>

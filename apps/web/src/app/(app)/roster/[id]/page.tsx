@@ -107,6 +107,15 @@ function FindingList({
   );
 }
 
+interface Applied {
+  cycles: { name: string; rule: string; enforcement: string }[];
+  rotations: { name: string; enforcement: string }[];
+  ledgerPeople: number;
+  carriedPeople: number;
+  lockedKept: number;
+  variation: number;
+}
+
 export default function RosterPage() {
   const { id } = useParams<{ id: string }>();
   const facility = useFacility();
@@ -147,6 +156,7 @@ export default function RosterPage() {
   }, [data]);
   const names = useMemo(() => new Map((data?.staff ?? []).map((s) => [s.id, s.name])), [data]);
 
+  const [applied, setApplied] = useState<Applied | null>(null);
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading roster" />;
 
@@ -250,7 +260,8 @@ export default function RosterPage() {
     setShortfalls(null);
     setConfirming(false);
     try {
-      await api.post(`/api/facility/rosters/${id}/generate`);
+      const r = await api.post<{ applied: Applied }>(`/api/facility/rosters/${id}/generate`, {});
+      setApplied(r.applied);
       reload();
     } catch (err) {
       const body = err instanceof ApiError ? (err.body as { message?: string; shortfalls?: Shortfall[]; more?: number }) : undefined;
@@ -320,7 +331,18 @@ export default function RosterPage() {
               </span>
             }
           >
-            Generating again replaces every duty on this roster with a new one.
+            Generating again replaces every duty that is not locked with a new roster, built from your current duty cycles, rotation order, duty ledger and the last three months. Each time gives a different lawful roster.
+          </Notice>
+        </div>
+      )}
+      {applied && !problem && (
+        <div className="mb-4">
+          <Notice tone="success">
+            Built again with {applied.cycles.length === 0 ? "no duty cycle rules" : `${applied.cycles.length} duty ${applied.cycles.length === 1 ? "cycle" : "cycles"} (${applied.cycles.map((c) => `${c.name}, ${c.rule}`).join("; ")})`}
+            {applied.rotations.length > 0 && `, rotation ${applied.rotations.map((r) => r.name).join(", ")}`}
+            {applied.ledgerPeople > 0 && `, the duty ledger for ${applied.ledgerPeople} ${applied.ledgerPeople === 1 ? "person" : "people"}`}
+            {applied.carriedPeople > 0 && `, and duties carried over from the last three months for ${applied.carriedPeople} ${applied.carriedPeople === 1 ? "person" : "people"}`}.
+            {applied.variation > 0 ? ` This is variation ${applied.variation}; generate again for another.` : ""}
           </Notice>
         </div>
       )}
