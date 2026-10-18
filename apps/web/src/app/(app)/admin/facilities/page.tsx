@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import { HEALTH_TONE, HEALTH_WORD } from "@/lib/console";
-import { EmptyState, Input, Loading, LoadError, PageHeader, Select, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
+import { ButtonLink, EmptyState, Input, Loading, LoadError, PageHeader, Select, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
 
 interface Row {
   id: string;
@@ -34,7 +34,7 @@ export default function FacilitiesPage() {
     .sort((a, b) => ORDER[a.health] - ORDER[b.health] || a.name.localeCompare(b.name));
   return (
     <>
-      <PageHeader title="Facilities" description="At risk first. An at-risk facility gets a telephone call, not an email." />
+      <PageHeader title="Facilities" description="At risk first. An at-risk facility gets a telephone call, not an email." actions={<ButtonLink href="/admin/facilities/new">New facility</ButtonLink>} />
       <div className="mb-4 flex flex-wrap gap-3">
         <Input type="search" placeholder="Search by name or district" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search facilities" className="max-w-xs" />
         <Select value={health} onChange={(e) => setHealth(e.target.value)} aria-label="Health" className="w-40">
