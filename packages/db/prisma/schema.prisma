@@ -1308,3 +1308,16 @@ model FeatureFlag {
   updatedBy            String?
   updatedAt            DateTime @updatedAt
 }
+
+// One row per run of a background job (the scheduler in the API). Read by the
+// console's system health page; a job that stops running shows as late.
+model JobRun {
+  id         String    @id @default(cuid())
+  name       String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  ok         Boolean?
+  detail     String?
+
+  @@index([name, startedAt])
+}

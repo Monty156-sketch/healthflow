@@ -11,6 +11,7 @@ import { useResource } from "@/lib/useApi";
 import { ApiError } from "@/lib/api";
 import { ROLE } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
+import { getSupport, setSupport } from "@/lib/supportSession";
 import { PlatformNotices } from "@/components/PlatformNotices";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 
@@ -40,6 +41,8 @@ interface FacilityResponse {
   facility: Facility;
   setup: { departments: number; cadres: number; staff: number };
   me: { role: string; displayName: string };
+  /** Feature flags that exist, as key to on or off for this facility. A capability with no flag is on. */
+  flags?: Record<string, boolean>;
 }
 
 interface FacilityContextValue extends FacilityResponse {
@@ -67,7 +70,7 @@ const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
 const PLATFORM = ["PLATFORM_ADMIN"];
 const DISTRICT = ["DISTRICT_OFFICER"];
 
-const NAV: { href: string; label: string; roles: string[] }[] = [
+const NAV: { href: string; label: string; roles: string[]; flag?: string }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
@@ -85,6 +88,7 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/my-data", label: "My data", roles: ["STAFF"] },
   { href: "/attendance", label: "Daily attendance", roles: READ_ROLES },
   { href: "/attendance/month", label: "Monthly attendance", roles: READ_ROLES },
+  { href: "/my-reports", label: "Reports I sent", roles: [...READ_ROLES, "STAFF"] },
   { href: "/notifications", label: "Notifications", roles: [...READ_ROLES, "STAFF"] },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/shifts", label: "Shifts", roles: READ_ROLES },
@@ -94,7 +98,7 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/settings/leave-types", label: "Leave types", roles: ["FACILITY_ADMIN"] },
   { href: "/settings/entitlements", label: "Leave entitlements", roles: ["FACILITY_ADMIN"] },
   { href: "/settings/holidays", label: "Public holidays", roles: ["FACILITY_ADMIN"] },
-  { href: "/directorate-access", label: "Directorate access", roles: ["FACILITY_ADMIN"] },
+  { href: "/directorate-access", label: "Directorate access", roles: ["FACILITY_ADMIN"], flag: "district.oversight" },
   { href: "/settings/establishment", label: "Approved posts", roles: ["FACILITY_ADMIN"] },
   { href: "/billing", label: "Billing", roles: ["FACILITY_ADMIN"] },
   { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
@@ -131,9 +135,10 @@ function UnreadCount() {
 
 function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const flags = useOptionalFacility()?.flags;
   return (
     <ul className="space-y-0.5">
-      {NAV.filter((n) => n.roles.includes(role)).map((n) => {
+      {NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false)).map((n) => {
         const longer = NAV.some((o) => o.href.length > n.href.length && o.href.startsWith(`${n.href}/`) && (pathname === o.href || pathname.startsWith(`${o.href}/`)));
         const current = !longer && (pathname === n.href || pathname.startsWith(`${n.href}/`));
         return (
@@ -264,14 +269,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
+  const [support, setSupportState] = useState(getSupport);
+  const supporting = user?.role === "PLATFORM_ADMIN" && support !== null;
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
-    // The platform console is where a platform admin starts.
-    if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard") router.replace("/admin");
+    // The platform console is where a platform admin starts, unless acting inside a facility.
+    if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard" && !supporting) router.replace("/admin");
     if (user?.role === "STAFF" && pathname === "/dashboard") router.replace("/today");
     if (user?.role === "DISTRICT_OFFICER" && pathname === "/dashboard") router.replace("/district");
-  }, [authLoading, user, router, pathname]);
+  }, [authLoading, user, router, pathname, supporting]);
 
   // Close the phone menu when the page changes.
   const [lastPath, setLastPath] = useState(pathname);
@@ -280,7 +287,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMenuOpen(false);
   }
 
-  const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "STAFF");
+  const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "STAFF" || supporting);
   const resource = useResource<FacilityResponse>(facilityRole ? "/api/facility" : null);
 
   if (authLoading || !user) {
@@ -325,6 +332,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         Skip to content
       </a>
+      {supporting && support && (
+        <div role="status" className="no-print border-b border-[var(--status-warning)] bg-[var(--status-warning-soft)] px-4 py-2 text-sm">
+          <span className="font-medium">PS Tech support at {support.facility}.</span>{" "}
+          {support.level === "FULL" ? "Full access: changes you make are written to the facility's audit log." : "Read only."} Ends by itself at {new Date(support.expiresAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.{" "}
+          <button type="button" className="min-h-8 font-medium underline underline-offset-2" onClick={() => { setSupport(null); setSupportState(null); router.push("/admin/support"); }}>Leave facility</button>
+        </div>
+      )}
       <div className="no-print">
         <ErrorCapture />
         <OfflineBanner />

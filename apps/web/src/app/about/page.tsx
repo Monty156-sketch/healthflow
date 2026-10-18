@@ -11,7 +11,7 @@ export default function AboutPage() {
     <PublicPage title="About" intro="HealthFlow is built and run by PS Tech, a software company in Wa, in the Upper West Region of Ghana.">
       <PublicSection title="Who we are">
         <p>PS Tech builds software for businesses and institutions in Ghana: point-of-sale systems, online shops, and custom systems, and repairs and upgrades computers. HealthFlow is our product for health facilities.</p>
-        <p>The person who answers the phone is the person who builds it: Muslim Mohammed Azerideen, in Wa.</p>
+        <p>PS Tech is run by two partners, Muslim Mohammed Azerideen and Zaghe Joshua. The people who answer the phone are the people who build it.</p>
       </PublicSection>
       <PublicSection title="Why HealthFlow">
         <p>Duty rosters in health facilities are drawn by hand by people who are also treating patients. They take hours, and nothing checks them against leave, rest and the Labour Act until a problem appears on the ward. We built HealthFlow so that the roster is checked before it is published, and so that staff can see their own duties and how they were decided.</p>

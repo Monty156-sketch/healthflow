@@ -41,6 +41,7 @@ import { noticesRouter } from "./platformNotices.js";
 import { billingRouter } from "./billing.js";
 import { staffImportRouter } from "./staffImport.js";
 import { coverageRouter } from "./coverage.js";
+import { requireFlag, flagsFor } from "../../lib/flags.js";
 import { meRouter } from "./me.js";
 import { directorateRouter } from "./directorate.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
@@ -65,7 +66,7 @@ facilityRouter.use("/notifications", notificationsRouter);
 facilityRouter.use("/my-duties", myDutiesRouter);
 facilityRouter.use("/swaps", swapsRouter);
 facilityRouter.use("/cover", coverRouter);
-facilityRouter.use("/directorate", directorateRouter);
+facilityRouter.use("/directorate", requireFlag("district.oversight"), directorateRouter);
 facilityRouter.use("/me", meRouter);
 facilityRouter.use("/billing", billingRouter);
 facilityRouter.use("/notices", noticesRouter);
@@ -105,7 +106,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
   // Staff get the facility's name and settings so their own screens work, and none of the set-up counts.
   if (role === "STAFF") {
     const facility = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId } });
-    return res.json({ facility: presentFacility(facility), setup: { departments: 0, cadres: 0, staff: 0 }, me: { role, displayName } });
+    return res.json({ facility: presentFacility(facility), setup: { departments: 0, cadres: 0, staff: 0 }, me: { role, displayName }, flags: await flagsFor(facilityId) });
   }
   const [facility, departments, cadres, staff] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId } }),
@@ -117,6 +118,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
     facility: presentFacility(facility),
     setup: { departments, cadres, staff },
     me: { role, displayName },
+    flags: await flagsFor(facilityId),
   });
 });
 
