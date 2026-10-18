@@ -44,7 +44,7 @@ describe("who can reach facility data", () => {
     expect(created.status).toBe(201);
     const id = created.body.staff.id;
     expect((await b.api.get(`/api/facility/staff/${id}`)).status).toBe(404);
-    expect((await b.api.patch(`/api/facility/staff/${id}/status`, { status: "RESIGNED" })).status).toBe(404);
+    expect((await b.api.patch(`/api/facility/staff/${id}/status`, { status: "RESIGNED", reason: "Test reason" })).status).toBe(404);
     const list = await b.api.get("/api/facility/staff");
     expect(list.body.staff.map((s: { id: string }) => s.id)).not.toContain(id);
   });
@@ -93,7 +93,7 @@ describe("departments and cadres", () => {
     expect(blocked.status).toBe(409);
     expect(blocked.body.message).toMatch(/1 current staff member is in OPD/);
 
-    await api.patch(`/api/facility/staff/${staff.id}/status`, { status: "TRANSFERRED" });
+    await api.patch(`/api/facility/staff/${staff.id}/status`, { status: "TRANSFERRED", reason: "Test reason" });
     const ok = await api.patch(`/api/facility/departments/${dept.id}/active`, { active: false });
     expect(ok.status).toBe(200);
     expect(ok.body.department.active).toBe(false);
@@ -167,7 +167,7 @@ describe("staff records", () => {
     const { api } = await adminOf();
     const a = (await api.post("/api/facility/staff", { staffNo: "100", fullName: "Ama Owusu", employmentStatus: "PERMANENT" })).body.staff;
     await api.post("/api/facility/staff", { staffNo: "200", fullName: "Kwame Asante", employmentStatus: "PERMANENT" });
-    await api.patch(`/api/facility/staff/${a.id}/status`, { status: "RETIRED" });
+    await api.patch(`/api/facility/staff/${a.id}/status`, { status: "RETIRED", reason: "Test reason" });
 
     const current = await api.get("/api/facility/staff");
     expect(current.body.staff.map((s: { fullName: string }) => s.fullName)).toEqual(["Kofi Bawa", "Kwame Asante"]);
@@ -191,7 +191,7 @@ describe("leaving ends access immediately (Part 3, 0.3 and 0.9)", () => {
 
     expect((await nurseApi.get("/api/facility/staff")).status).toBe(200);
 
-    const res = await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "TRANSFERRED" });
+    const res = await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "TRANSFERRED", reason: "Test reason" });
     expect(res.status).toBe(200);
 
     const after = await nurseApi.get("/api/facility/staff");
@@ -212,15 +212,15 @@ describe("leaving ends access immediately (Part 3, 0.3 and 0.9)", () => {
   it("setting them back to Active restores access", async () => {
     const { facility, api } = await adminOf();
     const { user, staff } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id, withStaff: { fullName: "Yaw Boateng" } });
-    await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "INACTIVE" });
+    await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "INACTIVE", reason: "Test reason" });
     expect((await as(user).get("/api/facility/staff")).status).toBe(401);
-    await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "ACTIVE" });
+    await api.patch(`/api/facility/staff/${staff!.id}/status`, { status: "ACTIVE", reason: "Test reason" });
     expect((await as(user).get("/api/facility/staff")).status).toBe(200);
   });
 
   it("an admin cannot end their own access", async () => {
     const { admin, api } = await adminOf();
-    const res = await api.patch(`/api/facility/staff/${admin.staffId}/status`, { status: "RESIGNED" });
+    const res = await api.patch(`/api/facility/staff/${admin.staffId}/status`, { status: "RESIGNED", reason: "Test reason" });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("cannot_remove_self");
   });

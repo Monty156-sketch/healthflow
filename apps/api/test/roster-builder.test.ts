@@ -137,7 +137,7 @@ describe("versions", () => {
 
     // change it again, then restore the saved version
     await api.put(`/api/facility/rosters/${id}/cell`, { staffId: person, date: "2026-11-05", shiftId: shift("M"), overrideReason: "Covering a colleague" });
-    const restore = await api.post(`/api/facility/rosters/${id}/versions/${list.versions[0].id}/restore`);
+    const restore = await api.post(`/api/facility/rosters/${id}/versions/${list.versions[0].id}/restore`, { reason: "Wrong shift pattern" });
     expect(restore.status).toBe(200);
     expect((await cellOf()).shiftId).toBe(edited);
     const after = (await api.get(`/api/facility/rosters/${id}/versions`)).body;

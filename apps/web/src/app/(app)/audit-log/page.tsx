@@ -26,6 +26,7 @@ interface Entry {
   action: string;
   entityType: string;
   summary: string;
+  reason: string | null;
 }
 
 const TYPES: Record<string, string> = {
@@ -171,7 +172,7 @@ export default function AuditLogPage() {
                 {data.entries.map((e) => (
                   <tr key={e.id}>
                     <td className={`${TD} figures whitespace-nowrap text-sm text-[var(--muted)]`}>{showDateTime(e.createdAt)}</td>
-                    <td className={`${TD} max-w-[60ch]`}>{e.summary}</td>
+                    <td className={`${TD} max-w-[60ch]`}>{e.summary}{e.reason && <span className="mt-1 block text-sm text-[var(--muted)]">Reason: {e.reason}</span>}</td>
                     <td className={`${TD} text-sm text-[var(--muted)]`}>{e.actorEmail ?? "System"}</td>
                   </tr>
                 ))}

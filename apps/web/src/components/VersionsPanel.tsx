@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
-import { Button, Loading, Notice, Panel } from "@/components/ui";
+import { Button, Loading, Notice, Panel, Input } from "@/components/ui";
 
 interface Versions {
   current: number;
@@ -18,14 +18,16 @@ export function VersionsPanel({ rosterId, canRestore, onRestored, refreshKey }: 
   const { data, error, reload } = useResource<Versions>(`/api/facility/rosters/${rosterId}/versions?k=${refreshKey}`);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [why, setWhy] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
 
   async function restore(vid: string) {
     setBusy(true);
     setProblem(null);
     try {
-      await api.post(`/api/facility/rosters/${rosterId}/versions/${vid}/restore`);
+      await api.post(`/api/facility/rosters/${rosterId}/versions/${vid}/restore`, { reason: why });
       setConfirming(null);
+      setWhy("");
       onRestored();
       reload();
     } catch (err) {
@@ -58,8 +60,9 @@ export function VersionsPanel({ rosterId, canRestore, onRestored, refreshKey }: 
               </span>
               {canRestore &&
                 (confirming === v.id ? (
-                  <span className="flex gap-2">
-                    <Button onClick={() => restore(v.id)} disabled={busy}>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Input aria-label="Reason for restoring" placeholder="Why restore this version?" value={why} maxLength={300} onChange={(e) => setWhy(e.target.value)} className="w-64" />
+                    <Button onClick={() => restore(v.id)} disabled={busy || why.trim().length < 5}>
                       {busy ? "Restoring…" : "Restore this version"}
                     </Button>
                     <Button variant="secondary" onClick={() => setConfirming(null)} disabled={busy}>

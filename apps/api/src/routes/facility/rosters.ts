@@ -532,6 +532,7 @@ rostersRouter.post("/:id/findings/:findingId/override", allowRoles(...ADMIN_ROLE
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_finding_overridden", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} accepted the ${finding.ruleCode} finding "${finding.message}" in the ${monthName(roster)} roster. Reason: ${input.reason}`,
+    reason: input.reason,
   });
   res.json({ summary: await summaryOf(roster.id) });
 });
@@ -612,6 +613,8 @@ rostersRouter.post("/:id/versions/:versionId/restore", allowRoles(...ROSTER_ROLE
   if (!EDITABLE.includes(roster.status)) return res.status(409).json({ error: "roster_locked", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}. Reopen it before restoring an earlier version.` });
   const snap = await prisma.rosterVersionSnapshot.findFirst({ where: { id: String(req.params.versionId), rosterId: roster.id } });
   if (!snap) return res.status(404).json({ error: "not_found" });
+  const restoreInput = parseOr400(z.object({ reason: z.string().trim().min(5, "Say why, in a few words.").max(300) }), req.body, res);
+  if (!restoreInput) return;
 
   const saved = snap.assignments as { staffId: string; shiftId: string; dutyDate: string; source: "GENERATED" | "MANUAL" | "SWAP" | "COVER" | "REST_BLOCK"; locked: boolean }[];
   const [staff, shifts] = await Promise.all([
@@ -647,7 +650,8 @@ rostersRouter.post("/:id/versions/:versionId/restore", allowRoles(...ROSTER_ROLE
   });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_version_restored", entityType: "Roster", entityId: roster.id,
-    summary: `${who.displayName} restored version ${snap.version} of the ${monthName(roster)} roster. The roster as it was before is saved as version ${version}.`,
+    summary: `${who.displayName} restored version ${snap.version} of the ${monthName(roster)} roster. The roster as it was before is saved as version ${version}. Reason: ${restoreInput.reason}`,
+    reason: restoreInput.reason,
   });
   res.json({ summary: await summaryOf(roster.id), skipped: saved.length - rows.length });
 });

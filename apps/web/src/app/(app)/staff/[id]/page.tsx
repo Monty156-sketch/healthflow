@@ -10,18 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource, useSave } from "@/lib/useApi";
 import { EMPLOYMENT, LEAVING_STATUSES, ROLE, STAFF_STATUS, showDate, showDateTime } from "@/lib/format";
 import type { Staff } from "@/lib/types";
-import {
-  Button,
-  ConfirmDialog,
-  Field,
-  Loading,
-  LoadError,
-  Notice,
-  PageHeader,
-  Panel,
-  Select,
-  StatusBadge,
-} from "@/components/ui";
+import { Button, ConfirmDialog, Field, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, Input } from "@/components/ui";
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -67,9 +56,10 @@ function StatusPanel({ s, onChanged }: { s: Staff; onChanged: (s: Staff) => void
   const { isAdmin, reload } = useFacility();
   const [next, setNext] = useState(s.status);
   const [confirming, setConfirming] = useState(false);
+  const [reason, setReason] = useState("");
   const change = useCallback(
-    async (status: string) => (await api.patch<{ staff: Staff }>(`/api/facility/staff/${s.id}/status`, { status })).staff,
-    [s.id]
+    async (status: string) => (await api.patch<{ staff: Staff }>(`/api/facility/staff/${s.id}/status`, { status, reason })).staff,
+    [s.id, reason]
   );
   const save = useSave(change);
   const current = STAFF_STATUS[s.status];
@@ -80,6 +70,7 @@ function StatusPanel({ s, onChanged }: { s: Staff; onChanged: (s: Staff) => void
     const updated = await save.run(next);
     if (updated) {
       setConfirming(false);
+      setReason("");
       onChanged(updated);
       reload();
     }
@@ -132,6 +123,9 @@ function StatusPanel({ s, onChanged }: { s: Staff; onChanged: (s: Staff) => void
               : "Their record will be updated."}
           </p>
         )}
+        <div className="mt-3">
+          <Field label="Reason" hint="Kept in the audit log.">{(a) => <Input {...a} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />}</Field>
+        </div>
         {save.state === "failed" && save.message && (
           <div className="mt-3">
             <Notice tone="block">{save.message}</Notice>

@@ -1037,6 +1037,7 @@ model AuditLog {
   before     Json?
   after      Json?
   summary    String   // a readable sentence, never a raw record dump
+  reason     String?  // why, in the words of the person who made the change, where the change asks for one
   createdAt  DateTime @default(now())
 
   @@index([facilityId])

@@ -130,6 +130,7 @@ ledgerRouter.post("/adjust", async (req, res) => {
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "ledger_adjusted", entityType: "DutyLedgerEntry", entityId: input.debtorId,
     summary: `${who.displayName} recorded that ${name(input.debtorId)} owes ${name(input.creditorId)} ${input.duties} ${input.duties === 1 ? "duty" : "duties"}. ${input.note}`,
+    reason: input.note,
   });
   res.status(201).json({ ok: true });
 });
@@ -176,6 +177,7 @@ ledgerRouter.post("/entries/:id/write-off", allowRoles(...ADMIN_ROLES), async (r
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "ledger_written_off", entityType: "DutyLedgerEntry", entityId: e.id,
     summary: `${who.displayName} wrote off ${e.duties - e.dutiesSettled} ${e.duties - e.dutiesSettled === 1 ? "duty" : "duties"} on ${e.staff.fullName}'s ${e.entryType === "DEBT" ? "debt" : "credit"}, with its matching side. Reason: ${input.reason}`,
+    reason: input.reason,
   });
   res.json({ ok: true });
 });

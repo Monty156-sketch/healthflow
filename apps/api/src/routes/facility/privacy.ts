@@ -185,6 +185,7 @@ privacyRouter.patch("/retention/:id", allowRoles(...ADMIN_ROLES), async (req, re
       action: "retention_changed",
       entityType: "RetentionPolicy",
       entityId: row.id,
+      reason: input.basisNote,
       before: { retentionMonths: row.retentionMonths },
       after: { retentionMonths: updated.retentionMonths },
       summary: `${who.displayName} changed the retention period for ${(RETENTION_LABEL[row.entityType] ?? row.entityType).toLowerCase()} from ${describeMonths(row.retentionMonths)} to ${describeMonths(updated.retentionMonths)}. It needs approval again.`,
@@ -245,7 +246,7 @@ async function close(req: Parameters<typeof caller>[0], id: string, status: "COM
   if (apply) await applyErasure(r.staffId, who.facilityId);
   await prisma.dataSubjectRequest.update({ where: { id: r.id }, data: { status, completedAt: new Date(), handledBy: who.email, outcomeNote } });
   await notifyStaff(who.facilityId, r.staffId, { type: "dsr_answered", title: status === "REFUSED" ? "Your data request was not granted" : "Your data request was answered", body: outcomeNote, linkUrl: "/my-data", severity: "INFO" });
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: `dsr_${status.toLowerCase()}`, entityType: "DataSubjectRequest", entityId: r.id, summary: `${who.displayName} ${status === "REFUSED" ? "refused" : "completed"} a ${r.requestType.toLowerCase()} request. ${outcomeNote}` });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: `dsr_${status.toLowerCase()}`, entityType: "DataSubjectRequest", entityId: r.id, reason: outcomeNote, summary: `${who.displayName} ${status === "REFUSED" ? "refused" : "completed"} a ${r.requestType.toLowerCase()} request. ${outcomeNote}` });
   return "ok" as const;
 }
 

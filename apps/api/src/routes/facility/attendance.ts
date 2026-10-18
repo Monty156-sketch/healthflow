@@ -184,7 +184,7 @@ attendanceRouter.put("/day", async (req, res) => {
     written++;
     await writeAuditLog({
       facilityId: who.facilityId, actorEmail: who.email, action: prev ? "attendance_corrected" : "attendance_recorded", entityType: "Attendance", entityId: a.id,
-      before: prev ? { status: prev.status, minutesLate: prev.minutesLate } : undefined, after: data,
+      before: prev ? { status: prev.status, minutesLate: prev.minutesLate } : undefined, after: data, reason: prev ? input.reason : null,
       summary: prev
         ? `${who.displayName} changed ${a.staff.fullName}'s attendance on ${sayDay(day)} from ${prev.status.toLowerCase().replace("_", " ")} to ${r.status.toLowerCase()}. Reason: ${input.reason}`
         : `${who.displayName} recorded ${a.staff.fullName} as ${r.status.toLowerCase()} on ${sayDay(day)}.`,

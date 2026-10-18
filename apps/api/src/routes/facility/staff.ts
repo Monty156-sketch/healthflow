@@ -385,6 +385,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
 
 const statusInput = z.object({
   status: z.enum(ALL_STATUSES, { errorMap: () => ({ message: "Choose a status." }) }),
+  reason: z.string().trim().min(5, "Say why, in a few words.").max(300),
 });
 
 staffRouter.patch("/:id/status", allowRoles(...ADMIN_ROLES), async (req, res) => {
@@ -443,7 +444,8 @@ staffRouter.patch("/:id/status", allowRoles(...ADMIN_ROLES), async (req, res) =>
     entityId: existing.id,
     before: { status: existing.status },
     after: { status: input.status },
-    summary: `${who.displayName} changed ${existing.fullName}'s status from ${from} to ${to} on ${displayDate(new Date())}.${accessNote}`,
+    reason: input.reason,
+    summary: `${who.displayName} changed ${existing.fullName}'s status from ${from} to ${to} on ${displayDate(new Date())}.${accessNote} Reason: ${input.reason}`,
   });
 
   const s = await prisma.staff.findUniqueOrThrow({ where: { id: existing.id }, include: staffInclude });
