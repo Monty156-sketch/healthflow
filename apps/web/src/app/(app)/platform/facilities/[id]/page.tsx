@@ -46,9 +46,9 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
   return (
     <>
       <p className="mb-2 text-sm">
-        <Link href="/admin/facilities" className="text-[var(--accent-text)] underline underline-offset-2">Facilities</Link>
+        <Link href="/platform/facilities" className="text-[var(--accent-text)] underline underline-offset-2">Facilities</Link>
       </p>
-      <PageHeader title={f.name} description={[f.district, f.region].filter(Boolean).join(", ")} actions={<><ButtonLink href={`/admin/facilities/new?facility=${f.id}`} variant="secondary">Set up this facility</ButtonLink><StatusBadge tone={HEALTH_TONE[data.health.state]}>{HEALTH_WORD[data.health.state]}</StatusBadge></>} />
+      <PageHeader title={f.name} description={[f.district, f.region].filter(Boolean).join(", ")} actions={<><ButtonLink href={`/platform/facilities/new?facility=${f.id}`} variant="secondary">Set up this facility</ButtonLink><StatusBadge tone={HEALTH_TONE[data.health.state]}>{HEALTH_WORD[data.health.state]}</StatusBadge></>} />
       <div role="tablist" aria-label="Facility" className="mb-5 flex flex-wrap gap-1 border-b border-[var(--border)]">
         {TABS.map((t) => (
           <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`min-h-11 px-4 text-[15px] ${tab === t ? "border-b-2 border-[var(--accent)] font-medium text-[var(--accent-text)]" : "text-[var(--muted)]"}`}>

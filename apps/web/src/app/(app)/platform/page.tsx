@@ -39,26 +39,26 @@ export default function ConsolePage() {
       <PageHeader title="Console" description="What needs you today." />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Count
-          href="/admin/requests"
+          href="/platform/requests"
           label="Requests awaiting a first response"
           value={String(r.waiting)}
           note={r.oldestHours === null ? "None waiting" : `Oldest: ${age(r.oldestHours)}${r.late ? `, past the ${r.publishedHours} hours we publish` : ""}`}
           tone={r.late ? "block" : undefined}
         />
-        <Count href="/admin/facilities?health=AT_RISK" label="Facilities at risk" value={String(data.atRisk)} note={data.atRisk ? "Telephone them" : "None"} tone={data.atRisk ? "block" : undefined} />
-        <Count href="/admin/billing" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
+        <Count href="/platform/facilities?health=AT_RISK" label="Facilities at risk" value={String(data.atRisk)} note={data.atRisk ? "Telephone them" : "None"} tone={data.atRisk ? "block" : undefined} />
+        <Count href="/platform/billing" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
         <Count href="/system-health" label="Errors in the last 24 hours" value={String(data.errors24h)} />
-        <Count href="/admin/billing" label="Active facilities" value={String(data.activeFacilities)} note={`Monthly recurring revenue ${cedi(data.mrrGhs)}`} />
+        <Count href="/platform/billing" label="Active facilities" value={String(data.activeFacilities)} note={`Monthly recurring revenue ${cedi(data.mrrGhs)}`} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <Panel title="Latest access requests" actions={<Link href="/admin/requests" className="text-sm text-[var(--accent-text)] underline underline-offset-2">All requests</Link>}>
+        <Panel title="Latest access requests" actions={<Link href="/platform/requests" className="text-sm text-[var(--accent-text)] underline underline-offset-2">All requests</Link>}>
           {data.recentRequests.length === 0 ? (
             <EmptyState title="No requests yet" />
           ) : (
             <ul className="divide-y divide-[var(--border)]">
               {data.recentRequests.map((q) => (
                 <li key={q.id}>
-                  <Link href={`/admin/requests/${q.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2">
+                  <Link href={`/platform/requests/${q.id}`} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2">
                     <span>
                       <span className="block font-medium">{q.facilityName}</span>
                       <span className="block text-sm text-[var(--muted)]">{[q.district, showDateTime(q.createdAt)].filter(Boolean).join(" · ")}</span>

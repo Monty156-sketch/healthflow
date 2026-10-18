@@ -63,7 +63,7 @@ publicRouter.post("/access-requests", limiter, async (req, res) => {
     `How the roster is done now: ${row.currentMethod ?? "not given"}`,
     `Message: ${row.message ?? "none"}`,
   ].join("\n");
-  const link = appUrl(`/admin/requests/${row.id}`);
+  const link = appUrl(`/platform/requests/${row.id}`);
   // Telling PS Tech and acknowledging the requester are separate, so one failing does not stop the other.
   await Promise.allSettled([
     ...notifyList().map((to) => sendEmail({ to, subject: `New HealthFlow access request: ${row.facilityName}`, text: `${summary}\n\nOpen it in the console: ${link}\nPublished response time: ${RESPONSE_HOURS} hours.` })),

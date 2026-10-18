@@ -1,0 +1,80 @@
+// Pages that belong together. Each section is one entry in the menu (or, for
+// the platform console and the district pages, none: they are reached by
+// their address) and its pages show as a row of tabs above the page.
+
+export interface Tab {
+  href: string;
+  label: string;
+  roles: string[];
+}
+
+export interface Section {
+  id: "duties" | "leave" | "platform" | "district";
+  tabs: Tab[];
+}
+
+const READ = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+const EVERYONE = [...READ, "STAFF"];
+const ADMIN = ["FACILITY_ADMIN"];
+const PLATFORM = ["PLATFORM_ADMIN"];
+const DISTRICT = ["DISTRICT_OFFICER"];
+
+export const SECTIONS: Section[] = [
+  {
+    id: "duties",
+    tabs: [
+      { href: "/my-duties", label: "My duties", roles: EVERYONE },
+      { href: "/swaps", label: "Duty swaps", roles: EVERYONE },
+      { href: "/ledger", label: "Duty ledger", roles: READ },
+      { href: "/duty-cycles", label: "Duty cycles", roles: READ },
+    ],
+  },
+  {
+    id: "leave",
+    tabs: [
+      { href: "/leave", label: "Leave requests", roles: EVERYONE },
+      { href: "/leave/calendar", label: "Leave calendar", roles: READ },
+      { href: "/settings/leave-types", label: "Leave types", roles: ADMIN },
+      { href: "/settings/entitlements", label: "Leave entitlements", roles: ADMIN },
+      { href: "/settings/holidays", label: "Public holidays", roles: ADMIN },
+    ],
+  },
+  {
+    id: "platform",
+    tabs: [
+      { href: "/platform", label: "Console", roles: PLATFORM },
+      { href: "/platform/requests", label: "Access requests", roles: PLATFORM },
+      { href: "/platform/facilities", label: "Facilities", roles: PLATFORM },
+      { href: "/platform/billing", label: "Billing", roles: PLATFORM },
+      { href: "/platform/support", label: "Support access", roles: PLATFORM },
+      { href: "/platform/users", label: "Users", roles: PLATFORM },
+      { href: "/platform/legal", label: "Legal documents", roles: PLATFORM },
+      { href: "/platform/announcements", label: "Announcements", roles: PLATFORM },
+      { href: "/platform/flags", label: "Feature flags", roles: PLATFORM },
+      { href: "/platform/errors", label: "Error reports", roles: PLATFORM },
+      { href: "/platform/districts", label: "Districts", roles: PLATFORM },
+      { href: "/system-health", label: "System health", roles: PLATFORM },
+    ],
+  },
+  {
+    id: "district",
+    tabs: [
+      { href: "/district", label: "Overview", roles: DISTRICT },
+      { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
+      { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
+      { href: "/district/leave", label: "Leave concentration", roles: DISTRICT },
+      { href: "/district/reports", label: "Report pack", roles: DISTRICT },
+    ],
+  },
+];
+
+const within = (pathname: string, href: string) => pathname === href || pathname.startsWith(`${href}/`);
+
+/** The section a page belongs to, and which of its tabs is the current one (the longest match). */
+export function sectionFor(pathname: string): { section: Section; current: string } | null {
+  for (const section of SECTIONS) {
+    const hit = section.tabs.filter((t) => within(pathname, t.href)).sort((a, b) => b.href.length - a.href.length)[0];
+    if (hit) return { section, current: hit.href };
+  }
+  return null;
+}

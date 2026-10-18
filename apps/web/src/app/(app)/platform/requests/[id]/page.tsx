@@ -64,7 +64,7 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
   return (
     <>
       <p className="mb-2 text-sm">
-        <Link href="/admin/requests" className="text-[var(--accent-text)] underline underline-offset-2">Access requests</Link>
+        <Link href="/platform/requests" className="text-[var(--accent-text)] underline underline-offset-2">Access requests</Link>
       </p>
       <PageHeader title={r.facilityName} description={`Submitted ${showDateTime(r.createdAt)}. ${r.firstResponseAt ? `First response ${showDateTime(r.firstResponseAt)}.` : "Not answered yet."}`} actions={<StatusBadge tone={r.status === "NEW" ? "warning" : r.status === "PROVISIONED" ? "success" : "neutral"}>{REQUEST_STATUS[r.status]}</StatusBadge>} />
       <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
@@ -99,14 +99,14 @@ export default function RequestDetail({ params }: { params: Promise<{ id: string
           <Panel title="What to do">
             {data.facility ? (
               <p>
-                This became <Link href={`/admin/facilities/${data.facility.id}`} className="text-[var(--accent-text)] underline underline-offset-2">{data.facility.name}</Link>.
+                This became <Link href={`/platform/facilities/${data.facility.id}`} className="text-[var(--accent-text)] underline underline-offset-2">{data.facility.name}</Link>.
               </p>
             ) : open ? (
               <div className="space-y-2">
                 {r.status === "NEW" && <Button className="w-full" disabled={busy} onClick={() => set("CONTACTED")}>Record a response</Button>}
                 {r.status !== "DEMO_SCHEDULED" && <Button variant="secondary" className="w-full" disabled={busy} onClick={() => set("DEMO_SCHEDULED")}>Demonstration scheduled</Button>}
                 {r.status !== "AGREEMENT_SENT" && <Button variant="secondary" className="w-full" disabled={busy} onClick={() => set("AGREEMENT_SENT")}>Agreement sent</Button>}
-                <Button className="w-full" disabled={busy} onClick={() => act(async () => { const out = await api.post<{ facilityId: string }>(`/api/platform/requests/${id}/provision`, {}); window.location.href = `/admin/facilities/${out.facilityId}`; })}>Provision facility</Button>
+                <Button className="w-full" disabled={busy} onClick={() => act(async () => { const out = await api.post<{ facilityId: string }>(`/api/platform/requests/${id}/provision`, {}); window.location.href = `/platform/facilities/${out.facilityId}`; })}>Provision facility</Button>
                 <p className="text-sm text-[var(--muted)]">Provisioning creates the facility as a trial, with no staff and no administrator. Send the agreement first.</p>
                 <div className="flex gap-2 pt-2">
                   <Button variant="quiet" onClick={() => setClosing("DECLINED")}>Decline</Button>
