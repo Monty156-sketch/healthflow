@@ -21,7 +21,7 @@ const band = (p: Plan) => (p.staffBandMin && p.staffBandMax ? `${p.staffBandMin}
 export default function PricingPage() {
   const { data, error } = useResource<{ plans: Plan[] }>("/api/public/plans");
   return (
-    <PublicPage title="Pricing" intro="Prices are in Ghana cedis and depend on the number of staff at the facility. A one-off setup fee applies to the larger plans. If your staff count falls between two plans or above 2,000, call us and we will quote." wide>
+    <PublicPage title="Pricing" intro="Prices are in Ghana cedis and depend on the number of staff at the facility. A one-off setup fee applies to the larger plans. If your facility has more than 2,000 staff, call us and we will quote." wide>
       {!data && !error && <Loading label="Loading plans" />}
       {data && data.plans.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

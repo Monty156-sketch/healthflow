@@ -96,20 +96,23 @@ function parseBody(body: string): Section[] {
 
 export function LegalDocument({ doc: fallback, other, print, slug }: { doc: LegalDoc; other: { href: string; label: string }; print?: boolean; slug?: string }) {
   const [stored, setStored] = useState<Stored | null>(null);
+  const [loaded, setLoaded] = useState(!slug);
   useEffect(() => {
     if (!slug) return;
-    api.get<Stored>(`/api/public/legal/${slug}`).then(setStored).catch(() => setStored(null));
+    api.get<Stored>(`/api/public/legal/${slug}`).then(setStored).catch(() => setStored(null)).finally(() => setLoaded(true));
   }, [slug]);
   const doc: LegalDoc = stored
     ? { title: stored.current.title, version: stored.current.version, effective: stored.current.effectiveDate ? new Date(stored.current.effectiveDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "", sections: parseBody(stored.current.body) }
     : fallback;
+  if (!loaded) return (<><PublicNav /><main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8"><p role="status" className="text-[var(--muted)]">Loading</p></main></>);
+  const short = doc.sections.length <= 8;
   return (
     <>
     <PublicNav />
     <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-12">
       <h1 className="text-3xl font-semibold leading-tight">{doc.title}</h1>
       <p className="figures mt-2 text-[15px] text-[var(--muted)]">
-        Version {doc.version}. Effective {inline(doc.effective)}
+        Version {doc.version} · Effective {inline(doc.effective)}
       </p>
       {print && (
         <div className="mt-4">
@@ -121,7 +124,7 @@ export function LegalDocument({ doc: fallback, other, print, slug }: { doc: Lega
         before it takes effect.
       </div>}
 
-      <nav aria-label="Contents" className="mt-6">
+      {!short && <nav aria-label="Contents" className="mt-6">
         <h2 className="mb-2 text-sm font-semibold text-[var(--muted)]">Contents</h2>
         <ol className="grid gap-x-6 gap-y-1 text-[15px] sm:grid-cols-2">
           {doc.sections.map((s, i) => (
@@ -132,13 +135,13 @@ export function LegalDocument({ doc: fallback, other, print, slug }: { doc: Lega
             </li>
           ))}
         </ol>
-      </nav>
+      </nav>}
 
       <div className="mt-8">
         {doc.sections.map((s, i) => (
           <section key={s.title} id={`s${i + 1}`} aria-labelledby={`h${i + 1}`} className="mb-7 scroll-mt-4">
             <h2 id={`h${i + 1}`} className="mb-3 text-xl font-semibold">
-              {i + 1}. {s.title}
+              {short ? "" : `${i + 1}. `}{s.title}
             </h2>
             {s.blocks.map((b, k) => (
               <BlockView key={k} b={b} />
