@@ -38,7 +38,7 @@ export interface Outcome {
   warnings: string[]; // things to read and confirm
   type: "EXCHANGE" | "HANDOVER";
   /** The new state of the two duties, for applying. */
-  plan?: { aId: string; aToStaff: string; bId: string | null; bToStaff: string | null; dayA: number; dayB: number | null };
+  plan?: { aId: string; aToStaff: string; bId: string | null; bToStaff: string | null; dayA: number; dayB: number | null; bRosterId?: string };
   summary?: { requester: string; target: string; give: string; take: string | null };
 }
 
@@ -57,9 +57,22 @@ export async function evaluateSwap(facilityId: string, spec: Spec, opts: { enfor
   if (!a || a.staffId !== spec.requesterStaffId) {
     return bad("The duty being given away is no longer on the roster as it was when this was asked for. The roster has changed under it.");
   }
-  const b = spec.targetAssignmentId ? await prisma.rosterAssignment.findFirst({ where: { id: spec.targetAssignmentId, rosterId: roster.id }, include: { shift: true } }) : null;
+  const b = spec.targetAssignmentId ? await prisma.rosterAssignment.findFirst({ where: { id: spec.targetAssignmentId, facilityId }, include: { shift: true } }) : null;
   if (spec.targetAssignmentId && (!b || b.staffId !== spec.targetStaffId)) {
     return bad("The other person's duty is no longer on the roster as it was when this was asked for. The roster has changed under it.");
+  }
+  if (b && b.rosterId !== roster.id) {
+    // An exchange across two months: each person hands a duty to the other, and each hand-over is checked in its own roster.
+    const [first, second] = await Promise.all([
+      evaluateSwap(facilityId, { rosterId: roster.id, requesterStaffId: spec.requesterStaffId, requesterAssignmentId: a.id, targetStaffId: spec.targetStaffId, targetAssignmentId: null }, opts),
+      evaluateSwap(facilityId, { rosterId: b.rosterId, requesterStaffId: spec.targetStaffId, requesterAssignmentId: b.id, targetStaffId: spec.requesterStaffId, targetAssignmentId: null }, opts),
+    ]);
+    const hard = [...new Set([...first.hard, ...second.hard])];
+    return {
+      ok: hard.length === 0, hard, warnings: [...new Set([...first.warnings, ...second.warnings])], type: "EXCHANGE",
+      plan: first.plan && { ...first.plan, bId: b.id, bToStaff: spec.requesterStaffId, dayB: dayOf(b.dutyDate), bRosterId: b.rosterId },
+      summary: first.summary && second.summary && { requester: first.summary.requester, target: first.summary.target, give: first.summary.give, take: second.summary.give },
+    };
   }
   const dayA = dayOf(a.dutyDate);
   const dayB = b ? dayOf(b.dutyDate) : null;
@@ -359,7 +372,34 @@ swapsRouter.post("/:id/decide", allowRoles(...READ_ROLES), async (req, res) => {
   const roster = await prisma.roster.findUniqueOrThrow({ where: { id: row.rosterId } });
   const p = o.plan;
   let loose: { name: string; date: Date }[] = [];
-  await prisma.$transaction(
+  if (p.bRosterId && p.bId && p.bToStaff) {
+    // Across two months: one duty moves in each roster, each with its own saved version.
+    const legs = [
+      { rosterId: roster.id, id: p.aId, to: p.aToStaff, day: p.dayA },
+      { rosterId: p.bRosterId, id: p.bId, to: p.bToStaff, day: p.dayB! },
+    ];
+    for (const leg of legs) {
+      const r = await prisma.roster.findUniqueOrThrow({ where: { id: leg.rosterId } });
+      await prisma.$transaction(
+        async (tx) => {
+          await saveVersion(tx, r.id, r.version + 1, who.email, "Before a duty swap");
+          await tx.rosterAssignment.deleteMany({ where: { rosterId: r.id, staffId: leg.to, dutyDate: dateOf(leg.day), id: { not: leg.id } } });
+          await detachAttendance(tx, { id: leg.id });
+          await tx.rosterAssignment.update({ where: { id: leg.id }, data: { staffId: leg.to, source: "SWAP", locked: true } });
+          await relinkAttendance(tx, r.id);
+          await tx.roster.update({ where: { id: r.id }, data: { version: r.version + 1 } });
+        },
+        { timeout: 30_000, maxWait: 10_000 },
+      );
+      const d = await loadEngineData(who.facilityId, r.id, r.year, r.month);
+      const f = checkOf(d, d.current);
+      await prisma.$transaction(async (tx) => {
+        await storeFindings(tx, r.id, who.facilityId, f);
+        await tx.roster.update({ where: { id: r.id }, data: { hasUnresolvedConflicts: f.some((x) => x.severity === "BLOCK") } });
+      });
+    }
+    await prisma.dutySwap.update({ where: { id: row.id }, data: { status: "APPROVED", decidedBy: who.email, decidedAt: new Date(), decisionNote: input.note || null } });
+  } else await prisma.$transaction(
     async (tx) => {
       const version = roster.version + 1;
       await saveVersion(tx, roster.id, version, who.email, "Before a duty swap");

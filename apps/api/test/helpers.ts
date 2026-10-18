@@ -1,6 +1,7 @@
 // Shared set-up for the integration tests: a clean database, people with
 // known roles, and signed access tokens for them.
 import request from "supertest";
+import { vi } from "vitest";
 import { authenticator } from "otplib";
 import type { Role } from "@healthflow/db";
 import { createApp } from "../src/app.js";
@@ -142,3 +143,15 @@ export async function signIn(email: string, password: string, extra: Record<stri
   if (res.status !== 200 || !res.body.accessToken) throw new Error(`sign-in failed: ${res.status} ${JSON.stringify(res.body)}`);
   return { accessToken: res.body.accessToken as string, cookie: cookieFrom(res) };
 }
+
+/**
+ * Holds the clock on the 3rd of the current month (or the day given), so a test that plans duties
+ * a few weeks ahead stays inside one month whatever day it really runs on.
+ * Only the date is faked; timers behave normally. Undo with unfreezeClock.
+ */
+export function freezeEarlyInMonth(dayOfMonth = 3) {
+  const n = new Date();
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), dayOfMonth, n.getUTCHours(), n.getUTCMinutes())));
+}
+export const unfreezeClock = () => vi.useRealTimers();

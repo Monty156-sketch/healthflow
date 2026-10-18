@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { as, makeFacility, makeUser, prisma, resetDatabase, freezeEarlyInMonth, unfreezeClock } from "./helpers.js";
 
-beforeEach(resetDatabase);
+beforeEach(async () => {
+  await resetDatabase();
+  freezeEarlyInMonth();
+});
+afterEach(unfreezeClock);
 
 const DAY = 86_400_000;
 const day = (offset: number) => new Date(Math.floor(Date.now() / DAY + offset) * DAY);
@@ -72,5 +76,28 @@ describe("planned absence", () => {
     const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/decide`, { decision: "approve", reviewedImpact: true });
     expect(out.body.cover).toBeNull();
     expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId).toBe(people[0].id);
+  });
+
+  it("offers a swap with a duty in the next month, and moves one duty in each roster when approved", async () => {
+    freezeEarlyInMonth(24);
+    const { api, people, type, facility, duty, theirs } = await setup();
+    // Esi's duty is moved into the following month's published roster.
+    const later = day(10);
+    const next = await prisma.roster.create({ data: { facilityId: facility.id, month: later.getUTCMonth() + 1, year: later.getUTCFullYear(), status: "PUBLISHED" } });
+    await prisma.rosterAssignment.update({ where: { id: theirs.id }, data: { rosterId: next.id, dutyDate: later } });
+    const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("L"), startDate: iso(3), endDate: iso(4) });
+    const plan = (await api.get(`/api/facility/leave/requests/${made.body.request.id}/cover-plan`)).body;
+    expect(plan.duties[0].swaps.map((s: { targetAssignmentId: string }) => s.targetAssignmentId)).toContain(theirs.id);
+    const asked = await api.post(`/api/facility/leave/requests/${made.body.request.id}/swap-request`, { assignmentId: duty.id, targetAssignmentId: theirs.id });
+    expect(asked.status).toBe(201);
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
+    await prisma.userProfile.update({ where: { id: user.id }, data: { staffId: people[1].id } });
+    expect((await as(user).post(`/api/facility/swaps/${asked.body.swapId}/respond`, { accept: true })).status).toBe(200);
+    const decided = await api.post(`/api/facility/swaps/${asked.body.swapId}/decide`, { decision: "approve", confirmWarnings: true });
+    expect(decided.status).toBe(200);
+    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId).toBe(people[1].id);
+    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: theirs.id } })).staffId).toBe(people[0].id);
+    expect(await prisma.rosterVersionSnapshot.count()).toBe(2);
+    expect(await prisma.dutyLedgerEntry.count()).toBe(0);
   });
 });
