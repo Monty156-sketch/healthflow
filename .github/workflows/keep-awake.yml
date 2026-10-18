@@ -21,3 +21,9 @@ jobs:
     steps:
       - name: Ping health endpoint
         run: curl -fsS "${{ vars.RENDER_API_URL }}/health" || echo "Ping failed (service may be mid-deploy) — not failing the job"
+      - name: Warm the web app
+        # Optional: set WEB_URL (the Cloudflare address) in Variables and the
+        # sign-in page is fetched too, so the first visitor after a quiet spell
+        # does not pay for a cold Worker.
+        if: ${{ vars.WEB_URL != '' }}
+        run: curl -fsS -o /dev/null "${{ vars.WEB_URL }}/login" || echo "Web ping failed, not failing the job"
