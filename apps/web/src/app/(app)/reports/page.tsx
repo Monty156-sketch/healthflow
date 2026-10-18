@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/ui";
 const REPORTS = [
   { href: "/reports/compliance", title: "Compliance report", body: "Hours, duty days, nights, longest rest and rest breaches for every person in a month, every override with who approved it, and signature lines. PDF and CSV." },
   { href: "/reports/fairness", title: "Fairness report", body: "Night, weekend, holiday and total duties for each person over three months, against the average for their cadre. Staff see their own figures only. CSV." },
+  { href: "/reports/evidence", title: "Evidence report", body: "What HealthFlow did for this facility, month by month: preparation time, conflicts caught before publication, overrides, amendments, attendance and swaps." },
 ];
 
 export default function ReportsPage() {
