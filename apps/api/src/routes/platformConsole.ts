@@ -10,6 +10,7 @@ import { adoptionFor } from "../lib/adoption.js";
 import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
 import { billingConsole } from "./platformBilling.js";
+import { supportConsole } from "./platformSupport.js";
 import { platformAudit } from "../lib/platformAudit.js";
 export { platformAudit };
 import { RESPONSE_HOURS } from "./public.js";
@@ -21,6 +22,7 @@ import { appUrl } from "../lib/email.js";
 
 export const consoleRouter = Router();
 consoleRouter.use(billingConsole);
+consoleRouter.use(supportConsole);
 
 const HOUR = 3_600_000;
 

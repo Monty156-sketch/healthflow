@@ -83,3 +83,16 @@ publicRouter.get("/plans", async (_req, res) => {
     plans: plans.map((p) => ({ id: p.id, name: p.name, monthlyPriceGhs: p.monthlyPriceGhs, setupPriceGhs: p.setupPriceGhs, staffBandMin: p.staffBandMin, staffBandMax: p.staffBandMax, features: (p.features as string[] | null) ?? [] })),
   });
 });
+
+// ------------------------------------------------------------- legal documents
+
+/** The latest published version of a legal document, and its history. Pages fall back to the built-in draft when none is stored. */
+publicRouter.get("/legal/:slug", async (req, res) => {
+  const docs = await prisma.legalDocument.findMany({ where: { slug: String(req.params.slug), publishedAt: { not: null } }, orderBy: { publishedAt: "desc" } });
+  if (docs.length === 0) return res.status(404).json({ error: "not_found" });
+  const [cur] = docs;
+  res.json({
+    current: { title: cur.title, version: cur.version, body: cur.body, effectiveDate: cur.effectiveDate, publishedAt: cur.publishedAt, summaryOfChanges: cur.summaryOfChanges },
+    history: docs.map((d) => ({ version: d.version, effectiveDate: d.effectiveDate, publishedAt: d.publishedAt, summaryOfChanges: d.summaryOfChanges })),
+  });
+});

@@ -11,6 +11,7 @@ import { useResource } from "@/lib/useApi";
 import { ApiError } from "@/lib/api";
 import { ROLE } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
+import { PlatformNotices } from "@/components/PlatformNotices";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 
 // ------------------------------------------------------------- facility context
@@ -102,6 +103,12 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/admin/requests", label: "Access requests", roles: PLATFORM },
   { href: "/admin/facilities", label: "Facilities", roles: PLATFORM },
   { href: "/admin/billing", label: "Billing", roles: PLATFORM },
+  { href: "/admin/support", label: "Support access", roles: PLATFORM },
+  { href: "/admin/users", label: "Users", roles: PLATFORM },
+  { href: "/admin/legal", label: "Legal documents", roles: PLATFORM },
+  { href: "/admin/announcements", label: "Announcements", roles: PLATFORM },
+  { href: "/admin/flags", label: "Feature flags", roles: PLATFORM },
+  { href: "/admin/errors", label: "Error reports", roles: PLATFORM },
   { href: "/admin/districts", label: "Districts", roles: PLATFORM },
   { href: "/district", label: "District overview", roles: DISTRICT },
   { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
@@ -321,6 +328,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="no-print">
         <ErrorCapture />
         <OfflineBanner />
+        {ctx && <PlatformNotices />}
       </div>
       <div className="app-frame lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
         {/* Wide screens: a fixed sidebar. */}

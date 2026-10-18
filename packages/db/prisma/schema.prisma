@@ -1052,6 +1052,10 @@ model ErrorReport {
   description       String
   technicalContext  Json?
   status            ErrorReportStatus @default(NEW)
+  resolutionNote    String?
+  reply             String?
+  repliedAt         DateTime?
+  repliedBy         String?
   createdAt         DateTime          @default(now())
 
   @@index([facilityId])
@@ -1157,6 +1161,7 @@ model LegalDocument {
   publishedAt          DateTime?
   publishedBy          String?
   summaryOfChanges     String?
+  material             Boolean   @default(false) // facility administrators must acknowledge it on next sign-in
 
   @@unique([slug, version])
 }
@@ -1284,6 +1289,14 @@ model Announcement {
   dismissible Boolean              @default(true)
   publishedBy String?
   createdAt   DateTime             @default(now())
+}
+
+model AnnouncementSeen {
+  announcementId String
+  facilityId     String
+  seenAt         DateTime @default(now())
+
+  @@id([announcementId, facilityId])
 }
 
 model FeatureFlag {
