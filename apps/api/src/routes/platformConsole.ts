@@ -11,6 +11,8 @@ import { adoptionFor } from "../lib/adoption.js";
 import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
 import { RESPONSE_HOURS } from "./public.js";
+import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facilitySetup.js";
+import { ensureRules } from "./facility/rules.js";
 import { hashPassword } from "../lib/password.js";
 import { makeResetToken } from "../lib/signedTokens.js";
 import { appUrl } from "../lib/email.js";
@@ -249,4 +251,45 @@ consoleRouter.post("/districts/:id/officers", async (req, res) => {
   const { token, expiresAt } = makeResetToken(u.id, hash);
   await platformAudit(req, "district_officer_created", `${liveUser(req).displayName} created a district officer account for ${d.name}.`, { entityType: "UserProfile", entityId: u.id });
   res.status(201).json({ url: appUrl(`/reset-password?token=${encodeURIComponent(token)}`), expiresAt });
+});
+
+// ------------------------------------------------------------- new facility wizard
+
+const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;
+
+consoleRouter.get("/setup-options", async (_req, res) => {
+  const [districts, facilities] = await Promise.all([
+    prisma.district.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, region: true } }),
+    prisma.facility.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
+  res.json({ districts, facilities, types: FACILITY_TYPES });
+});
+
+/** Creates a facility directly, for one that did not arrive as an access request. */
+consoleRouter.post("/facilities", async (req, res) => {
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(160), facilityType: z.enum(FACILITY_TYPES), districtId: z.string().nullish(), region: z.string().trim().max(120).nullish() }), req.body, res);
+  if (!input) return;
+  const district = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId } }) : null;
+  const f = await prisma.facility.create({ data: { name: input.name, facilityType: input.facilityType, districtId: district?.id ?? null, region: input.region ?? district?.region ?? null, status: "TRIAL" } });
+  await platformAudit(req, "facility_created", `${liveUser(req).displayName} created ${f.name}. It starts as a trial, with no staff and no administrator yet.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
+  res.status(201).json({ facilityId: f.id });
+});
+
+/** Seeds departments and cadres, copies configuration if asked, and invites the facility's administrator. */
+consoleRouter.post("/facilities/:id/setup", async (req, res) => {
+  const input = parseOr400(z.object({
+    copyFromFacilityId: z.string().nullish(),
+    adminName: z.string().trim().min(2, "Enter the administrator's name.").max(120),
+    adminEmail: z.string().trim().toLowerCase().email("Enter a valid email address."),
+  }), req.body, res);
+  if (!input) return;
+  const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) } });
+  if (!f) return res.status(404).json({ error: "not_found" });
+  if (await prisma.userProfile.findUnique({ where: { userEmail: input.adminEmail }, select: { id: true } })) return res.status(409).json({ error: "email_taken", message: "That email address already has an account." });
+  if (await prisma.staff.findFirst({ where: { facilityId: f.id, email: { equals: input.adminEmail, mode: "insensitive" } }, select: { id: true } })) return res.status(409).json({ error: "already_invited", message: "That address is already on this facility's staff list." });
+  const seeded = await seedGroups(f.id, f.facilityType);
+  const copied = input.copyFromFacilityId && input.copyFromFacilityId !== f.id ? await copyConfiguration(input.copyFromFacilityId, f.id) : (await ensureRules(f.id), null);
+  const invite = await inviteFirstAdmin(f.id, f.name, input.adminName, input.adminEmail);
+  await platformAudit(req, "facility_setup", `${liveUser(req).displayName} set up ${f.name}: ${seeded.departments} departments and ${seeded.cadres} cadres added${copied ? `, ${copied.shifts} shifts copied` : ""}, and invited ${input.adminName} as administrator.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
+  res.status(201).json({ seeded, copied, url: invite.url, expiresAt: invite.expiresAt, emailed: invite.emailed, starterNotice: invite.starterNotice });
 });
