@@ -8,5 +8,7 @@ build/
 *.log
 .DS_Store
 .turbo/
-coverage/
+/coverage/
+/apps/*/coverage/
+/packages/*/coverage/
 packages/db/generated/
