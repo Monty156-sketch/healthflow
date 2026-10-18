@@ -3,6 +3,7 @@
 // Invite staff: type a name and an email, choose a role, and get a link the
 // person uses to set their own password and authenticator app. Below, every
 // invitation so far with what is still waiting.
+import { WardSelect } from "@/components/WardSelect";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useFacility } from "@/components/AppShell";
@@ -121,6 +122,7 @@ function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departme
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("STAFF");
+  const [ward, setWard] = useState("");
   const [staffNo, setStaffNo] = useState("");
   const [cadreId, setCadreId] = useState("");
   const [departmentId, setDepartmentId] = useState("");
@@ -141,6 +143,7 @@ function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departme
         staffNo: staffNo || null,
         cadreId: cadreId || null,
         departmentId: departmentId || null,
+        wardDepartmentId: ward || null,
       });
       onSent({ ...res, email: email.trim().toLowerCase() });
     } catch (err) {
@@ -173,6 +176,7 @@ function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departme
           </Select>
         )}
       </Field>
+      {(role === "ROSTER_MANAGER" || role === "SUPERVISOR") && <WardSelect value={ward} onChange={setWard} allLabel="Every roster" label="Rosters they work on" />}
       <details className="rounded-[var(--radius)] border border-[var(--border)]">
         <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium">Add their staff details now (optional)</summary>
         <div className="grid gap-4 border-t border-[var(--border)] p-3 sm:grid-cols-3">

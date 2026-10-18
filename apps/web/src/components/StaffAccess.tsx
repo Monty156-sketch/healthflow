@@ -2,6 +2,7 @@
 
 // Panels on the staff record for giving someone access: the invitation, and
 // the consent records with the optional photograph.
+import { WardSelect } from "@/components/WardSelect";
 import { useCallback, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -52,6 +53,7 @@ function CopyLink({ url }: { url: string }) {
 /** Shown in place of the account details when the person has no account yet. */
 export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; invitation: PendingInvitation | null; isAdmin: boolean; onChanged: () => void }) {
   const [role, setRole] = useState(invitation?.role ?? "STAFF");
+  const [ward, setWard] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [sent, setSent] = useState<{ url: string; expiresAt: string; emailed: boolean } | null>(null);
@@ -62,7 +64,7 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
     setBusy(true);
     setProblem(null);
     try {
-      const res = await api.post<{ url: string; expiresAt: string; emailed: boolean }>(`/api/facility/staff/${s.id}/invite`, { role });
+      const res = await api.post<{ url: string; expiresAt: string; emailed: boolean }>(`/api/facility/staff/${s.id}/invite`, { role, wardDepartmentId: ward || null });
       setSent(res);
       onChanged();
     } catch (err) {
@@ -125,6 +127,7 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
               </Select>
             )}
           </Field>
+          {(role === "ROSTER_MANAGER" || role === "SUPERVISOR") && <WardSelect value={ward} onChange={setWard} allLabel="Every roster" label="Rosters they work on" />}
           {role === "FACILITY_ADMIN" && (
             <p className="text-sm text-[var(--muted)]">Facility admins must set up two-step sign-in before their first session.</p>
           )}

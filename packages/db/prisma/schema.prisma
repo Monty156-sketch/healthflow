@@ -942,6 +942,8 @@ model StaffInvitation {
   phone      String?
   token      String           @unique
   role       Role             @default(STAFF)
+  /// For a roster manager at a hospital: the ward they are limited to.
+  wardDepartmentId String?
   status     InvitationStatus @default(PENDING)
   sentAt     DateTime?
   acceptedAt DateTime?

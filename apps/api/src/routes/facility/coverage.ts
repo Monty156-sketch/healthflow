@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
-import { rosterForMonth } from "../../lib/reportStats.js";
+import { rostersForMonth } from "../../lib/reportStats.js";
 import { evidenceFor } from "../../lib/evidence.js";
 import { coverageFor } from "../district.js";
 
@@ -24,13 +24,22 @@ coverageRouter.get("/", async (req, res) => {
   const [y, m] = q.data.month.split("-").map(Number);
   const today = Math.floor(Date.now() / DAY);
   const strip = await coverageFor(who.facilityId, today, 7);
-  const roster = await rosterForMonth(who.facilityId, y, m);
-  if (!roster) return res.json({ month: q.data.month, strip, roster: null, shifts: [], days: [], unfilled: [] });
-  const [shifts, cadres, assigned] = await Promise.all([
+  // A hospital has a roster per ward and each ward has its own minimums, so coverage is read one ward at a time.
+  const askedWard = who.departmentId ?? (typeof req.query.ward === "string" && req.query.ward ? req.query.ward : null);
+  const all = await rostersForMonth(who.facilityId, y, m);
+  const wards = all.filter((r) => r.department).map((r) => ({ id: r.departmentId!, name: r.department!.name }));
+  const roster = (askedWard ? all.find((r) => r.departmentId === askedWard) : all[0]) ?? null;
+  if (!roster) return res.json({ month: q.data.month, strip, roster: null, wards, ward: askedWard, shifts: [], days: [], unfilled: [] });
+  const demand = roster.departmentId ? await prisma.shiftDemand.findMany({ where: { departmentId: roster.departmentId } }) : [];
+  const [shiftRows, cadres, assigned] = await Promise.all([
     prisma.shift.findMany({ where: { facilityId: who.facilityId, active: true, countsAsDuty: true, isOnCall: false }, orderBy: { sortOrder: "asc" } }),
     prisma.cadre.findMany({ where: { facilityId: who.facilityId }, select: { id: true, name: true } }),
     prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { shiftId: true, dutyDate: true, staff: { select: { cadreId: true } } } }),
   ]);
+  const shifts = shiftRows.map((s) => {
+    const own = demand.find((d) => d.shiftId === s.id);
+    return own ? { ...s, minStaff: own.minStaff, minByCadre: own.minByCadre } : s;
+  });
   const needy = shifts.filter((s) => s.minStaff > 0 || Object.keys((s.minByCadre ?? {}) as object).length > 0);
   const cadreName = new Map(cadres.map((c) => [c.id, c.name]));
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -47,7 +56,7 @@ coverageRouter.get("/", async (req, res) => {
     return { date: date.toISOString().slice(0, 10), cells };
   });
   const unfilled = days.flatMap((d) => d.cells.filter((c) => c.state !== "OK").map((c) => ({ date: d.date, shiftId: c.shiftId, shift: needy.find((s) => s.id === c.shiftId)!.name, staffed: c.staffed, required: c.required, state: c.state, cadres: c.cadres })));
-  res.json({ month: q.data.month, strip, roster: { id: roster.id, status: roster.status }, shifts: needy.map((s) => ({ id: s.id, name: s.name, code: s.code })), days, unfilled });
+  res.json({ month: q.data.month, strip, roster: { id: roster.id, status: roster.status }, wards, ward: roster.departmentId, shifts: needy.map((s) => ({ id: s.id, name: s.name, code: s.code })), days, unfilled });
 });
 
 // ------------------------------------------------------------- evidence

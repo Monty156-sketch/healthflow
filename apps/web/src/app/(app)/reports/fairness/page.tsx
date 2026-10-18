@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WardSelect } from "@/components/WardSelect";
 import { useFacility } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -41,16 +42,18 @@ function Bar({ label, value, mean, max }: { label: string; value: number; mean: 
 export default function FairnessPage() {
   const facility = useFacility();
   const [month, setMonth] = useState(thisMonth());
+  const [ward, setWard] = useState("");
+  const q = `month=${month}${ward ? `&ward=${ward}` : ""}`;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const { data, error, reload } = useResource<FairnessReport>(`/api/facility/reports/fairness?month=${month}`);
+  const { data, error, reload } = useResource<FairnessReport>(`/api/facility/reports/fairness?${q}`);
   const manager = facility.me.role !== "STAFF";
 
   async function csv() {
     setBusy(true);
     setProblem(null);
     try {
-      await api.download(`/api/facility/reports/fairness.csv?month=${month}`, `fairness-${month}.csv`);
+      await api.download(`/api/facility/reports/fairness.csv?${q}`, `fairness-${month}.csv`);
     } catch {
       setProblem("The file could not be made. Check your connection and try again.");
     } finally {
@@ -68,6 +71,7 @@ export default function FairnessPage() {
         <div className="max-w-[12rem]">
           <Field label="Up to and including">{(a) => <Input {...a} type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />}</Field>
         </div>
+        {manager && <WardSelect value={ward} onChange={setWard} />}
         {manager && <Button variant="secondary" disabled={busy} onClick={csv}>{busy ? "Preparing CSV…" : "Download CSV"}</Button>}
       </div>
       {problem && <div className="mb-4"><Notice tone="block">{problem}</Notice></div>}

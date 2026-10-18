@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { noticeTemplate } from "../src/routes/facility/privacy.js";
 import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
 
 beforeEach(resetDatabase);
@@ -73,5 +74,37 @@ describe("ward rosters", () => {
     expect(created.status).toBe(201);
     expect(created.body.roster.department).toBe("Maternity");
     expect(admin.id).toBeTruthy();
+  });
+
+  it("reports across every ward, or one ward when asked, and a ward manager sees only theirs", async () => {
+    const { facility, api, maternity, surgery, shifts } = await hospital();
+    const mins = [{ shiftId: shifts[0].id, minStaff: 2 }, { shiftId: shifts[1].id, minStaff: 1 }, { shiftId: shifts[2].id, minStaff: 1 }];
+    for (const w of [maternity, surgery]) {
+      await api.put(`/api/facility/ward-demand/${w.id}`, { shifts: mins });
+      const id = (await api.post("/api/facility/rosters", { year: 2026, month: 11, departmentId: w.id })).body.roster.id;
+      expect((await api.post(`/api/facility/rosters/${id}/generate`, {})).status).toBe(200);
+    }
+    const all = await api.get("/api/facility/reports/compliance?month=2026-11");
+    expect(all.body.wards).toHaveLength(2);
+    expect(new Set(all.body.rows.map((r: { ward: string }) => r.ward))).toEqual(new Set(["Maternity", "Surgery"]));
+    const one = await api.get(`/api/facility/reports/compliance?month=2026-11&ward=${surgery.id}`);
+    expect(new Set(one.body.rows.map((r: { ward: string }) => r.ward))).toEqual(new Set(["Surgery"]));
+    const { user: manager, staff } = await makeUser({ role: "ROSTER_MANAGER", facilityId: facility.id, withStaff: { fullName: "Sister Ama" } });
+    await api.put(`/api/facility/staff/${staff!.id}/ward`, { departmentId: maternity.id });
+    const mine = await as(manager).get(`/api/facility/reports/compliance?month=2026-11&ward=${surgery.id}`);
+    expect(new Set(mine.body.rows.map((r: { ward: string }) => r.ward))).toEqual(new Set(["Maternity"]));
+  });
+
+  it("limits an invited roster manager to a ward from the start", async () => {
+    const { facility, api, maternity } = await hospital();
+    await api.post("/api/facility/privacy/notices", { body: noticeTemplate("Wa Municipal Hospital").replace("[name and email of the facility's contact]", "Kofi Bawa, kofi@wa.test") });
+    const person = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "R1", fullName: "Sister Ama", email: "ama@wa.test", status: "ACTIVE" } });
+    const sent = await api.post(`/api/facility/staff/${person.id}/invite`, { role: "ROSTER_MANAGER", wardDepartmentId: maternity.id });
+    expect(sent.status).toBe(201);
+    const inv = await prisma.staffInvitation.findFirstOrThrow({ where: { staffId: person.id } });
+    expect(inv.wardDepartmentId).toBe(maternity.id);
+    const plain = await api.post(`/api/facility/staff/${person.id}/invite`, { role: "STAFF", wardDepartmentId: maternity.id });
+    expect(plain.status).toBe(201);
+    expect((await prisma.staffInvitation.findFirstOrThrow({ where: { staffId: person.id, status: "PENDING" } })).wardDepartmentId).toBeNull();
   });
 });
