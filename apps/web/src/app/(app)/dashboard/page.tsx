@@ -177,8 +177,14 @@ function TodayCover({ d }: { d: Dash }) {
                     {s.name}
                     {s.startTime && s.endTime && <span className="ml-2 text-sm font-normal text-[var(--muted)]">{s.startTime} to {s.endTime}</span>}
                   </p>
-                  <p className="figures text-sm">
-                    {s.scheduled} scheduled{s.minStaff > 0 ? ` of ${s.minStaff} needed` : ""}
+                  <p className="text-sm">
+                    <span className="figures">{s.scheduled}</span> scheduled
+                    {s.minStaff > 0 && (
+                      <>
+                        {" "}
+                        of <span className="figures">{s.minStaff}</span> needed
+                      </>
+                    )}
                     {short && <span className="ml-2 font-medium text-[var(--status-warning)]">Short by {s.minStaff - s.scheduled}</span>}
                   </p>
                 </div>
