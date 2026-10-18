@@ -1,6 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { Block, LegalDoc } from "@/lib/legal";
+import type { Block, LegalDoc, Section } from "@/lib/legal";
+import { api } from "@/lib/api";
 import { PublicNav } from "@/components/PublicNav";
 import { PrintButton } from "@/components/PrintButton";
 
@@ -61,7 +65,44 @@ function BlockView({ b }: { b: Block }) {
   );
 }
 
-export function LegalDocument({ doc, other, print }: { doc: LegalDoc; other: { href: string; label: string }; print?: boolean }) {
+interface Stored {
+  current: { title: string; version: string; body: string; effectiveDate: string | null; summaryOfChanges: string | null };
+  history: { version: string; effectiveDate: string | null; publishedAt: string; summaryOfChanges: string | null }[];
+}
+
+/** "## Heading" opens a section, "- " lines are bullets, "### " is a sub-heading, blank lines separate paragraphs. */
+function parseBody(body: string): Section[] {
+  const sections: Section[] = [];
+  let cur: Section = { title: "Summary", blocks: [] };
+  let list: string[] | null = null;
+  const flush = () => { if (list) { cur.blocks.push({ ul: list }); list = null; } };
+  const para: string[] = [];
+  const flushPara = () => { if (para.length) { cur.blocks.push({ p: para.join(" ") }); para.length = 0; } };
+  for (const raw of body.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("## ")) {
+      flushPara(); flush();
+      if (cur.blocks.length) sections.push(cur);
+      cur = { title: line.slice(3).trim(), blocks: [] };
+    } else if (line.startsWith("### ")) { flushPara(); flush(); cur.blocks.push({ h: line.slice(4).trim() }); }
+    else if (line.startsWith("- ")) { flushPara(); (list ??= []).push(line.slice(2).trim()); }
+    else if (line === "") { flushPara(); flush(); }
+    else { flush(); para.push(line); }
+  }
+  flushPara(); flush();
+  if (cur.blocks.length || sections.length === 0) sections.push(cur);
+  return sections;
+}
+
+export function LegalDocument({ doc: fallback, other, print, slug }: { doc: LegalDoc; other: { href: string; label: string }; print?: boolean; slug?: string }) {
+  const [stored, setStored] = useState<Stored | null>(null);
+  useEffect(() => {
+    if (!slug) return;
+    api.get<Stored>(`/api/public/legal/${slug}`).then(setStored).catch(() => setStored(null));
+  }, [slug]);
+  const doc: LegalDoc = stored
+    ? { title: stored.current.title, version: stored.current.version, effective: stored.current.effectiveDate ? new Date(stored.current.effectiveDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "", sections: parseBody(stored.current.body) }
+    : fallback;
   return (
     <>
     <PublicNav />
@@ -75,10 +116,10 @@ export function LegalDocument({ doc, other, print }: { doc: LegalDoc; other: { h
           <PrintButton label="Save as PDF" />
         </div>
       )}
-      <div className="mt-5 rounded-[var(--radius)] border border-[var(--border)] border-l-[3px] border-l-[var(--status-warning)] bg-[var(--surface)] px-4 py-3 text-[15px]">
+      {!stored && <div className="mt-5 rounded-[var(--radius)] border border-[var(--border)] border-l-[3px] border-l-[var(--status-warning)] bg-[var(--surface)] px-4 py-3 text-[15px]">
         This is the draft that applies during the pilot. It has not yet been reviewed by a lawyer. Items marked <em>To be confirmed</em> will be filled in
         before it takes effect.
-      </div>
+      </div>}
 
       <nav aria-label="Contents" className="mt-6">
         <h2 className="mb-2 text-sm font-semibold text-[var(--muted)]">Contents</h2>
@@ -105,6 +146,17 @@ export function LegalDocument({ doc, other, print }: { doc: LegalDoc; other: { h
           </section>
         ))}
       </div>
+
+      {stored && stored.history.length > 1 && (
+        <section aria-labelledby="history" className="mt-8">
+          <h2 id="history" className="mb-2 text-xl font-semibold">Earlier versions</h2>
+          <ul className="space-y-1 text-[15px]">
+            {stored.history.map((h) => (
+              <li key={h.version}>Version {h.version}{h.effectiveDate ? `, effective ${new Date(h.effectiveDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}` : ""}.{h.summaryOfChanges ? ` ${h.summaryOfChanges}` : ""}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <footer className="mt-10 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted)]">
         <Link href={other.href} className="text-[var(--accent-text)] underline-offset-2 hover:underline">

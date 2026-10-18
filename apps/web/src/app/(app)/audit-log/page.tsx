@@ -39,6 +39,25 @@ const TYPES: Record<string, string> = {
 
 const PAGE_SIZE = 50;
 
+function SupportHistory() {
+  const { data } = useResource<{ sessions: { id: string; by: string; reason: string; accessLevel: string; startedAt: string; endedAt: string | null; endedReason: string | null }[] }>("/api/facility/notices/support-history");
+  if (!data || data.sessions.length === 0) return null;
+  return (
+    <section className="mb-6 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4" aria-labelledby="support-h">
+      <h2 id="support-h" className="font-semibold">PS Tech support access</h2>
+      <p className="mb-2 text-sm text-[var(--muted)]">Every time PS Tech support has been inside this facility, with the reason given.</p>
+      <ul className="divide-y divide-[var(--border)] text-[15px]">
+        {data.sessions.map((s) => (
+          <li key={s.id} className="py-2">
+            <span className="figures text-sm text-[var(--muted)]">{showDateTime(s.startedAt)}</span> {s.by}, {s.accessLevel === "FULL" ? "full access" : "read only"}: {s.reason}
+            <span className="text-sm text-[var(--muted)]">{s.endedAt ? ` Ended ${s.endedReason === "EXPIRED" ? "by timing out" : "by hand"}.` : " Open now."}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export default function AuditLogPage() {
   const { isAdmin } = useFacility();
   const [search, setSearch] = useState("");
@@ -77,6 +96,7 @@ export default function AuditLogPage() {
         title="Audit log"
         description="Every change to your facility's records, with who made it and when. Entries cannot be edited or deleted by anyone."
       />
+      <SupportHistory />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Search">
