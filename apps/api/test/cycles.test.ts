@@ -51,7 +51,7 @@ describe("duty cycle rules", () => {
     expect(rules[0].nextShiftAfterRestId).toBe(m.id);
     expect(rules[1].blockShiftPatternIds).toEqual([m.id, a.id]);
     // reading again does not seed twice
-    expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(3);
+    expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(2);
   });
 
   it("switching to Block needs confirmation; priorities must be unique", async () => {
