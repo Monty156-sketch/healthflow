@@ -205,7 +205,7 @@ describe("leaving ends access immediately (Part 3, 0.3 and 0.9)", () => {
 
     const audit = await latestAudit(facility.id);
     expect(audit?.summary).toMatch(
-      /^Kofi Bawa changed Akosua Frimpong's status from Active to Transferred on \d{2}\/\d{2}\/\d{4}\. Their access was revoked and their sessions ended immediately\.$/
+      /^Kofi Bawa changed Akosua Frimpong's status from Active to Transferred on \d{2}\/\d{2}\/\d{4}\. Their access was revoked and their sessions ended immediately\. Reason: Test reason$/
     );
   });
 
