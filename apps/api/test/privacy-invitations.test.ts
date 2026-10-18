@@ -281,7 +281,7 @@ describe("errors and system health", () => {
   it("only platform admins see system health, and can change a report's status", async () => {
     const { admin } = await setup();
     await as(admin).post("/api/errors", { kind: "report", screen: "/staff", description: "The staff list did not load this morning." });
-    expect((await as(admin).get("/api/platform/health")).status).toBe(403);
+    expect((await as(admin).get("/api/platform/health")).status).toBe(404);
     const { user: platform } = await makeUser({ role: "PLATFORM_ADMIN" });
     const health = await as(platform).get("/api/platform/health");
     expect(health.status).toBe(200);

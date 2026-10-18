@@ -91,6 +91,9 @@ const NAV: { href: string; label: string; roles: string[] }[] = [
   { href: "/settings/holidays", label: "Public holidays", roles: ["FACILITY_ADMIN"] },
   { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
+  { href: "/admin", label: "Console", roles: PLATFORM },
+  { href: "/admin/requests", label: "Access requests", roles: PLATFORM },
+  { href: "/admin/facilities", label: "Facilities", roles: PLATFORM },
   { href: "/system-health", label: "System health", roles: PLATFORM },
 ];
 
@@ -218,7 +221,7 @@ function AccountBlock({
 export function NoFacilityNotice({ role }: { role: string }) {
   const message =
     role === "PLATFORM_ADMIN"
-      ? "You are signed in as a platform admin. Facility data is reached only through a logged support session, which arrives with the platform console in a later phase."
+      ? "You are signed in as a platform admin. Facility data is reached only through a logged support session. The console is in the menu."
       : role === "STAFF"
         ? "Your duties, leave requests and notifications are in the menu."
         : "This account has no facility screens yet.";
@@ -243,7 +246,9 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
-  }, [authLoading, user, router]);
+    // The platform console is where a platform admin starts.
+    if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard") router.replace("/admin");
+  }, [authLoading, user, router, pathname]);
 
   // Close the phone menu when the page changes.
   const [lastPath, setLastPath] = useState(pathname);
@@ -352,7 +357,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
               </div>
             )}
-            {ctx || pathname === "/account" || (role === "PLATFORM_ADMIN" && pathname === "/system-health") ? children : <NoFacilityNotice role={role} />}
+            {ctx || pathname === "/account" || (role === "PLATFORM_ADMIN" && (pathname === "/system-health" || pathname === "/admin" || pathname.startsWith("/admin/"))) ? children : <NoFacilityNotice role={role} />}
           </div>
         </main>
       </div>
