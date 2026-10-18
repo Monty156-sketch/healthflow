@@ -113,7 +113,7 @@ const staffInclude = {
   department: { select: { id: true, name: true, code: true } },
   eligibleForShifts: { select: { id: true, name: true, code: true }, orderBy: { sortOrder: "asc" as const } },
   userProfile: {
-    select: { role: true, active: true, lastSignInAt: true, mfaEnabled: true, privacyNoticeVersionAccepted: true },
+    select: { role: true, active: true, lastSignInAt: true, mfaEnabled: true, privacyNoticeVersionAccepted: true, departmentId: true },
   },
 } satisfies Prisma.StaffInclude;
 
@@ -148,6 +148,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
           lastSignInAt: s.userProfile.lastSignInAt,
           mfaEnabled: s.userProfile.mfaEnabled,
           privacyNoticeVersionAccepted: s.userProfile.privacyNoticeVersionAccepted,
+          wardDepartmentId: s.userProfile.departmentId,
         }
       : null,
     hasPhoto: Boolean(s.photoUrl),
@@ -457,6 +458,28 @@ staffRouter.patch("/:id/status", allowRoles(...ADMIN_ROLES), async (req, res) =>
 
   const s = await prisma.staff.findUniqueOrThrow({ where: { id: existing.id }, include: staffInclude });
   res.json({ staff: present(s) });
+});
+
+// ---------------------------------------------------------------- ward
+
+/** Limits a roster manager to one ward or department's rosters, or lifts the limit. */
+staffRouter.put("/:id/ward", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ departmentId: z.string().trim().nullish().transform((v) => v || null) }), req.body, res);
+  if (!input) return;
+  const s = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { userProfile: { select: { id: true, role: true } } } });
+  if (!s) return res.status(404).json({ error: "not_found" });
+  if (!s.userProfile || !["ROSTER_MANAGER", "SUPERVISOR"].includes(s.userProfile.role)) {
+    return res.status(409).json({ error: "not_a_manager", message: `${s.fullName} needs a roster manager or supervisor account before they can be limited to a ward.` });
+  }
+  const dept = input.departmentId ? await prisma.department.findFirst({ where: { id: input.departmentId, facilityId: who.facilityId }, select: { id: true, name: true } }) : null;
+  if (input.departmentId && !dept) return res.status(400).json({ error: "invalid_input", message: "That department was not found." });
+  await prisma.userProfile.update({ where: { id: s.userProfile.id }, data: { departmentId: dept?.id ?? null } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "ward_manager_set", entityType: "Staff", entityId: s.id,
+    summary: dept ? `${who.displayName} limited ${s.fullName} to the ${dept.name} rosters.` : `${who.displayName} let ${s.fullName} work on every roster again.`,
+  });
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- reset link

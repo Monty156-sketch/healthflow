@@ -29,7 +29,8 @@ import { shiftsRouter } from "./shifts.js";
 import { rulesRouter } from "./rules.js";
 import { cyclesRouter } from "./cycles.js";
 import { rotationsRouter } from "./rotations.js";
-import { rostersRouter } from "./rosters.js";
+import { rostersRouter, WARD_FACILITY_TYPES } from "./rosters.js";
+import { wardDemandRouter } from "./wardDemand.js";
 import { leaveRouter } from "./leave.js";
 import { attendanceRouter } from "./attendance.js";
 import { notificationsRouter } from "./notifications.js";
@@ -63,6 +64,7 @@ facilityRouter.use("/rules", rulesRouter);
 facilityRouter.use("/cycles", cyclesRouter);
 facilityRouter.use("/rotations", rotationsRouter);
 facilityRouter.use("/rosters", rostersRouter);
+facilityRouter.use("/ward-demand", wardDemandRouter);
 facilityRouter.use("/leave", leaveRouter);
 facilityRouter.use("/attendance", attendanceRouter);
 facilityRouter.use("/notifications", notificationsRouter);
@@ -101,12 +103,13 @@ function presentFacility(f: Awaited<ReturnType<typeof prisma.facility.findUnique
     dataProtectionContactName: f.dataProtectionContactName,
     dataProtectionContactEmail: f.dataProtectionContactEmail,
     status: f.status,
+    rosterByWard: WARD_FACILITY_TYPES.includes(f.facilityType),
   };
 }
 
 /** The facility, plus how far its set-up has got (drives the set-up checklist). */
 facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => {
-  const { facilityId, role, displayName } = caller(req);
+  const { facilityId, role, displayName, departmentId } = caller(req);
   // Staff get the facility's name and settings so their own screens work, and none of the set-up counts.
   if (role === "STAFF") {
     const facility = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId } });
@@ -121,7 +124,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
   res.json({
     facility: presentFacility(facility),
     setup: { departments, cadres, staff },
-    me: { role, displayName },
+    me: { role, displayName, departmentId: departmentId ?? null },
     flags: await flagsFor(facilityId),
   });
 });

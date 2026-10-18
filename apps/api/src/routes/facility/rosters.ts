@@ -41,10 +41,13 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   await ensureHolidays(facilityId);
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
+  // A ward roster is for that department's people, with the ward's own minimums where it has set them.
+  const ward = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true } }))?.departmentId ?? null;
+  const demand = ward ? await prisma.shiftDemand.findMany({ where: { departmentId: ward } }) : [];
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true } }, department: { select: { runsNights: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { departmentId: ward } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true } }, department: { select: { runsNights: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -88,7 +91,8 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     id: s.id, code: s.code, name: s.name, startMin: toMin(s.startTime), durationMin: Math.round(s.durationHours * 60), isOvernight: s.isOvernight,
     isOnCall: s.isOnCall, onCallFactor: s.onCallHoursFactor, countsAsDuty: s.countsAsDuty,
     // A shift that is switched off asks for nobody.
-    minStaff: s.active ? s.minStaff : 0, minByCadre: s.active ? ((s.minByCadre ?? {}) as Record<string, number>) : {},
+    minStaff: s.active ? (demand.find((d) => d.shiftId === s.id)?.minStaff ?? s.minStaff) : 0,
+    minByCadre: s.active ? ((demand.find((d) => d.shiftId === s.id)?.minByCadre ?? s.minByCadre ?? {}) as Record<string, number>) : {},
     eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder,
   }));
 
@@ -200,14 +204,14 @@ async function summaryOf(rosterId: string) {
   return { duties, blocks, warnings, unfilled };
 }
 
-const presentRoster = (r: Awaited<ReturnType<typeof prisma.roster.findFirstOrThrow>>) => ({
-  id: r.id, year: r.year, month: r.month, label: monthName(r), status: r.status, version: r.version,
+const presentRoster = (r: Awaited<ReturnType<typeof prisma.roster.findFirstOrThrow>> & { department?: { name: string } | null }) => ({
+  id: r.id, year: r.year, month: r.month, label: r.department ? `${monthName(r)}, ${r.department.name}` : monthName(r), departmentId: r.departmentId, department: r.department?.name ?? null, status: r.status, version: r.version,
   generatedAt: r.generatedAt, generationSeconds: r.generationSeconds,
 });
 
 rostersRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
-  const { facilityId } = caller(req);
-  const rows = await prisma.roster.findMany({ where: { facilityId }, orderBy: [{ year: "desc" }, { month: "desc" }], take: 36 });
+  const { facilityId, departmentId } = caller(req);
+  const rows = await prisma.roster.findMany({ where: { facilityId, ...(departmentId ? { departmentId } : {}) }, include: { department: { select: { name: true } } }, orderBy: [{ year: "desc" }, { month: "desc" }, { createdAt: "asc" }], take: 60 });
   const rosters = await Promise.all(rows.map(async (r) => ({ ...presentRoster(r), ...(await summaryOf(r.id)) })));
   res.json({ rosters });
 });
@@ -215,25 +219,45 @@ rostersRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
 const createInput = z.object({
   year: z.number({ invalid_type_error: "Choose a year." }).int().min(2020, "Choose a year from 2020.").max(2100, "Choose a year up to 2100."),
   month: z.number({ invalid_type_error: "Choose a month." }).int().min(1, "Choose a month.").max(12, "Choose a month."),
+  departmentId: z.string().trim().nullish().transform((v) => v || null),
 });
+
+/** Hospitals keep one roster per ward or department. Health centres, clinics and CHPS compounds keep one for the whole facility. */
+export const WARD_FACILITY_TYPES = ["HOSPITAL", "PRIVATE_HOSPITAL", "POLYCLINIC"];
 
 rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const who = caller(req);
   const input = parseOr400(createInput, req.body, res);
   if (!input) return;
-  const exists = await prisma.roster.findUnique({ where: { facilityId_month_year: { facilityId: who.facilityId, month: input.month, year: input.year } } });
-  if (exists) return res.status(409).json({ error: "roster_exists", message: `There is already a roster for ${monthName(input)}.`, id: exists.id });
-  const roster = await prisma.roster.create({ data: { facilityId: who.facilityId, month: input.month, year: input.year, preparedBy: who.email } });
+  const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } });
+  const byWard = WARD_FACILITY_TYPES.includes(facility.facilityType);
+  const departmentId = who.departmentId ?? input.departmentId;
+  if (byWard && !departmentId) return res.status(400).json({ error: "invalid_input", fields: { departmentId: "Choose the ward or department this roster is for." }, message: "Choose the ward or department this roster is for." });
+  if (!byWard && departmentId) return res.status(400).json({ error: "invalid_input", message: "This facility keeps one roster for the whole facility." });
+  const dept = departmentId ? await prisma.department.findFirst({ where: { id: departmentId, facilityId: who.facilityId }, select: { id: true, name: true } }) : null;
+  if (departmentId && !dept) return res.status(400).json({ error: "invalid_input", message: "That department was not found." });
+  const exists = await prisma.roster.findFirst({ where: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null } });
+  if (exists) return res.status(409).json({ error: "roster_exists", message: `There is already a roster for ${monthName(input)}${dept ? ` in ${dept.name}` : ""}.`, id: exists.id });
+  const roster = await prisma.roster.create({ data: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null, preparedBy: who.email }, include: { department: { select: { name: true } } } });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_created", entityType: "Roster", entityId: roster.id,
-    summary: `${who.displayName} started the roster for ${monthName(roster)}.`,
+    summary: `${who.displayName} started the roster for ${monthName(roster)}${dept ? ` in ${dept.name}` : ""}.`,
   });
   res.status(201).json({ roster: presentRoster(roster) });
 });
 
+// A ward roster manager reaches only their own department's rosters, whatever the address says.
+rostersRouter.param("id", async (req, res, next, id) => {
+  const departmentId = req.caller?.departmentId;
+  if (!departmentId) return next();
+  const r = await prisma.roster.findFirst({ where: { id: String(id), facilityId: req.caller!.facilityId }, select: { departmentId: true } });
+  if (!r || r.departmentId !== departmentId) return res.status(404).json({ error: "not_found" });
+  next();
+});
+
 rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId } = caller(req);
-  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId } });
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId }, include: { department: { select: { name: true } } } });
   if (!roster) return res.status(404).json({ error: "not_found" });
 
   const [assignments, findings, shifts, cadres] = await Promise.all([
@@ -244,7 +268,7 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
   ]);
   const inRoster = new Set(assignments.map((a) => a.staffId));
   const staff = await prisma.staff.findMany({
-    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }] },
+    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }], ...(roster.departmentId ? { departmentId: roster.departmentId } : {}) },
     include: { cadre: { select: { id: true, name: true, code: true } }, department: { select: { id: true, name: true } } },
     orderBy: { staffNo: "asc" },
   });
@@ -280,7 +304,7 @@ async function buildSheet(facilityId: string, roster: RosterRow) {
   ]);
   const inRoster = new Set(assignments.map((a) => a.staffId));
   const staffRows = await prisma.staff.findMany({
-    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }] },
+    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }], ...(roster.departmentId ? { departmentId: roster.departmentId } : {}) },
     include: { cadre: { select: { name: true } } },
   });
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
@@ -384,7 +408,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
     const shortfalls = result.shortfalls.slice(0, 40).map((s) => sayShortfall(s, data));
     return res.status(409).json({
       error: "not_feasible",
-      message: `A lawful roster for ${monthName(roster)} is not possible with the staff and shifts as they are. Nothing was generated.`,
+      message: `A lawful roster for ${monthName(roster)} is not possible with the staff and shifts as they are. Nothing was generated.${roster.departmentId ? " Check how many people this ward needs on each shift." : ""}`,
       shortfalls,
       more: Math.max(0, result.shortfalls.length - shortfalls.length),
     });

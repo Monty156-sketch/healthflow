@@ -1,5 +1,6 @@
 "use client";
 
+import { WardDemand } from "@/components/WardDemand";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -286,7 +287,7 @@ export default function RosterPage() {
         </Link>
       </p>
       <PageHeader
-        title={`${MONTHS[roster.month - 1]} ${roster.year} roster`}
+        title={`${MONTHS[roster.month - 1]} ${roster.year} roster${roster.department ? `, ${roster.department}` : ""}`}
         description={
           <span className="inline-flex items-center gap-2">
             <StatusBadge tone={statusTone(roster.status)}>{STATUS_WORD[roster.status]}</StatusBadge>
@@ -333,6 +334,11 @@ export default function RosterPage() {
           >
             Generating again replaces every duty that is not locked with a new roster, built from your current duty cycles, rotation order, duty ledger and the last three months. Each time gives a different lawful roster.
           </Notice>
+        </div>
+      )}
+      {roster.departmentId && canRoster && canGenerate && (
+        <div className="no-print mb-4">
+          <WardDemand departmentId={roster.departmentId} editable />
         </div>
       )}
       {applied && !problem && (
