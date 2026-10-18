@@ -10,6 +10,7 @@ import { caller } from "../../middleware/facilityAccess.js";
 import { notifyDeciders } from "../../lib/notify.js";
 import { exportMyData, exportToCsv } from "../../lib/exportMyData.js";
 import { sayDay } from "../../engine/time.js";
+import { ALWAYS_SENT, NOTE_CATEGORIES, mutedFrom } from "../../lib/notificationPrefs.js";
 
 export const meRouter = Router();
 
@@ -170,4 +171,44 @@ meRouter.post("/requests", async (req, res) => {
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "dsr_received", entityType: "DataSubjectRequest", entityId: r.id, summary: `${who.displayName} raised a ${input.requestType.toLowerCase()} request. It is due within ${DSR_DAYS[input.requestType]} days.` });
   await notifyDeciders(who.facilityId, { type: "dsr_received", title: `${who.displayName} raised a data request`, body: `A ${input.requestType.toLowerCase()} request is due within ${DSR_DAYS[input.requestType]} days.`, linkUrl: "/privacy-and-data", severity: "ACTION" });
   res.status(201).json({ request: { id: r.id, dueAt: r.dueAt } });
+});
+
+// ------------------------------------------------------------- notification preferences
+
+async function ownProfile(req: Parameters<typeof caller>[0]) {
+  const who = caller(req);
+  return prisma.userProfile.findFirst({ where: { facilityId: who.facilityId, userEmail: who.email }, select: { id: true, notificationPreferences: true } });
+}
+
+function presentPrefs(prefs: unknown) {
+  const muted = mutedFrom(prefs);
+  return {
+    categories: NOTE_CATEGORIES.map((c) => ({ key: c.key, label: c.label, description: c.description, on: !muted.includes(c.key) })),
+    alwaysSent: ALWAYS_SENT,
+  };
+}
+
+meRouter.get("/notification-preferences", async (req, res) => {
+  const me = await ownProfile(req);
+  if (!me) return res.status(404).json({ error: "not_found" });
+  res.json(presentPrefs(me.notificationPreferences));
+});
+
+meRouter.put("/notification-preferences", async (req, res) => {
+  const who = caller(req);
+  const me = await ownProfile(req);
+  if (!me) return res.status(404).json({ error: "not_found" });
+  const input = parseOr400(z.object({ off: z.array(z.string()).max(20) }), req.body, res);
+  if (!input) return;
+  const unknown = input.off.find((k) => !NOTE_CATEGORIES.some((c) => c.key === k));
+  if (unknown) return res.status(400).json({ error: "invalid_input", fields: { off: "One of those is not a kind of notification you can switch off." } });
+  const muted = [...new Set(input.off)];
+  await prisma.userProfile.update({ where: { id: me.id }, data: { notificationPreferences: { muted } } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "notification_preferences_changed", entityType: "UserProfile", entityId: me.id,
+    summary: muted.length
+      ? `${who.displayName} switched off notifications about ${muted.map((k) => NOTE_CATEGORIES.find((c) => c.key === k)!.label.toLowerCase()).join(", ")}.`
+      : `${who.displayName} switched on all optional notifications.`,
+  });
+  res.json(presentPrefs({ muted }));
 });

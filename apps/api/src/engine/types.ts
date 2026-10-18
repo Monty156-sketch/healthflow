@@ -61,6 +61,17 @@ export interface ECycleRule {
   blockShiftPatternIds?: string[];
 }
 
+/** The order shifts follow one another for the staff it covers (spec 2A.1). */
+export interface ERotation {
+  id: string;
+  name: string;
+  /** The cycle order, for example Night, Afternoon, Morning. */
+  sequenceShiftIds: string[];
+  cadreIds: string[];
+  departmentIds: string[];
+  enforcement: "BLOCK" | "PREFER";
+}
+
 export interface ERule {
   code: string;
   threshold: number | null;
