@@ -1,8 +1,12 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { settleAgainstRoster, settlementFor } from "../src/lib/ledger.js";
-import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
+import { as, makeFacility, makeUser, prisma, resetDatabase, freezeEarlyInMonth, unfreezeClock } from "./helpers.js";
 
-beforeEach(resetDatabase);
+beforeEach(async () => {
+  await resetDatabase();
+  freezeEarlyInMonth();
+});
+afterEach(unfreezeClock);
 
 const day = (offset: number) => new Date(Math.floor(Date.now() / 86_400_000 + offset) * 86_400_000);
 

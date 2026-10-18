@@ -1,7 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { as, makeFacility, makeUser, prisma, resetDatabase, freezeEarlyInMonth, unfreezeClock } from "./helpers.js";
 
-beforeEach(resetDatabase);
+beforeEach(async () => {
+  await resetDatabase();
+  freezeEarlyInMonth();
+});
+afterEach(unfreezeClock);
 
 const DAY = 86_400_000;
 const day = (offset: number) => new Date(Math.floor(Date.now() / DAY + offset) * DAY);

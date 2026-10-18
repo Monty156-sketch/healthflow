@@ -74,18 +74,19 @@ function ledgerSentence(typeName: string, debt: boolean, name: string) {
 async function findSwapPartners(facilityId: string, leaverId: string, duty: Awaited<ReturnType<typeof dutiesIn>>[number], leaveEnd: number, leaveStart: number): Promise<SwapOption[]> {
   const candidates = await prisma.rosterAssignment.findMany({
     where: {
-      rosterId: duty.rosterId, staffId: { not: leaverId }, locked: false, shift: { countsAsDuty: true, isOnCall: false }, staff: { status: "ACTIVE" },
+      facilityId, roster: { status: "PUBLISHED" }, staffId: { not: leaverId }, locked: false, shift: { countsAsDuty: true, isOnCall: false }, staff: { status: "ACTIVE" },
       dutyDate: { gt: new Date(leaveEnd * DAY), lte: new Date((leaveEnd + WINDOW) * DAY) },
     },
     include: { shift: true, staff: { select: { id: true, fullName: true, cadreId: true } } },
   });
   const open = await prisma.dutySwap.findMany({ where: { facilityId, status: { in: ["REQUESTED", "ACCEPTED"] } }, select: { requesterAssignmentId: true, targetAssignmentId: true } });
   const busy = new Set(open.flatMap((o) => [o.requesterAssignmentId, o.targetAssignmentId]));
-  const counts = await prisma.rosterAssignment.groupBy({ by: ["staffId"], where: { rosterId: duty.rosterId, shift: { countsAsDuty: true } }, _count: { _all: true } });
-  const count = new Map(counts.map((c) => [c.staffId, c._count._all]));
+  const counts = await prisma.rosterAssignment.groupBy({ by: ["staffId", "rosterId"], where: { rosterId: { in: [...new Set([duty.rosterId, ...candidates.map((c) => c.rosterId)])] }, shift: { countsAsDuty: true } }, _count: { _all: true } });
+  const countIn = (rosterId: string) => new Map(counts.filter((c) => c.rosterId === rosterId).map((c) => [c.staffId, c._count._all]));
   const balances = await openBalances(facilityId);
   const mate = await prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, select: { id: true, cadreId: true } });
-  const avgOf = (cadreId: string | null) => {
+  const avgOf = (cadreId: string | null, rosterId: string) => {
+    const count = countIn(rosterId);
     const m = mate.filter((x) => x.cadreId === cadreId);
     return m.reduce((n, x) => n + (count.get(x.id) ?? 0), 0) / Math.max(1, m.length);
   };
@@ -98,7 +99,7 @@ async function findSwapPartners(facilityId: string, leaverId: string, duty: Awai
       if (d - leaveEnd <= 7) { score += 4; reasons.push("falls within a week of their return"); }
       if (c.shiftId === duty.shiftId) { score += 3; reasons.push("same shift as the one given up"); }
       if (!(balances.get(c.staffId)?.owed)) { score += 2; reasons.push("the colleague is not owed any duties"); } else reasons.push("the colleague is already owed a duty");
-      if ((count.get(c.staffId) ?? 0) <= avgOf(c.staff.cadreId)) { score += 2; reasons.push("the colleague is at or below the average this month"); }
+      if ((countIn(c.rosterId).get(c.staffId) ?? 0) <= avgOf(c.staff.cadreId, c.rosterId)) { score += 2; reasons.push("the colleague is at or below the average this month"); }
       return { c, score, reasons, d };
     })
     .sort((a, b) => b.score - a.score || a.d - b.d)
@@ -143,7 +144,7 @@ export async function leaveCoverPlan(facilityId: string, leaveRequestId: string)
     owedBack: r.leaveType.createsDutyDebt,
     duties: out,
     more: Math.max(0, duties.length - MAX_DUTIES),
-    note: duties.length === 0 ? "None of these days has a published duty for this person, so there is nothing to arrange." : `${duties.length} published ${duties.length === 1 ? "duty falls" : "duties fall"} in these dates. Swaps are shown first because they leave no debt.`,
+    note: duties.length === 0 ? "None of these days has a published duty for this person, so there is nothing to arrange." : `${duties.length} published ${duties.length === 1 ? "duty falls" : "duties fall"} in these dates. Swaps are shown first because they leave no debt, and can be with a duty in the following month.`,
   };
 }
 
@@ -152,7 +153,7 @@ export async function requestLeaveSwap(facilityId: string, leaveRequestId: strin
   const { r } = await load(facilityId, leaveRequestId);
   const mine = await prisma.rosterAssignment.findFirst({ where: { id: assignmentId, facilityId, staffId: r.staffId }, include: { shift: true } });
   if (!mine) throw new LeaveCoverError(404, "That duty was not found.");
-  const theirs = await prisma.rosterAssignment.findFirst({ where: { id: targetAssignmentId, rosterId: mine.rosterId }, include: { shift: true, staff: { select: { id: true, fullName: true } } } });
+  const theirs = await prisma.rosterAssignment.findFirst({ where: { id: targetAssignmentId, facilityId, roster: { status: "PUBLISHED" } }, include: { shift: true, staff: { select: { id: true, fullName: true } } } });
   if (!theirs) throw new LeaveCoverError(404, "The colleague's duty was not found.");
   const dup = await prisma.dutySwap.findFirst({ where: { requesterAssignmentId: mine.id, status: { in: ["REQUESTED", "ACCEPTED"] } } });
   if (dup) throw new LeaveCoverError(409, "A swap is already open for this duty.");
