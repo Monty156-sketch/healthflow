@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
 import { parseOr400 } from "../lib/validate.js";
+import { consoleRouter } from "./platformConsole.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
 
@@ -90,9 +91,11 @@ errorReportRouter.post("/", reportLimiter, async (req, res) => {
 
 export const platformRouter = Router();
 platformRouter.use(requireAuth, requireLiveUser, (req, res, next) => {
-  if (liveUser(req).role !== "PLATFORM_ADMIN") return res.status(403).json({ error: "forbidden" });
+  // The same answer as a route that does not exist, so nothing confirms the console is here.
+  if (liveUser(req).role !== "PLATFORM_ADMIN") return res.status(404).json({ error: "not_found" });
   next();
 });
+platformRouter.use(consoleRouter);
 
 const startedAt = Date.now();
 

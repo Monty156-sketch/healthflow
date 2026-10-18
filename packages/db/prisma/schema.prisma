@@ -1180,6 +1180,24 @@ model AccessRequest {
   source             AccessRequestSource  @default(LANDING_PAGE)
   createdAt          DateTime             @default(now())
   firstResponseAt    DateTime?
+  declineReason      String?
+  /// The facility this request became, so the link survives.
+  provisionedFacilityId String?
+
+  threadNotes AccessRequestNote[]
+
+  @@index([status])
+}
+
+model AccessRequestNote {
+  id        String        @id @default(cuid())
+  requestId String
+  request   AccessRequest @relation(fields: [requestId], references: [id])
+  author    String
+  body      String
+  createdAt DateTime      @default(now())
+
+  @@index([requestId])
 }
 
 model Plan {
