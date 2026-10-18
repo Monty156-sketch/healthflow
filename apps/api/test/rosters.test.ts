@@ -46,20 +46,32 @@ describe("rosters", () => {
     expect(view.shifts.some((s: { code: string }) => s.code === "D/O")).toBe(true);
 
     const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "roster_generated" } });
-    expect(audit?.summary).toMatch(/^Kofi Bawa generated the roster for November 2026: \d+ duties, 0 unfilled, 0 blocking findings\.$/);
+    expect(audit?.summary).toMatch(/^Kofi Bawa generated the roster for November 2026: \d+ duties, 0 unfilled, 0 blocking findings\. Applied \d+ duty cycles? and \d+ rotation orders?, variation 0\.$/);
 
     const list = (await api.get("/api/facility/rosters")).body.rosters;
     expect(list[0]).toMatchObject({ label: "November 2026", status: "GENERATED", unfilled: 0, blocks: 0 });
   });
 
-  it("generating again with the same inputs gives the same roster", async () => {
+  it("generating again with the same variation gives the same roster, and reports what it applied", async () => {
+    const { api } = await setup();
+    const id = (await api.post("/api/facility/rosters", { year: 2026, month: 11 })).body.roster.id;
+    const key = async () => (await api.get(`/api/facility/rosters/${id}`)).body.assignments.map((a: { staffId: string; date: string; shiftId: string }) => `${a.staffId}|${a.date}|${a.shiftId}`).sort().join(",");
+    const first = await api.post(`/api/facility/rosters/${id}/generate`, { variation: 5 });
+    expect(first.body.applied).toMatchObject({ variation: 5 });
+    expect(Array.isArray(first.body.applied.cycles)).toBe(true);
+    const one = await key();
+    const again = await api.post(`/api/facility/rosters/${id}/generate`, { variation: 5 });
+    expect(again.status).toBe(200);
+    expect(await key()).toBe(one);
+  });
+
+  it("generating again without a variation picks a new one", async () => {
     const { api } = await setup();
     const id = (await api.post("/api/facility/rosters", { year: 2026, month: 11 })).body.roster.id;
     await api.post(`/api/facility/rosters/${id}/generate`);
-    const key = async () => (await api.get(`/api/facility/rosters/${id}`)).body.assignments.map((a: { staffId: string; date: string; shiftId: string }) => `${a.staffId}|${a.date}|${a.shiftId}`).sort().join(",");
-    const first = await key();
-    expect((await api.post(`/api/facility/rosters/${id}/generate`)).status).toBe(200);
-    expect(await key()).toBe(first);
+    const again = await api.post(`/api/facility/rosters/${id}/generate`);
+    expect(again.status).toBe(200);
+    expect(again.body.applied.variation).toBeGreaterThan(0);
   });
 
   it("carries the run across the month boundary", async () => {
