@@ -53,6 +53,23 @@ const bodySchema = z.object({
 
 interface Judged { row: number; staffNo: string; fullName: string; action: "create" | "update" | "error"; problems: string[]; data?: Record<string, unknown> }
 
+/** Names people commonly write for the standard cadres and departments, so a spreadsheet does not need retyping. */
+const CADRE_ALIAS: Record<string, string> = {
+  "staff nurse": "nurse", "registered nurse": "nurse", "general nurse": "nurse", "rn": "nurse", "rgn": "nurse", "senior nursing officer": "nurse", "nursing officer": "nurse",
+  "ena": "enrolled nurse", "enrolled nursing": "enrolled nurse", "chn": "community health nurse", "cho": "community health officer",
+  "pa": "physician assistant", "medical assistant": "physician assistant", "doctor": "medical officer", "mo": "medical officer",
+  "lab scientist": "laboratory scientist", "laboratory technologist": "laboratory scientist", "lab technologist": "laboratory scientist", "lab technician": "laboratory technician",
+  "dispensing technician": "pharmacy technician", "pharmacy tech": "pharmacy technician", "dispenser": "pharmacy technician",
+  "records officer": "health information officer", "health records officer": "health information officer", "hio": "health information officer",
+};
+const DEPT_ALIAS: Record<string, string> = {
+  "opd": "outpatient", "out patient": "outpatient", "out-patient": "outpatient", "outpatients": "outpatient", "labour ward": "maternity", "delivery": "maternity", "delivery ward": "maternity",
+  "antenatal": "antenatal and postnatal", "anc": "antenatal and postnatal", "postnatal": "antenatal and postnatal", "cwc": "child welfare", "child welfare clinic": "child welfare",
+  "lab": "laboratory", "admin": "administration", "a&e": "emergency", "casualty": "emergency", "ot": "theatre", "operating theatre": "theatre", "icu": "intensive care",
+  "x-ray": "radiology", "xray": "radiology", "finance": "accounts", "paediatric": "paediatrics", "pediatrics": "paediatrics", "children's ward": "paediatrics",
+};
+const clean = (v: string) => v.toLowerCase().replace(/\s+/g, " ").trim();
+
 async function judge(facilityId: string, csv: string, given?: Record<string, number>) {
   const table = parseCsv(csv);
   if (table.length < 2) return { error: "The file needs a heading row and at least one person." } as const;
@@ -80,9 +97,9 @@ async function judge(facilityId: string, csv: string, given?: Record<string, num
     seen.add(staffNo.toLowerCase());
     const data: Record<string, unknown> = { staffNo, fullName };
     const cad = get("cadre");
-    if (cad) { const id = cadreBy.get(cad.toLowerCase()); if (id) data.cadreId = id; else problems.push(`Cadre "${cad}" is not one of your cadres.`); }
+    if (cad) { const id = cadreBy.get(clean(cad)) ?? cadreBy.get(CADRE_ALIAS[clean(cad)] ?? ""); if (id) data.cadreId = id; else problems.push(`Cadre "${cad}" is not one of your cadres.`); }
     const dep = get("department");
-    if (dep) { const id = deptBy.get(dep.toLowerCase()); if (id) data.departmentId = id; else problems.push(`Department "${dep}" is not one of your departments.`); }
+    if (dep) { const id = deptBy.get(clean(dep)) ?? deptBy.get(DEPT_ALIAS[clean(dep)] ?? ""); if (id) data.departmentId = id; else problems.push(`Department "${dep}" is not one of your departments.`); }
     const emp = get("employmentStatus");
     if (emp) { const e = EMPLOYMENT[norm(emp)]; if (e) data.employmentStatus = e; else problems.push(`Employment type "${emp}" should be Permanent, Contract, National Service or Locum.`); }
     const email = get("email");

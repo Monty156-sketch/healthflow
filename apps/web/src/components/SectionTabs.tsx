@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useOptionalFacility } from "@/components/AppShell";
 import { sectionFor } from "@/lib/sections";
 
 /** The pages of one section, as tabs above the page. Shows only the pages this role may open, and nothing when there is only one. */
 export function SectionTabs({ role }: { role: string }) {
   const pathname = usePathname();
+  const flags = useOptionalFacility()?.flags;
   const hit = sectionFor(pathname);
   if (!hit) return null;
-  const tabs = hit.section.tabs.filter((t) => t.roles.includes(role));
+  const tabs = hit.section.tabs.filter((t) => t.roles.includes(role) && !(t.flag && flags?.[t.flag] === false));
   if (tabs.length < 2) return null;
   return (
     <nav aria-label="In this section" className="no-print mb-5 overflow-x-auto border-b border-[var(--border)]">
