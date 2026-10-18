@@ -6,7 +6,7 @@
 // day, hardest slots first within each day, rather than hardest first across
 // the whole month. Duty cycle runs only make sense in date order, so the
 // month is walked forwards and scarcity decides the order inside each day.
-import type { EAssignment, ECycleRule, ELeave, EContext, ERule, EShift, EStaff, Finding, Period } from "./types.js";
+import type { EAssignment, ECycleRule, ELeave, EContext, ERotation, ERule, EShift, EStaff, Finding, Period } from "./types.js";
 import { DAY_MIN, interval, hoursOf, weekdayOf } from "./time.js";
 import { evaluateCompliance, ineligibleReason, RULE_EVALUATORS } from "./evaluators.js";
 
@@ -18,6 +18,8 @@ export interface GenerateInput {
   /** Enabled constraint rules. */
   rules: ERule[];
   cycles: ECycleRule[];
+  /** The order shifts follow one another, per cadre and department. Optional. */
+  rotations?: ERotation[];
   leave: ELeave[];
   holidays: number[];
   period: Period;
@@ -59,7 +61,7 @@ export interface GenerateResult {
   /** Slots the engine could not fill lawfully. */
   unfilled: Shortfall[];
   findings: Finding[];
-  stats: { duties: number; unfilled: number; improvements: number };
+  stats: { duties: number; unfilled: number; improvements: number; carried: number };
 }
 
 const LOOKBACK = 14;
@@ -78,6 +80,11 @@ const RIGHT_AFTER_REST = 4;
 const OFF_PATTERN = 8;
 /** Each duty still owed to or from the ledger moves a person this far up or down the queue. */
 const LEDGER_WEIGHT = 5;
+/** Rotation order is a weak preference beside fairness: 2 either way against the ledger's 5 and a night's 10 (spec 2A.3). */
+const ROTATION_WEIGHT = 2;
+const CARRY_SPECIAL_WEIGHT = 1.5;
+/** Each duty a person is behind their cadre's pace this month moves them this far up the queue (spec phase 3, deficit). */
+const DEFICIT_WEIGHT = 6;
 const HARD_CODES = ["C2", "C3", "C5", "C6", "C7", "C8"];
 
 function mulberry32(seed: number) {
@@ -269,7 +276,7 @@ export function generate(input: GenerateInput): GenerateResult {
     preflight.push(...shortfalls);
   }
   if (preflight.length) {
-    return { feasible: false, shortfalls: preflight, cells: [], unfilled: [], findings: [], stats: { duties: 0, unfilled: 0, improvements: 0 } };
+    return { feasible: false, shortfalls: preflight, cells: [], unfilled: [], findings: [], stats: { duties: 0, unfilled: 0, improvements: 0, carried: 0 } };
   }
 
   // ---- Step 4: greedy assignment, day by day
@@ -351,6 +358,99 @@ export function generate(input: GenerateInput): GenerateResult {
     return null;
   };
 
+  // ---- Carry-over from the last three months (spec Part 4, phase 2): who has
+  // already done more or fewer duties, and more or fewer weekends, than their
+  // cadre. Only people with history count, so a new starter is not pulled up.
+  const rotationOf = new Map<string, ERotation | null>();
+  for (const s of staff) {
+    rotationOf.set(
+      s.id,
+      (input.rotations ?? []).find(
+        (r) =>
+          r.sequenceShiftIds.length > 1 &&
+          (!r.cadreIds.length || (s.cadreId && r.cadreIds.includes(s.cadreId))) &&
+          (!r.departmentIds.length || (s.departmentId && r.departmentIds.includes(s.departmentId)))
+      ) ?? null
+    );
+  }
+  const carryTotal: Record<string, number> = {};
+  const carrySpecial: Record<string, number> = {};
+  {
+    const hist = new Map<string, { total: number; special: number }>();
+    for (const a of input.history) {
+      if (!staffById.has(a.staffId) || !shiftById.get(a.shiftId)?.countsAsDuty || a.day >= period.startDay || a.day < period.startDay - 90) continue;
+      const h = hist.get(a.staffId) ?? { total: 0, special: 0 };
+      h.total++;
+      if (weekdayOf(a.day) === 0 || weekdayOf(a.day) === 6) h.special++;
+      hist.set(a.staffId, h);
+    }
+    const cadres = new Set(staff.map((s) => s.cadreId));
+    for (const c of cadres) {
+      const group = staff.filter((s) => s.cadreId === c && hist.has(s.id));
+      if (group.length < 2) continue;
+      const meanTotal = group.reduce((n, s) => n + hist.get(s.id)!.total, 0) / group.length;
+      const meanSpecial = group.reduce((n, s) => n + hist.get(s.id)!.special, 0) / group.length;
+      for (const s of group) {
+        carryTotal[s.id] = Math.round(meanTotal - hist.get(s.id)!.total);
+        carrySpecial[s.id] = Math.round(hist.get(s.id)!.special - meanSpecial);
+      }
+    }
+  }
+
+  /** What the rotation order says about this person taking this shift today. */
+  const rotationCheck = (s: EStaff, shift: EShift, day: number): { hard: number; soft: number } => {
+    const rot = rotationOf.get(s.id);
+    if (!rot) return { hard: 0, soft: 0 };
+    const seq = rot.sequenceShiftIds;
+    const to = seq.indexOf(shift.id);
+    if (to < 0) return { hard: 0, soft: 0 };
+    const mine = by.get(s.id)!;
+    let lastDay = -1;
+    for (let d = day - 1; d >= day - LOOKBACK; d--) {
+      if (mine.has(d)) {
+        lastDay = d;
+        break;
+      }
+    }
+    if (lastDay < 0) return { hard: 0, soft: 0 };
+    const from = seq.indexOf(mine.get(lastDay)!);
+    if (from < 0) return { hard: 0, soft: 0 };
+    const dist = (to - from + seq.length) % seq.length;
+    if (dist === 1) return { hard: 0, soft: -ROTATION_WEIGHT };
+    // Moving within a run (a day block that alternates) is the cycle rule's business; the order matters coming back from a rest.
+    if (dist >= 2 && lastDay < day - 1) return rot.enforcement === "BLOCK" ? { hard: 1, soft: 0 } : { hard: 0, soft: ROTATION_WEIGHT };
+    return { hard: 0, soft: 0 };
+  };
+
+  /**
+   * Phase 3, assignment by deficit: this month's pace for the cadre is the duties
+   * given so far divided by the days people were available; someone below
+   * their share (allowing for their own leave) is chosen sooner.
+   */
+  const deficitPull = (s: EStaff, day: number): number => {
+    if (day === period.startDay) return 0;
+    const peers = staff.filter((p) => p.cadreId === s.cadreId);
+    let given = 0;
+    let available = 0;
+    const mineAvail = (p: EStaff) => {
+      let n = 0;
+      for (let d = period.startDay; d < day; d++) if (!onLeave(p, d)) n++;
+      return n;
+    };
+    for (const p of peers) {
+      given += dutyCount(p.id, period.startDay, day - 1, () => true);
+      available += mineAvail(p);
+    }
+    if (available === 0) return 0;
+    // Duties owed through the ledger, or carried from earlier months, move a person's share up or down.
+    const expected = (given / available) * mineAvail(s) + (input.settlement?.[s.id] ?? 0) + (carryTotal[s.id] ?? 0);
+    const behind = expected - dutyCount(s.id, period.startDay, day - 1, () => true);
+    return -DEFICIT_WEIGHT * Math.max(-4, Math.min(4, behind));
+  };
+
+  /** Weekend duties already done in the last three months, against the cadre: more than the others means later in the queue. */
+  const carryPull = (s: EStaff): number => CARRY_SPECIAL_WEIGHT * Math.max(-4, Math.min(4, carrySpecial[s.id] ?? 0));
+
   const nightWeight = rule.has("C12") ? 10 * (limit("C12") ?? 1) : 10;
   const knownFrom = Math.min(period.startDay, ...input.history.map((h) => h.day));
   const dutyCount = (id: string, from: number, to: number, test: (sh: EShift, d: number) => boolean) => {
@@ -371,7 +471,7 @@ export function generate(input: GenerateInput): GenerateResult {
     const st = state.get(s.id)!;
     let run = 0;
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
-    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day);
+    return nightWeight * (nights / elapsed) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day) + carryPull(s) + deficitPull(s, day);
   };
 
   /**
@@ -400,7 +500,9 @@ export function generate(input: GenerateInput): GenerateResult {
         if (hardReason(s, slot.shift, day)) continue;
         const check = dutyCheck(state.get(s.id)!, cycleRules.get(s.id)!, day, slot.shift);
         if (check.hard) continue;
-        const sc = score(s, slot.shift, day) + check.soft;
+        const rot = rotationCheck(s, slot.shift, day);
+        if (rot.hard) continue;
+        const sc = score(s, slot.shift, day) + check.soft + rot.soft;
         if (!best || sc < best.score) best = { s, score: sc }; // staff are already in staff-number order, so ties keep the earlier number
       }
       if (best) {
@@ -431,6 +533,9 @@ export function generate(input: GenerateInput): GenerateResult {
         const c = dutyCheck(st, rules, d, shift);
         hard += c.hard;
         soft += c.soft;
+        const rc = rotationCheck(s, shift, d);
+        hard += rc.hard;
+        soft += rc.soft;
       }
       advance(st, rules, d, shift);
     }
@@ -535,5 +640,5 @@ export function generate(input: GenerateInput): GenerateResult {
   const findings = evaluateCompliance(input.rules, {
     staff, shifts: input.shifts, assignments, leave: input.leave, period, weekStartsOn: input.weekStartsOn, referenceWeeks: input.referenceWeeks, cadreNames: input.cadreNames,
   });
-  return { feasible: true, shortfalls: [], cells, unfilled, findings, stats: { duties: generated.length, unfilled: unfilled.length, improvements } };
+  return { feasible: true, shortfalls: [], cells, unfilled, findings, stats: { duties: generated.length, unfilled: unfilled.length, improvements, carried: Object.values(carryTotal).filter((n) => n !== 0).length } };
 }

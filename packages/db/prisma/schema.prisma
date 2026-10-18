@@ -630,6 +630,8 @@ model ShiftRotation {
   facility                Facility @relation(fields: [facilityId], references: [id])
   name                    String
   sequence                Shift[]  @relation("RotationSequence")
+  /// The same shifts in cycle order (the relation above keeps no order).
+  sequenceOrder           String[] @default([])
   applicableCadreIds      String[] @default([])
   applicableDepartmentIds String[] @default([])
   enforcement             CycleEnforcement @default(PREFER)

@@ -6,6 +6,7 @@ import { useResource, useSave } from "@/lib/useApi";
 import { ROLE, showDateTime } from "@/lib/format";
 import {
   Button,
+  Checkbox,
   ConfirmDialog,
   Field,
   Input,
@@ -392,6 +393,52 @@ function SessionsPanel() {
 
 // ------------------------------------------------------------- page
 
+interface Prefs {
+  categories: { key: string; label: string; description: string; on: boolean }[];
+  alwaysSent: string[];
+}
+
+function NotificationsPanel() {
+  const { data, error, reload } = useResource<Prefs>("/api/facility/me/notification-preferences");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (error || !data) return null; // not a facility account, or it could not load: nothing to show
+  const prefs = data;
+
+  async function toggle(key: string, on: boolean) {
+    setBusy(key);
+    setProblem(null);
+    const off = prefs.categories.filter((c) => (c.key === key ? !on : !c.on)).map((c) => c.key);
+    try {
+      await api.put("/api/facility/me/notification-preferences", { off });
+      reload();
+    } catch {
+      setProblem("That could not be saved. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Panel title="Notifications" description="Choose which notifications you get in the app.">
+      {problem && (
+        <div className="mb-3">
+          <Notice tone="block">{problem}</Notice>
+        </div>
+      )}
+      <div className="space-y-3">
+        {prefs.categories.map((c) => (
+          <div key={c.key}>
+            <Checkbox label={c.label} checked={c.on} disabled={busy !== null} onChange={(on) => toggle(c.key, on)} />
+            <p className="ml-8 text-sm text-[var(--muted)]">{c.description}</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 border-t border-[var(--border)] pt-3 text-sm text-[var(--muted)]">Always sent: {prefs.alwaysSent.join(". ")}.</p>
+    </Panel>
+  );
+}
+
 export default function AccountPage() {
   const { data, error, reload } = useResource<{ account: Account }>("/api/auth/account");
 
@@ -414,6 +461,7 @@ export default function AccountPage() {
         <div className="space-y-6">
           <TwoStepPanel account={a} onChanged={reload} />
           <PasswordPanel />
+          {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <NotificationsPanel />}
         </div>
         <SessionsPanel />
       </div>

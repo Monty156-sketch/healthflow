@@ -10,6 +10,8 @@ import {
   ReactNode,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
+  createContext,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -246,6 +248,9 @@ export function StatusBadge({ tone, children }: { tone: StatusTone; children: Re
 
 // ------------------------------------------------------------- layout
 
+/** A page shown inside another page's tab keeps its description and actions, and drops its own title. */
+export const EmbeddedPage = createContext(false);
+
 export function PageHeader({
   title,
   description,
@@ -255,6 +260,16 @@ export function PageHeader({
   description?: ReactNode;
   actions?: ReactNode;
 }) {
+  const embedded = useContext(EmbeddedPage);
+  if (embedded) {
+    if (!description && !actions) return null;
+    return (
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        {description && <p className="max-w-[65ch] text-[var(--muted)]">{description}</p>}
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      </div>
+    );
+  }
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div className="max-w-[65ch]">

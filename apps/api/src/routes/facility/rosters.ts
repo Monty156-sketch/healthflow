@@ -23,7 +23,7 @@ import { ensureOffDuty } from "./shifts.js";
 import { generate, type Shortfall } from "../../engine/generate.js";
 import { evaluateCompliance } from "../../engine/evaluators.js";
 import { dayOf, daysInMonth, isoOf, sayDay } from "../../engine/time.js";
-import type { EAssignment, ECycleRule, EShift, EStaff, Finding } from "../../engine/types.js";
+import type { EAssignment, ECycleRule, ERotation, EShift, EStaff, Finding } from "../../engine/types.js";
 
 export const rostersRouter = Router();
 
@@ -42,7 +42,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
 
-  const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres] = await Promise.all([
+  const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
     prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { staffNo: "asc" } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
@@ -62,6 +62,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     }),
     prisma.rosterAssignment.findMany({ where: { rosterId }, select: { staffId: true, shiftId: true, dutyDate: true, locked: true } }),
     prisma.cadre.findMany({ where: { facilityId }, select: { id: true, name: true } }),
+    prisma.shiftRotation.findMany({ where: { facilityId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
   const eligibleByStaff = new Map<string, string[]>();
@@ -89,6 +90,9 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     cadreIds: c.applicableCadreIds, departmentIds: c.applicableDepartmentIds, enforcement: c.enforcement, priority: c.priority,
     nextShiftAfterRestId: c.nextShiftAfterRestId, blockShiftPatternIds: c.blockShiftPatternIds,
   }));
+  const rotations: ERotation[] = rotationRows.map((r) => ({
+    id: r.id, name: r.name, sequenceShiftIds: r.sequenceOrder, cadreIds: r.applicableCadreIds, departmentIds: r.applicableDepartmentIds, enforcement: r.enforcement,
+  }));
   const leave = leaveRows
     .filter((l) => overlaps(l, period.startDay, period.endDay))
     .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }));
@@ -100,6 +104,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     shifts,
     rules,
     cycles,
+    rotations,
     leave,
     holidays: holidayRows.map((h) => dayFromDate(h.date)),
     history: historyRows.map(toAssignment),
@@ -356,7 +361,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   const started = Date.now();
   const locked = data.current.filter((a) => a.locked);
   const result = generate({
-    staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, leave: data.leave, holidays: data.holidays,
+    staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations, leave: data.leave, holidays: data.holidays,
     period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames, settlement,
   });
 
@@ -394,7 +399,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   await flagReview(who, roster, loose);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_generated", entityType: "Roster", entityId: roster.id,
-    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.${Object.keys(settlement).length ? ` The duty ledger moved ${Object.keys(settlement).length} ${Object.keys(settlement).length === 1 ? "person's" : "people's"} share.` : ""}`,
+    summary: `${who.displayName} generated the roster for ${monthName(roster)}: ${result.stats.duties} duties, ${result.stats.unfilled} unfilled, ${blocking} blocking ${blocking === 1 ? "finding" : "findings"}.${Object.keys(settlement).length ? ` The duty ledger moved ${Object.keys(settlement).length} ${Object.keys(settlement).length === 1 ? "person's" : "people's"} share.` : ""}${result.stats.carried ? ` Duties from the last three months moved ${result.stats.carried} ${result.stats.carried === 1 ? "person's" : "people's"} share.` : ""}`,
   });
   res.json({
     roster: presentRoster({ ...roster, status: "GENERATED" }),

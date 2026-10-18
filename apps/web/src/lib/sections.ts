@@ -29,7 +29,6 @@ export const SECTIONS: Section[] = [
       { href: "/swaps", label: "Duty swaps", roles: EVERYONE },
       { href: "/cover", label: "Cover", roles: READ },
       { href: "/ledger", label: "Duty ledger", roles: READ },
-      { href: "/duty-cycles", label: "Duty cycles", roles: READ },
     ],
   },
   {
