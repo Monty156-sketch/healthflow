@@ -52,7 +52,7 @@ export default function NewFacility() {
         </Notice>
         {done.starterNotice && <div className="mt-4"><Notice tone="warning">A starter privacy notice was published so the invitation can be accepted. Tell the administrator to read it, edit it and publish their own under Privacy and data protection.</Notice></div>}
         <p className="mt-4 text-[15px]">Staff are imported by the facility itself from its Staff page, so HealthFlow staff never handle the facility&apos;s staff list.</p>
-        <div className="mt-4"><ButtonLink href={`/admin/facilities/${done.facilityId}`}>Open the facility</ButtonLink></div>
+        <div className="mt-4"><ButtonLink href={`/platform/facilities/${done.facilityId}`}>Open the facility</ButtonLink></div>
       </>
     );
   }

@@ -12,6 +12,8 @@ import { ApiError } from "@/lib/api";
 import { ROLE } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
 import { getSupport, setSupport } from "@/lib/supportSession";
+import { SectionTabs } from "@/components/SectionTabs";
+import { sectionFor } from "@/lib/sections";
 import { PlatformNotices } from "@/components/PlatformNotices";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 
@@ -67,22 +69,17 @@ export function useOptionalFacility() {
 // ------------------------------------------------------------- navigation
 
 const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
-const PLATFORM = ["PLATFORM_ADMIN"];
-const DISTRICT = ["DISTRICT_OFFICER"];
 
-const NAV: { href: string; label: string; roles: string[]; flag?: string }[] = [
+const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string }[] = [
   { href: "/dashboard", label: "Overview", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/today", label: "Today", roles: ["STAFF"] },
-  { href: "/my-duties", label: "My duties", roles: [...READ_ROLES, "STAFF"] },
-  { href: "/swaps", label: "Duty swaps", roles: [...READ_ROLES, "STAFF"] },
-  { href: "/leave", label: "Leave requests", roles: [...READ_ROLES, "STAFF"] },
-  { href: "/leave/calendar", label: "Leave calendar", roles: READ_ROLES },
+  { href: "/my-duties", label: "Duties", roles: [...READ_ROLES, "STAFF"], section: "duties" },
+  { href: "/leave", label: "Leave", roles: [...READ_ROLES, "STAFF"], section: "leave" },
   { href: "/returns", label: "Returns due", roles: READ_ROLES },
   { href: "/coverage", label: "Coverage", roles: READ_ROLES },
   { href: "/cover", label: "Cover", roles: READ_ROLES },
-  { href: "/ledger", label: "Duty ledger", roles: READ_ROLES },
   { href: "/reports", label: "Reports", roles: READ_ROLES },
   { href: "/reports/fairness", label: "Why this duty", roles: ["STAFF"] },
   { href: "/my-data", label: "My data", roles: ["STAFF"] },
@@ -92,34 +89,13 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string }[] = [
   { href: "/notifications", label: "Notifications", roles: [...READ_ROLES, "STAFF"] },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/shifts", label: "Shifts", roles: READ_ROLES },
-  { href: "/duty-cycles", label: "Duty cycles", roles: READ_ROLES },
   { href: "/rules", label: "Compliance rules", roles: READ_ROLES },
   { href: "/settings", label: "Facility settings", roles: ["FACILITY_ADMIN"] },
-  { href: "/settings/leave-types", label: "Leave types", roles: ["FACILITY_ADMIN"] },
-  { href: "/settings/entitlements", label: "Leave entitlements", roles: ["FACILITY_ADMIN"] },
-  { href: "/settings/holidays", label: "Public holidays", roles: ["FACILITY_ADMIN"] },
   { href: "/directorate-access", label: "Directorate access", roles: ["FACILITY_ADMIN"], flag: "district.oversight" },
   { href: "/settings/establishment", label: "Approved posts", roles: ["FACILITY_ADMIN"] },
   { href: "/billing", label: "Billing", roles: ["FACILITY_ADMIN"] },
   { href: "/privacy-and-data", label: "Privacy and data protection", roles: ["FACILITY_ADMIN"] },
   { href: "/audit-log", label: "Audit log", roles: ["FACILITY_ADMIN"] },
-  { href: "/admin", label: "Console", roles: PLATFORM },
-  { href: "/admin/requests", label: "Access requests", roles: PLATFORM },
-  { href: "/admin/facilities", label: "Facilities", roles: PLATFORM },
-  { href: "/admin/billing", label: "Billing", roles: PLATFORM },
-  { href: "/admin/support", label: "Support access", roles: PLATFORM },
-  { href: "/admin/users", label: "Users", roles: PLATFORM },
-  { href: "/admin/legal", label: "Legal documents", roles: PLATFORM },
-  { href: "/admin/announcements", label: "Announcements", roles: PLATFORM },
-  { href: "/admin/flags", label: "Feature flags", roles: PLATFORM },
-  { href: "/admin/errors", label: "Error reports", roles: PLATFORM },
-  { href: "/admin/districts", label: "Districts", roles: PLATFORM },
-  { href: "/district", label: "District overview", roles: DISTRICT },
-  { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
-  { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
-  { href: "/district/leave", label: "Leave concentration", roles: DISTRICT },
-  { href: "/district/reports", label: "Report pack", roles: DISTRICT },
-  { href: "/system-health", label: "System health", roles: PLATFORM },
 ];
 
 function UnreadCount() {
@@ -136,11 +112,14 @@ function UnreadCount() {
 function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
   const pathname = usePathname();
   const flags = useOptionalFacility()?.flags;
+  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false));
+  if (items.length === 0) return null;
+  const sec = sectionFor(pathname)?.section.id;
   return (
     <ul className="space-y-0.5">
-      {NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false)).map((n) => {
+      {items.map((n) => {
         const longer = NAV.some((o) => o.href.length > n.href.length && o.href.startsWith(`${n.href}/`) && (pathname === o.href || pathname.startsWith(`${o.href}/`)));
-        const current = !longer && (pathname === n.href || pathname.startsWith(`${n.href}/`));
+        const current = sec ? n.section === sec : !longer && (pathname === n.href || pathname.startsWith(`${n.href}/`));
         return (
           <li key={n.href}>
             <Link
@@ -275,7 +254,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
     // The platform console is where a platform admin starts, unless acting inside a facility.
-    if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard" && !supporting) router.replace("/admin");
+    if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard" && !supporting) router.replace("/platform");
     if (user?.role === "STAFF" && pathname === "/dashboard") router.replace("/today");
     if (user?.role === "DISTRICT_OFFICER" && pathname === "/dashboard") router.replace("/district");
   }, [authLoading, user, router, pathname, supporting]);
@@ -336,7 +315,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div role="status" className="no-print border-b border-[var(--status-warning)] bg-[var(--status-warning-soft)] px-4 py-2 text-sm">
           <span className="font-medium">PS Tech support at {support.facility}.</span>{" "}
           {support.level === "FULL" ? "Full access: changes you make are written to the facility's audit log." : "Read only."} Ends by itself at {new Date(support.expiresAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}.{" "}
-          <button type="button" className="min-h-8 font-medium underline underline-offset-2" onClick={() => { setSupport(null); setSupportState(null); router.push("/admin/support"); }}>Leave facility</button>
+          <button type="button" className="min-h-8 font-medium underline underline-offset-2" onClick={() => { setSupport(null); setSupportState(null); router.push("/platform/support"); }}>Leave facility</button>
         </div>
       )}
       <div className="no-print">
@@ -395,7 +374,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
               </div>
             )}
-            {ctx || pathname === "/account" || (role === "DISTRICT_OFFICER" && (pathname === "/district" || pathname.startsWith("/district/"))) || (role === "PLATFORM_ADMIN" && (pathname === "/system-health" || pathname === "/admin" || pathname.startsWith("/admin/"))) ? children : <NoFacilityNotice role={role} />}
+            <SectionTabs role={role} />
+            {ctx || pathname === "/account" || (role === "DISTRICT_OFFICER" && (pathname === "/district" || pathname.startsWith("/district/"))) || (role === "PLATFORM_ADMIN" && (pathname === "/system-health" || pathname === "/platform" || pathname.startsWith("/platform/"))) ? children : <NoFacilityNotice role={role} />}
           </div>
         </main>
       </div>

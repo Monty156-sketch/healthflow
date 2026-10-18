@@ -36,7 +36,7 @@ export default function FacilitiesPage() {
     .sort((a, b) => ORDER[a.health] - ORDER[b.health] || a.name.localeCompare(b.name));
   return (
     <>
-      <PageHeader title="Facilities" description="At risk first. An at-risk facility gets a telephone call, not an email." actions={<ButtonLink href="/admin/facilities/new">New facility</ButtonLink>} />
+      <PageHeader title="Facilities" description="At risk first. An at-risk facility gets a telephone call, not an email." actions={<ButtonLink href="/platform/facilities/new">New facility</ButtonLink>} />
       <div className="mb-4 flex flex-wrap gap-3">
         <Input type="search" placeholder="Search by name or district" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search facilities" className="max-w-xs" />
         <Select value={health} onChange={(e) => setHealth(e.target.value)} aria-label="Health" className="w-40">
@@ -62,7 +62,7 @@ export default function FacilitiesPage() {
               {rows.map((f) => (
                 <tr key={f.id}>
                   <th scope="row" className={`${TD} text-left font-medium`}>
-                    <Link href={`/admin/facilities/${f.id}`} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{f.name}</Link>
+                    <Link href={`/platform/facilities/${f.id}`} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{f.name}</Link>
                   </th>
                   <td className={TD}>{f.district ?? ""}</td>
                   <td className={TD}>{f.plan ?? "None"}</td>

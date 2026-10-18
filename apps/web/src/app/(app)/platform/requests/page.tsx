@@ -74,7 +74,7 @@ export default function RequestsPage() {
               {data.requests.map((r) => (
                 <tr key={r.id}>
                   <th scope="row" className={`${TD} text-left font-medium`}>
-                    <Link href={`/admin/requests/${r.id}`} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{r.facilityName}</Link>
+                    <Link href={`/platform/requests/${r.id}`} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{r.facilityName}</Link>
                   </th>
                   <td className={TD}>{r.district ?? ""}</td>
                   <td className={TD}>{r.contactName}</td>
