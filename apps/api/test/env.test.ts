@@ -16,4 +16,9 @@ describe("start-up configuration check", () => {
     expect(checkEnvironment({ ...good, WEB_ORIGIN: "https://x.com/" } as NodeJS.ProcessEnv).warnings).toHaveLength(1);
     expect(checkEnvironment({ ...good, RESEND_API_KEY: "k" } as NodeJS.ProcessEnv).warnings).toHaveLength(1);
   });
+  it("warns when Gmail email is only partly set, and accepts it complete", () => {
+    expect(checkEnvironment({ ...good, GMAIL_USER: "a@gmail.com" } as NodeJS.ProcessEnv).warnings).toHaveLength(1);
+    const all = { ...good, GMAIL_USER: "a@gmail.com", GMAIL_CLIENT_ID: "i", GMAIL_CLIENT_SECRET: "s", GMAIL_REFRESH_TOKEN: "r" } as NodeJS.ProcessEnv;
+    expect(checkEnvironment(all).warnings).toEqual([]);
+  });
 });

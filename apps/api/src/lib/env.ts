@@ -16,6 +16,9 @@ export function checkEnvironment(env: NodeJS.ProcessEnv = process.env): { missin
   if (env.WEB_ORIGIN && !/^https:\/\//.test(env.WEB_ORIGIN)) problems.push("WEB_ORIGIN must start with https:// in production.");
   if (env.WEB_ORIGIN?.endsWith("/")) problems.push("WEB_ORIGIN must not end with a slash.");
   if (env.RESEND_API_KEY && !env.EMAIL_FROM) problems.push("RESEND_API_KEY is set but EMAIL_FROM is not.");
+  const gmail = ["GMAIL_USER", "GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET", "GMAIL_REFRESH_TOKEN"];
+  const gmailSet = gmail.filter((n) => env[n]);
+  if (gmailSet.length > 0 && gmailSet.length < gmail.length) problems.push(`Gmail email is half set up. Missing: ${gmail.filter((n) => !env[n]).join(", ")}.`);
   return { missing, warnings: problems };
 }
 
