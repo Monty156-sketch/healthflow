@@ -66,15 +66,17 @@ export async function copyConfiguration(fromId: string, toId: string) {
  * A starter privacy notice is published if there is none, so the invitation
  * can be accepted. The administrator is told to read and edit it.
  */
+export async function ensureStarterNotice(facilityId: string, facilityName: string) {
+  const existing = await prisma.privacyNotice.findFirst({ where: { facilityId, publishedAt: { not: null } } });
+  if (existing) return { notice: existing, starterNotice: false };
+  const notice = await prisma.privacyNotice.create({
+    data: { facilityId, version: "1", body: noticeTemplate(facilityName).replace(/Data protection contact:.*$/m, "Data protection contact: the facility administrator."), publishedAt: new Date(), publishedBy: "PS Tech (starter notice)" },
+  });
+  return { notice, starterNotice: true };
+}
+
 export async function inviteFirstAdmin(facilityId: string, facilityName: string, name: string, email: string) {
-  let notice = await prisma.privacyNotice.findFirst({ where: { facilityId, publishedAt: { not: null } } });
-  let starterNotice = false;
-  if (!notice) {
-    notice = await prisma.privacyNotice.create({
-      data: { facilityId, version: "1", body: noticeTemplate(facilityName).replace(/Data protection contact:.*$/m, "Data protection contact: the facility administrator."), publishedAt: new Date(), publishedBy: "PS Tech (starter notice)" },
-    });
-    starterNotice = true;
-  }
+  const { starterNotice } = await ensureStarterNotice(facilityId, facilityName);
   const n = (await prisma.staff.count({ where: { facilityId } })) + 1;
   const staff = await prisma.staff.create({ data: { facilityId, staffNo: `ADMIN-${String(n).padStart(3, "0")}`, fullName: name, email, status: "PENDING" } });
   const raw = randomToken(32);

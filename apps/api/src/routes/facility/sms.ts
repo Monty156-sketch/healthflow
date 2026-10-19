@@ -6,7 +6,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
-import { normalisePhone, smsConfigured } from "../../lib/sms.js";
+import { normalisePhone, sendSms, smsConfigured, smsProviderName } from "../../lib/sms.js";
 import { allowRoles, caller, ADMIN_ROLES } from "../../middleware/facilityAccess.js";
 
 export const smsRouter = Router();
@@ -24,6 +24,7 @@ smsRouter.get("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const names = new Map((await prisma.staff.findMany({ where: { id: { in: recent.map((r) => r.staffId).filter((x): x is string => !!x) } }, select: { id: true, fullName: true } })).map((s) => [s.id, s.fullName]));
   res.json({
     configured: smsConfigured(),
+    provider: smsProviderName(),
     enabled: facility.smsEnabled,
     sent30,
     failed30,
@@ -47,4 +48,22 @@ smsRouter.put("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
     summary: `${who.displayName} turned text messages ${input.enabled ? "on" : "off"} for staff.`,
   });
   res.json({ enabled: input.enabled });
+});
+
+// Proves the gateway works end to end: sends one real text to a number the administrator types.
+smsRouter.post("/test", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ phone: z.string().trim().min(1, "Enter a phone number.") }), req.body, res);
+  if (!input) return;
+  if (!smsConfigured()) return res.status(409).json({ error: "not_configured", message: "Text messages are not set up on the server yet." });
+  const to = normalisePhone(input.phone);
+  if (!to) return res.status(400).json({ error: "invalid_input", fields: { phone: "Enter a Ghana mobile number, such as 024 123 4567." } });
+  const recent = await prisma.smsMessage.count({ where: { facilityId: who.facilityId, type: "test", createdAt: { gte: new Date(Date.now() - 3_600_000) } } });
+  if (recent >= 3) return res.status(429).json({ error: "too_many_attempts", message: "Three test texts have been sent in the last hour. Try again later." });
+  const body = "HealthFlow test message. If you can read this, texts from your facility work.";
+  const result = await sendSms(to, body);
+  await prisma.smsMessage.create({ data: { facilityId: who.facilityId, staffId: null, toPhone: to, type: "test", body, status: result.ok ? "SENT" : "FAILED", error: result.error ?? null } });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "sms_test_sent", entityType: "Facility", entityId: who.facilityId, summary: `${who.displayName} sent a test text to a number ending ${to.slice(-3)}: ${result.ok ? "the gateway accepted it" : "it failed"}.` });
+  if (!result.ok) return res.status(502).json({ error: "sms_failed", message: `The gateway did not accept it: ${result.error}` });
+  res.json({ ok: true, provider: smsProviderName() });
 });

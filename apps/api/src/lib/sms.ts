@@ -1,12 +1,20 @@
 // Text messages. A nurse on nights may not open the app all day, and some staff
 // have no email, so the few messages that change someone's duties can also go
-// by SMS. The provider is Arkesel (https://developers.arkesel.com). Nothing is
-// sent unless the server has an API key and the facility has turned texting on,
+// by SMS. Two providers work: Arkesel (https://developers.arkesel.com, paid
+// after a few free test texts) and SMS Gateway for Android (free software that
+// sends through a phone and SIM you own; see RUNBOOK.md). Nothing is
+// sent unless the server has a provider set up and the facility has turned texting on,
 // the person has a valid number and has not opted out. Every attempt is
 // recorded, including the ones that were skipped and why.
 import { prisma } from "./prisma.js";
 
-export const smsConfigured = () => Boolean(process.env.SMS_API_KEY && process.env.SMS_SENDER_ID);
+type Provider = "arkesel" | "sms-gate";
+const provider = (): Provider => (process.env.SMS_PROVIDER === "sms-gate" ? "sms-gate" : "arkesel");
+export const smsConfigured = () =>
+  provider() === "sms-gate"
+    ? Boolean(process.env.SMS_GATE_USER && process.env.SMS_GATE_PASSWORD)
+    : Boolean(process.env.SMS_API_KEY && process.env.SMS_SENDER_ID);
+export const smsProviderName = () => (provider() === "sms-gate" ? "SMS Gateway for Android" : "Arkesel");
 
 /** Texts a facility may send in one day. A bug or a loop must not run up a bill. */
 export const DAILY_LIMIT = 300;
@@ -23,7 +31,27 @@ export function normalisePhone(raw: string | null | undefined): string | null {
   return null;
 }
 
+/** SMS Gateway for Android: the text leaves from a phone and SIM you own. Fine for a few hundred a day, not for bulk. */
+async function sendViaPhone(to: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const base = process.env.SMS_GATE_URL || "https://api.sms-gate.app/3rdparty/v1";
+    const auth = Buffer.from(`${process.env.SMS_GATE_USER}:${process.env.SMS_GATE_PASSWORD}`).toString("base64");
+    const res = await fetch(`${base.replace(/\/$/, "")}/message`, {
+      method: "POST",
+      headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ textMessage: { text }, phoneNumbers: [`+${to}`] }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) return { ok: true };
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    return { ok: false, error: (body.message ?? `The phone gateway answered ${res.status}.`).slice(0, 200) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message.slice(0, 200) : "The phone gateway could not be reached." };
+  }
+}
+
 export async function sendSms(to: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  if (provider() === "sms-gate") return sendViaPhone(to, text);
   try {
     const res = await fetch("https://sms.arkesel.com/api/v2/sms/send", {
       method: "POST",

@@ -164,7 +164,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
   if (step === "code") {
     return (
       <PublicCard title="Join your facility">
-        <p className="mb-4 text-[var(--muted)]">Ask your in-charge for the facility code. It looks like SOMBO-4K2P.</p>
+        <p className="mb-4 text-[var(--muted)]">Ask your in-charge for the facility code. It looks like HF-FX8W8U.</p>
         <form onSubmit={(e) => { e.preventDefault(); void lookUp(code); }} noValidate className="space-y-4">
           <Field label="Facility code">{(a) => <Input {...a} className="figures uppercase" autoComplete="off" autoCapitalize="characters" value={code} onChange={(e) => setCode(e.target.value)} />}</Field>
           {error && <ErrorText>{error}</ErrorText>}

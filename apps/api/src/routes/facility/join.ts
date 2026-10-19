@@ -24,13 +24,13 @@ const presentCode = (c: NonNullable<Awaited<ReturnType<typeof currentCode>>>) =>
 
 joinAdminRouter.get("/code", async (req, res) => {
   const { facilityId, email } = caller(req);
-  const c = (await currentCode(facilityId)) ?? (await issueCode(facilityId, await facilityName(facilityId), email));
+  const c = (await currentCode(facilityId)) ?? (await issueCode(facilityId, email));
   res.json({ ...presentCode(c), phoneCheck: smsConfigured() });
 });
 
 joinAdminRouter.post("/code/regenerate", async (req, res) => {
   const { facilityId, email, displayName } = caller(req);
-  const c = await issueCode(facilityId, await facilityName(facilityId), email);
+  const c = await issueCode(facilityId, email);
   await writeAuditLog({ facilityId, actorEmail: email, action: "access_code_regenerated", entityType: "FacilityAccessCode", entityId: c.id, summary: `${displayName} made a new staff access code. The old one no longer works.` });
   res.json({ ...presentCode(c), phoneCheck: smsConfigured() });
 });
@@ -39,7 +39,7 @@ joinAdminRouter.put("/code", async (req, res) => {
   const { facilityId, email, displayName } = caller(req);
   const input = parseOr400(z.object({ requiresApproval: z.boolean(), active: z.boolean() }), req.body, res);
   if (!input) return;
-  const c = (await currentCode(facilityId)) ?? (await issueCode(facilityId, await facilityName(facilityId), email));
+  const c = (await currentCode(facilityId)) ?? (await issueCode(facilityId, email));
   const u = await prisma.facilityAccessCode.update({ where: { id: c.id }, data: input });
   await writeAuditLog({
     facilityId, actorEmail: email, action: "access_code_settings_changed", entityType: "FacilityAccessCode", entityId: c.id,

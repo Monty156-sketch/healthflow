@@ -33,7 +33,7 @@ export function PublicNav() {
         <Link href="/login" className="hidden min-h-11 items-center px-2 text-[15px] text-[var(--foreground)] underline-offset-4 hover:underline sm:inline-flex">
           Sign in
         </Link>
-        <ButtonLink href="/request-access">Request access</ButtonLink>
+        <ButtonLink href="/register">Register your facility</ButtonLink>
         <details className="relative md:hidden">
           <summary className="flex min-h-11 cursor-pointer list-none items-center rounded-[var(--radius)] border border-[var(--border-strong)] px-3 text-[15px] [&::-webkit-details-marker]:hidden">Menu</summary>
           <nav aria-label="Main, small screens" className="absolute right-0 mt-2 w-56 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--ink-soft)] p-1 shadow-lg">

@@ -6,7 +6,8 @@ const H = "text-base font-semibold text-[var(--foreground)]";
 const PRODUCT = [
   { href: "/#features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
-  { href: "/request-access", label: "Request access" },
+  { href: "/register", label: "Register your facility" },
+  { href: "/request-access", label: "Request a demonstration" },
   { href: "/district/register", label: "Register a district" },
   { href: "/about", label: "About" },
 ];

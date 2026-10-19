@@ -14,6 +14,7 @@ import { internalRouter } from "./routes/internal.js";
 import { districtRouter } from "./routes/district.js";
 import { publicRouter } from "./routes/public.js";
 import { joinRouter } from "./routes/join.js";
+import { facilityRegisterRouter } from "./routes/facilityRegister.js";
 import { webhookRouter } from "./routes/webhooks.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
@@ -50,6 +51,7 @@ export function createApp() {
   app.use("/api/invitations", invitationRouter);
   app.use("/api/errors", errorReportRouter);
   app.use("/api/public/join", joinRouter);
+  app.use("/api/public/register-facility", facilityRegisterRouter);
   app.use("/api/public", publicRouter);
   app.use("/api/district", districtRouter);
   app.use("/api/internal", internalRouter);

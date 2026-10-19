@@ -1,7 +1,8 @@
 // The public front door: an access request, and the plans a visitor can read.
 // An access request does three things, all required: it is written as a record
 // (the system of record), PS Tech is told, and the person who asked is
-// acknowledged. There is no route here that creates a facility.
+// acknowledged. Creating a facility outright is a separate route, in
+// facilityRegister.ts.
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";

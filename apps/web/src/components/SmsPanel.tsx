@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
-import { Button, Loading, LoadError, Notice, Panel, StatusBadge } from "@/components/ui";
+import { Button, Field, Input, Loading, LoadError, Notice, Panel, StatusBadge } from "@/components/ui";
 
 interface View {
   configured: boolean;
+  provider: string;
   enabled: boolean;
   sent30: number;
   failed30: number;
@@ -17,10 +18,39 @@ interface View {
 }
 
 const WHAT: Record<string, string> = {
-  roster_published: "Roster published", duty_moved: "Duty moved", reinstated: "Back on the roster", cover_asked: "Asked to cover", cover_arranged: "Cover arranged",
+  test: "Test text", join_decision: "Sign-up answer", roster_published: "Roster published", duty_moved: "Duty moved", reinstated: "Back on the roster", cover_asked: "Asked to cover", cover_arranged: "Cover arranged",
   swap_requested: "Swap asked", swap_decided: "Swap decided", leave_decided: "Leave decided", return_due: "Due back",
 };
 const TONE = { SENT: "success", FAILED: "block", SKIPPED: "neutral" } as const;
+
+/** Sends one real text, so the gateway is proven before anyone relies on it. */
+function TestText({ onSent }: { onSent: () => void }) {
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  async function send() {
+    setBusy(true);
+    setResult(null);
+    try {
+      await api.post("/api/facility/sms/test", { phone });
+      setResult({ ok: true, text: "The gateway accepted it. Check that the text arrives on that phone." });
+    } catch (e) {
+      const b = e instanceof ApiError ? (e.body as { message?: string; fields?: { phone?: string } }) : undefined;
+      setResult({ ok: false, text: b?.fields?.phone ?? b?.message ?? "The test could not be sent. Try again." });
+    } finally {
+      setBusy(false);
+      onSent();
+    }
+  }
+  return (
+    <div className="mt-5 max-w-md border-t border-[var(--border)] pt-4">
+      <h3 className="mb-2 text-sm font-medium text-[var(--muted)]">Check that it works</h3>
+      <Field label="Send a test text to">{(a) => <Input {...a} type="tel" placeholder="024 123 4567" value={phone} onChange={(e) => setPhone(e.target.value)} />}</Field>
+      <div className="mt-2"><Button variant="secondary" disabled={busy || !phone.trim()} onClick={send}>{busy ? "Sending…" : "Send test text"}</Button></div>
+      {result && <div className="mt-2"><Notice tone={result.ok ? "success" : "block"}>{result.text}</Notice></div>}
+    </div>
+  );
+}
 
 /** Whether the facility texts its staff, and what has been sent. */
 export function SmsPanel() {
@@ -51,7 +81,7 @@ export function SmsPanel() {
       actions={<StatusBadge tone={data.enabled ? "success" : "neutral"}>{data.enabled ? "On" : "Off"}</StatusBadge>}
     >
       {problem && <div className="mb-3"><Notice tone="block">{problem}</Notice></div>}
-      {!data.configured && <div className="mb-3"><Notice>Text messages are not set up on the server yet. PS Tech adds the SMS key; until then this cannot be turned on.</Notice></div>}
+      {!data.configured && <div className="mb-3"><Notice>Text messages are not set up on the server yet. PS Tech sets up the text gateway; until then this cannot be turned on.</Notice></div>}
       <dl className="mb-4 grid gap-3 text-[15px] sm:grid-cols-4">
         {([["Can be reached", data.reachable], ["No usable number", data.withoutNumber], ["Asked not to be texted", data.optedOut], ["Sent, last 30 days", data.sent30]] as [string, number][]).map(([k, n]) => (
           <div key={k}><dt className="text-sm text-[var(--muted)]">{k}</dt><dd className="figures text-xl font-semibold">{n}</dd></div>
@@ -62,6 +92,8 @@ export function SmsPanel() {
         {data.enabled ? "Turn text messages off" : "Turn text messages on"}
       </Button>
       <p className="mt-2 text-sm text-[var(--muted)]">Each text costs money and reaches a person&apos;s own phone, so they are only used for changes that matter. A number is kept on the staff record; change it or tick &quot;Do not send text messages&quot; on the person&apos;s page.</p>
+
+      {data.configured && <TestText onSent={reload} />}
 
       {data.recent.length > 0 && (
         <div className="mt-5" role="region" aria-label="Recent text messages" tabIndex={0}>

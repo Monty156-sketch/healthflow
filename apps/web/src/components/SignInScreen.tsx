@@ -285,6 +285,10 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                       <Link href="/join" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
                         Join with your facility code
                       </Link>
+                      . Setting up a new facility?{" "}
+                      <Link href="/register" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
+                        Register it
+                      </Link>
                     </p>
                   )}
                   {audience === "facility" && (
