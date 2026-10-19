@@ -57,7 +57,7 @@ export async function textStaff(facilityId: string, staffId: string, type: strin
     const log = (status: "SENT" | "FAILED" | "SKIPPED", error?: string) =>
       prisma.smsMessage.create({ data: { facilityId, staffId, toPhone: to ?? staff.phone ?? "", type, body: text, status, error: error ?? null } });
 
-    if (!to) return void (await log("SKIPPED", "No usable mobile number on the staff record."));
+    if (!to) return; // not logged: the settings page already counts who has no usable number
     if (!smsConfigured()) return void (await log("SKIPPED", "Text messages are not set up on the server yet."));
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
