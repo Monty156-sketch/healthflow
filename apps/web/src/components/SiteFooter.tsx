@@ -7,6 +7,7 @@ const PRODUCT = [
   { href: "/#features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
   { href: "/request-access", label: "Request access" },
+  { href: "/district/register", label: "Register a district" },
   { href: "/about", label: "About" },
 ];
 const LEGAL = [

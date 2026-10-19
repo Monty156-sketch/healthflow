@@ -20,7 +20,8 @@ interface AuthContextValue {
   login: (
     email: string,
     password: string,
-    mfa?: { totp?: string; recoveryCode?: string }
+    mfa?: { totp?: string; recoveryCode?: string },
+    audience?: "facility" | "district" | "platform"
   ) => Promise<{ mfaRequired: boolean }>;
   logout: () => Promise<void>;
   adoptSession: (session: Session) => void;
@@ -62,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lastRenewal = useRef(0);
   const inFlight = useRef<Promise<Session | null> | null>(null);
   const ending = useRef(false);
+  const roleRef = useRef<string | null>(null);
 
   // One refresh at a time. Each refresh rotates the session cookie, so two
   // running at once would make the second use an already-retired cookie.
@@ -79,8 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // it with its own redirect (which would drop the ?reason message).
   const endSession = useCallback((reason: "idle" | "expired" | "signed_out") => {
     setAccessToken(null);
-    window.location.replace(reason === "signed_out" ? "/login" : `/login?reason=${reason}`);
+    // Back to the page this kind of account signs in on.
+    const door = roleRef.current === "PLATFORM_ADMIN" ? "/platform/login" : roleRef.current === "DISTRICT_OFFICER" ? "/district/login" : "/login";
+    window.location.replace(reason === "signed_out" ? door : `${door}?reason=${reason}`);
   }, []);
+
+  useEffect(() => {
+    if (user) roleRef.current = user.role;
+  }, [user]);
 
   // Restore the session after a page load or refresh.
   useEffect(() => {
@@ -154,12 +162,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(
     email: string,
     password: string,
-    mfa?: { totp?: string; recoveryCode?: string }
+    mfa?: { totp?: string; recoveryCode?: string },
+    audience?: "facility" | "district" | "platform"
   ) {
     const res = await api.post<{ mfaRequired: true } | Session>("/api/auth/login", {
       email,
       password,
       ...mfa,
+      ...(audience ? { audience } : {}),
     });
 
     if ("mfaRequired" in res) return { mfaRequired: true };

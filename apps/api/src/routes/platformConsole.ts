@@ -18,7 +18,7 @@ import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facility
 import { ensureRules } from "./facility/rules.js";
 import { hashPassword } from "../lib/password.js";
 import { makeResetToken } from "../lib/signedTokens.js";
-import { appUrl } from "../lib/email.js";
+import { appUrl, sendEmail } from "../lib/email.js";
 
 export const consoleRouter = Router();
 consoleRouter.use(billingConsole);
@@ -135,7 +135,9 @@ consoleRouter.post("/requests/:id/provision", async (req, res) => {
   if (!r) return res.status(404).json({ error: "not_found" });
   if (r.provisionedFacilityId) return res.status(409).json({ error: "already_provisioned", message: "This request already became a facility." });
   if (r.status === "DECLINED") return res.status(409).json({ error: "declined", message: "This request was declined. Change its status first." });
-  const district = r.district ? await prisma.district.findFirst({ where: { name: { equals: r.district, mode: "insensitive" } } }) : null;
+  const district = r.districtId
+    ? await prisma.district.findFirst({ where: { id: r.districtId, status: "ACTIVE" } })
+    : r.district ? await prisma.district.findFirst({ where: { name: { equals: r.district, mode: "insensitive" }, status: "ACTIVE" } }) : null;
   const facility = await prisma.facility.create({
     data: { name: r.facilityName, facilityType: r.facilityType ?? "HEALTH_CENTRE", region: r.region ?? district?.region ?? null, districtId: district?.id ?? null, status: "TRIAL" },
   });
@@ -208,7 +210,10 @@ consoleRouter.get("/districts", async (_req, res) => {
   const officers = await prisma.userProfile.findMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT" }, select: { id: true, userEmail: true, scopeId: true, active: true, lastSignInAt: true } });
   const unassigned = await prisma.facility.findMany({ where: { districtId: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
   res.json({
-    districts: districts.map((d) => ({ id: d.id, name: d.name, region: d.region, facilities: d.facilities, officers: officers.filter((o) => o.scopeId === d.id).map((o) => ({ id: o.id, email: o.userEmail, active: o.active, lastSignInAt: o.lastSignInAt })) })),
+    districts: districts.map((d) => ({
+      id: d.id, name: d.name, region: d.region, status: d.status, registeredAt: d.registeredAt, declineReason: d.declineReason,
+      contact: { name: d.contactName, role: d.contactRole, email: d.contactEmail, phone: d.contactPhone, officeAddress: d.officeAddress },
+      facilities: d.facilities, officers: officers.filter((o) => o.scopeId === d.id).map((o) => ({ id: o.id, email: o.userEmail, active: o.active, lastSignInAt: o.lastSignInAt })) })),
     unassigned,
   });
 });
@@ -219,6 +224,36 @@ consoleRouter.post("/districts", async (req, res) => {
   const d = await prisma.district.create({ data: input });
   await platformAudit(req, "district_created", `${liveUser(req).displayName} created the district ${d.name}.`, { entityType: "District", entityId: d.id });
   res.status(201).json({ district: d });
+});
+
+/** Approves a district that registered itself: it goes into the directory and its officer can sign in. */
+consoleRouter.post("/districts/:id/approve", async (req, res) => {
+  const d = await prisma.district.findUnique({ where: { id: String(req.params.id) } });
+  if (!d) return res.status(404).json({ error: "not_found" });
+  if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved." });
+  await prisma.$transaction([
+    prisma.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } }),
+    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } }),
+  ]);
+  await platformAudit(req, "district_approved", `${liveUser(req).displayName} approved the district ${d.name}. Its officer can now sign in.`, { entityType: "District", entityId: d.id });
+  if (d.contactEmail) {
+    void sendEmail({ to: d.contactEmail, subject: "Your HealthFlow district is approved", text: `Dear ${d.contactName ?? "officer"},\n\n${d.name} is approved on HealthFlow. Sign in at ${appUrl("/district/login")} with the email and password you registered with.\n\nPS Tech, Wa, Upper West Region, Ghana` });
+  }
+  res.json({ ok: true });
+});
+
+consoleRouter.post("/districts/:id/decline", async (req, res) => {
+  const input = parseOr400(z.object({ reason: z.string().trim().max(300).optional() }), req.body, res);
+  if (!input) return;
+  const d = await prisma.district.findUnique({ where: { id: String(req.params.id) } });
+  if (!d) return res.status(404).json({ error: "not_found" });
+  if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved. Deactivate its officers instead." });
+  await prisma.$transaction([
+    prisma.district.update({ where: { id: d.id }, data: { status: "DECLINED", active: false, declineReason: input.reason || null } }),
+    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: false } }),
+  ]);
+  await platformAudit(req, "district_declined", `${liveUser(req).displayName} declined the district registration for ${d.name}${input.reason ? `. Reason: ${input.reason}` : ""}.`, { entityType: "District", entityId: d.id });
+  res.json({ ok: true });
 });
 
 consoleRouter.put("/facilities/:id/district", async (req, res) => {
@@ -255,7 +290,7 @@ const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC"
 
 consoleRouter.get("/setup-options", async (_req, res) => {
   const [districts, facilities] = await Promise.all([
-    prisma.district.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, region: true } }),
+    prisma.district.findMany({ where: { active: true, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true, region: true } }),
     prisma.facility.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   res.json({ districts, facilities, types: FACILITY_TYPES });

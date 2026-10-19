@@ -137,7 +137,12 @@ const loginSchema = z.object({
   password: z.string().min(1),
   totp: z.string().trim().optional(),
   recoveryCode: z.string().trim().optional(),
+  /** Which sign-in page this came from. When given, the account must belong there. */
+  audience: z.enum(["facility", "district", "platform"]).optional(),
 });
+
+const DOOR: Record<string, string> = { facility: "/login", district: "/district/login", platform: "/platform/login" };
+const doorFor = (role: string) => (role === "PLATFORM_ADMIN" ? "platform" : role === "DISTRICT_OFFICER" ? "district" : "facility");
 
 /**
  * Two steps when two-step sign-in is on: email and password first, which
@@ -148,7 +153,7 @@ const loginSchema = z.object({
 authRouter.post("/login", authAttemptLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
-  const { password, totp, recoveryCode } = parsed.data;
+  const { password, totp, recoveryCode, audience } = parsed.data;
   const email = normaliseEmail(parsed.data.email);
 
   const user = await prisma.userProfile.findUnique({ where: { userEmail: email } });
@@ -164,7 +169,19 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
     return res.status(401).json({ error: "invalid_credentials" });
   }
 
-  if (!user.active) return res.status(403).json({ error: "account_inactive" });
+  if (!user.active) {
+    if (user.role === "DISTRICT_OFFICER" && user.scopeId) {
+      const d = await prisma.district.findUnique({ where: { id: user.scopeId }, select: { status: true } });
+      if (d?.status === "PENDING") return res.status(403).json({ error: "district_pending" });
+      if (d?.status === "DECLINED") return res.status(403).json({ error: "district_declined" });
+    }
+    return res.status(403).json({ error: "account_inactive" });
+  }
+
+  // Each kind of account has its own door. This is said only after the password was right.
+  if (audience && doorFor(user.role) !== audience) {
+    return res.status(403).json({ error: "wrong_door", goTo: DOOR[doorFor(user.role)] });
+  }
 
   if (user.mfaEnabled) {
     if (!totp && !recoveryCode) return res.status(200).json({ mfaRequired: true });

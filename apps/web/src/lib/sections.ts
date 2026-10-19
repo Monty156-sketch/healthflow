@@ -80,10 +80,12 @@ export const SECTIONS: Section[] = [
     id: "district",
     tabs: [
       { href: "/district", label: "Overview", roles: DISTRICT },
+      { href: "/district/facilities", label: "Facilities", roles: DISTRICT },
       { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
       { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
       { href: "/district/leave", label: "Leave concentration", roles: DISTRICT },
       { href: "/district/reports", label: "Report pack", roles: DISTRICT },
+      { href: "/district/profile", label: "District profile", roles: DISTRICT },
     ],
   },
 ];
