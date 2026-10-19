@@ -63,7 +63,6 @@ export const SECTIONS: Section[] = [
     id: "platform",
     tabs: [
       { href: "/platform", label: "Console", roles: PLATFORM },
-      { href: "/platform/requests", label: "Access requests", roles: PLATFORM },
       { href: "/platform/facilities", label: "Facilities", roles: PLATFORM },
       { href: "/platform/billing", label: "Billing", roles: PLATFORM },
       { href: "/platform/support", label: "Support access", roles: PLATFORM },

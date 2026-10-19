@@ -10,7 +10,7 @@ const LINKS = [
 ];
 
 /**
- * The header on every public page. Sticky, with the request-access button
+ * The header on every public page. Sticky, with the register button
  * always in view; on a phone the links sit behind a Menu control and the
  * button stays outside it.
  */

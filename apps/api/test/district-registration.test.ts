@@ -82,26 +82,6 @@ describe("each kind of account has its own sign-in", () => {
 });
 
 describe("a facility picks a registered district", () => {
-  it("links the request, and the facility it becomes, to that district", async () => {
-    const district = await prisma.district.create({ data: { name: "Nadowli-Kaleo", region: "Upper West" } });
-    const res = await request(app).post("/api/public/access-requests").send({ facilityName: "Sombo Health Centre", contactName: "Ama Dery", contactEmail: "ama@example.com", districtId: district.id });
-    expect(res.status).toBe(201);
-    const row = await prisma.accessRequest.findFirstOrThrow();
-    expect(row).toMatchObject({ districtId: district.id, district: "Nadowli-Kaleo", region: "Upper West" });
-
-    const { user: admin } = await makeUser({ role: "PLATFORM_ADMIN" });
-    const made = await as(admin).post(`/api/platform/requests/${row.id}/provision`);
-    expect(made.status).toBe(201);
-    expect((await prisma.facility.findUniqueOrThrow({ where: { id: made.body.facilityId } })).districtId).toBe(district.id);
-  });
-
-  it("refuses a district that is not approved", async () => {
-    const pending = await prisma.district.create({ data: { name: "Wa East", region: "Upper West", status: "PENDING", active: false } });
-    const res = await request(app).post("/api/public/access-requests").send({ facilityName: "X Clinic", contactName: "Ama Dery", contactEmail: "ama@example.com", districtId: pending.id });
-    expect(res.status).toBe(400);
-    expect(await prisma.accessRequest.count()).toBe(0);
-  });
-
   it("shows the district its facilities, with no staff data, and whether access was given", async () => {
     const district = await prisma.district.create({ data: { name: "Nadowli-Kaleo", region: "Upper West" } });
     const a = await prisma.facility.create({ data: { name: "Sombo HC", facilityType: "HEALTH_CENTRE", districtId: district.id } });

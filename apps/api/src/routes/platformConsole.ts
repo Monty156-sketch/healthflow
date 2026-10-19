@@ -4,7 +4,6 @@
 // facility is also written to that facility's own audit log.
 import { Router } from "express";
 import { z } from "zod";
-import type { Prisma } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
 import { adoptionFor } from "../lib/adoption.js";
 import { parseOr400 } from "../lib/validate.js";
@@ -13,7 +12,6 @@ import { billingConsole } from "./platformBilling.js";
 import { supportConsole } from "./platformSupport.js";
 import { platformAudit } from "../lib/platformAudit.js";
 export { platformAudit };
-import { RESPONSE_HOURS } from "./public.js";
 import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facilitySetup.js";
 import { ensureRules } from "./facility/rules.js";
 import { hashPassword } from "../lib/password.js";
@@ -33,118 +31,25 @@ const PRIVATE_ENTITIES = ["Staff", "LeaveRequest", "Attendance", "DutySwap", "Ro
 
 consoleRouter.get("/dashboard", async (_req, res) => {
   const now = Date.now();
-  const [waiting, overdue, errors24, facilities, subs, recentRequests, recentErrors, adoption] = await Promise.all([
-    prisma.accessRequest.findMany({ where: { status: "NEW" }, orderBy: { createdAt: "asc" }, select: { createdAt: true } }),
+  const [overdue, errors24, facilities, subs, newest, recentErrors, adoption] = await Promise.all([
     prisma.invoice.findMany({ where: { OR: [{ status: "OVERDUE" }, { status: "ISSUED", dueAt: { lt: new Date() } }] }, select: { totalGhs: true } }),
     prisma.errorReport.count({ where: { createdAt: { gte: new Date(now - 24 * HOUR) } } }),
     prisma.facility.count({ where: { active: true, status: { in: ["ACTIVE", "TRIAL"] } } }),
     prisma.subscription.findMany({ where: { status: "ACTIVE" }, include: { plan: { select: { monthlyPriceGhs: true } } } }),
-    prisma.accessRequest.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, facilityName: true, district: true, status: true, createdAt: true } }),
+    prisma.facility.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, name: true, status: true, createdAt: true, district: { select: { name: true } } } }),
     prisma.errorReport.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, description: true, screen: true, status: true, createdAt: true, facility: { select: { name: true } } } }),
     adoptionFor(),
   ]);
-  const oldestHours = waiting[0] ? Math.floor((now - waiting[0].createdAt.getTime()) / HOUR) : null;
   const atRisk = [...adoption.values()].filter((a) => a.health === "AT_RISK").length;
   res.json({
-    requests: { waiting: waiting.length, oldestHours, publishedHours: RESPONSE_HOURS, late: oldestHours !== null && oldestHours > RESPONSE_HOURS },
     invoices: { overdue: overdue.length, outstandingGhs: overdue.reduce((n, i) => n + i.totalGhs, 0) },
     atRisk,
     errors24h: errors24,
     activeFacilities: facilities,
     mrrGhs: subs.reduce((n, s) => n + s.plan.monthlyPriceGhs, 0),
-    recentRequests,
+    newestFacilities: newest.map((f) => ({ id: f.id, name: f.name, district: f.district?.name ?? null, status: f.status, createdAt: f.createdAt })),
     recentErrors: recentErrors.map((e) => ({ id: e.id, description: e.description.slice(0, 140), screen: e.screen, status: e.status, createdAt: e.createdAt, facility: e.facility?.name ?? null })),
   });
-});
-
-// ------------------------------------------------------------- access requests
-
-consoleRouter.get("/requests", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : null;
-  const all = status === "ALL";
-  const rows = await prisma.accessRequest.findMany({
-    where: all ? {} : status ? { status: status as never } : { status: { in: ["NEW", "CONTACTED"] } },
-    orderBy: { createdAt: "asc" },
-    take: 200,
-  });
-  const [total, responded, provisioned, answered] = await Promise.all([
-    prisma.accessRequest.count(),
-    prisma.accessRequest.count({ where: { firstResponseAt: { not: null } } }),
-    prisma.accessRequest.count({ where: { status: "PROVISIONED" } }),
-    prisma.accessRequest.findMany({ where: { firstResponseAt: { not: null } }, select: { createdAt: true, firstResponseAt: true } }),
-  ]);
-  const waits = answered.map((a) => (a.firstResponseAt!.getTime() - a.createdAt.getTime()) / HOUR).sort((a, b) => a - b);
-  const median = waits.length ? (waits.length % 2 ? waits[(waits.length - 1) / 2] : (waits[waits.length / 2 - 1] + waits[waits.length / 2]) / 2) : null;
-  res.json({
-    requests: rows.map((r) => ({ id: r.id, facilityName: r.facilityName, district: r.district, contactName: r.contactName, contactEmail: r.contactEmail, createdAt: r.createdAt, ageHours: Math.floor((Date.now() - r.createdAt.getTime()) / HOUR), status: r.status, assignedTo: r.assignedTo })),
-    conversion: { received: total, responded, provisioned, medianHoursToFirstResponse: median === null ? null : Math.round(median * 10) / 10 },
-    publishedHours: RESPONSE_HOURS,
-  });
-});
-
-consoleRouter.get("/requests/:id", async (req, res) => {
-  const r = await prisma.accessRequest.findUnique({ where: { id: String(req.params.id) }, include: { threadNotes: { orderBy: { createdAt: "asc" } } } });
-  if (!r) return res.status(404).json({ error: "not_found" });
-  const facility = r.provisionedFacilityId ? await prisma.facility.findUnique({ where: { id: r.provisionedFacilityId }, select: { id: true, name: true } }) : null;
-  res.json({ request: { ...r, threadNotes: undefined }, notes: r.threadNotes, facility, publishedHours: RESPONSE_HOURS });
-});
-
-const STATUSES = ["NEW", "CONTACTED", "DEMO_SCHEDULED", "AGREEMENT_SENT", "PROVISIONED", "DECLINED", "DORMANT"] as const;
-const patchInput = z.object({
-  status: z.enum(STATUSES).optional(),
-  assignedTo: z.string().trim().max(120).nullable().optional(),
-  reason: z.string().trim().max(300).optional(),
-});
-
-const SAY: Record<string, string> = { CONTACTED: "responded to", DEMO_SCHEDULED: "scheduled a demonstration for", AGREEMENT_SENT: "sent the agreement for", DECLINED: "declined", DORMANT: "marked dormant" };
-
-consoleRouter.patch("/requests/:id", async (req, res) => {
-  const input = parseOr400(patchInput, req.body, res);
-  if (!input) return;
-  const r = await prisma.accessRequest.findUnique({ where: { id: String(req.params.id) } });
-  if (!r) return res.status(404).json({ error: "not_found" });
-  if (input.status === "PROVISIONED") return res.status(400).json({ error: "invalid_input", fields: { status: "Use Provision facility. It creates the facility and links it." } });
-  if ((input.status === "DECLINED" || input.status === "DORMANT") && !input.reason) return res.status(400).json({ error: "invalid_input", fields: { reason: "Say why, so the record is clear later." } });
-  const data: Prisma.AccessRequestUpdateInput = {};
-  if (input.assignedTo !== undefined) data.assignedTo = input.assignedTo || null;
-  if (input.status) {
-    data.status = input.status;
-    // The first move past New is the first response, whatever it was.
-    if (!r.firstResponseAt && input.status !== "NEW") data.firstResponseAt = new Date();
-    if (input.status === "DECLINED" || input.status === "DORMANT") data.declineReason = input.reason;
-  }
-  const row = await prisma.accessRequest.update({ where: { id: r.id }, data });
-  if (input.status && input.status !== r.status) {
-    await platformAudit(req, "request_status", `${liveUser(req).displayName} ${SAY[input.status] ?? "updated"} the access request from ${r.facilityName}${input.reason ? `. Reason: ${input.reason}` : ""}.`, { entityType: "AccessRequest", entityId: r.id });
-  }
-  res.json({ request: row });
-});
-
-consoleRouter.post("/requests/:id/notes", async (req, res) => {
-  const input = parseOr400(z.object({ body: z.string().trim().min(1, "Write the note.").max(2000) }), req.body, res);
-  if (!input) return;
-  const r = await prisma.accessRequest.findUnique({ where: { id: String(req.params.id) }, select: { id: true } });
-  if (!r) return res.status(404).json({ error: "not_found" });
-  const note = await prisma.accessRequestNote.create({ data: { requestId: r.id, author: liveUser(req).email, body: input.body } });
-  res.status(201).json({ note });
-});
-
-/** Creates the facility from the request and links the two. It never invites anyone or stores a staff record. */
-consoleRouter.post("/requests/:id/provision", async (req, res) => {
-  const r = await prisma.accessRequest.findUnique({ where: { id: String(req.params.id) } });
-  if (!r) return res.status(404).json({ error: "not_found" });
-  if (r.provisionedFacilityId) return res.status(409).json({ error: "already_provisioned", message: "This request already became a facility." });
-  if (r.status === "DECLINED") return res.status(409).json({ error: "declined", message: "This request was declined. Change its status first." });
-  const district = r.districtId
-    ? await prisma.district.findFirst({ where: { id: r.districtId, status: "ACTIVE" } })
-    : r.district ? await prisma.district.findFirst({ where: { name: { equals: r.district, mode: "insensitive" }, status: "ACTIVE" } }) : null;
-  const facility = await prisma.facility.create({
-    data: { name: r.facilityName, facilityType: r.facilityType ?? "HEALTH_CENTRE", region: r.region ?? district?.region ?? null, districtId: district?.id ?? null, status: "TRIAL" },
-  });
-  await prisma.accessRequest.update({ where: { id: r.id }, data: { status: "PROVISIONED", provisionedFacilityId: facility.id, firstResponseAt: r.firstResponseAt ?? new Date() } });
-  await prisma.accessRequestNote.create({ data: { requestId: r.id, author: liveUser(req).email, body: `Facility created from this request.` } });
-  await platformAudit(req, "facility_provisioned", `${liveUser(req).displayName} created ${facility.name} from an access request. It starts as a trial, with no staff and no administrator yet.`, { facilityId: facility.id, entityType: "Facility", entityId: facility.id });
-  res.status(201).json({ facilityId: facility.id });
 });
 
 // ------------------------------------------------------------- facilities

@@ -30,6 +30,15 @@ export async function seedGroups(facilityId: string, _type?: FacilityType) {
   return { departments: newDeps.length, cadres: newCads.length };
 }
 
+/** Adds exactly the departments and cadres the facility chose when it registered. The administrator can add more later. */
+export async function seedChosen(facilityId: string, departments: string[], cadres: string[]) {
+  const deps = [...new Map(departments.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
+  const cads = [...new Map(cadres.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
+  if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
+  if (cads.length) await prisma.cadre.createMany({ data: cads.map((name, i) => ({ facilityId, name, sortOrder: i, takesNights: defaultTakesNights(name) && defaultOnRoster(name), onRoster: defaultOnRoster(name) })) });
+  return { departments: deps.length, cadres: cads.length };
+}
+
 /** Copies shifts and rule settings. Cadres in a shift's lists are matched by name. */
 export async function copyConfiguration(fromId: string, toId: string) {
   const [shifts, srcCadres, dstCadres, rules] = await Promise.all([

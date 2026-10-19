@@ -1410,25 +1410,3 @@ model SmsMessage {
   @@index([facilityId, createdAt])
 }
 
-/// A registration in progress. Nothing is written to Staff until the person has verified their phone and chosen a password.
-model JoinAttempt {
-  id             String    @id @default(cuid())
-  tokenHash      String    @unique
-  facilityId     String
-  codeId         String
-  phone          String
-  details        Json
-  verifyMethod   String
-  verifyCodeHash String?
-  sends          Int       @default(0)
-  attempts       Int       @default(0)
-  lockedUntil    DateTime?
-  verifiedAt     DateTime?
-  completedAt    DateTime?
-  ip             String?
-  createdAt      DateTime  @default(now())
-  expiresAt      DateTime
-
-  @@index([phone, createdAt])
-  @@index([facilityId])
-}

@@ -82,7 +82,7 @@ export default function LandingPage() {
                 HealthFlow builds your monthly staff roster from your own shifts and rules, checks it against Ghana&apos;s Labour Act before it is published, and prints the A4 sheet your staff already recognise.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                <ButtonLink href="/request-access">Request access</ButtonLink>
+                <ButtonLink href="/register">Register your facility</ButtonLink>
                 <ButtonLink href="#how" variant="secondary">
                   See how it works
                 </ButtonLink>
@@ -213,9 +213,9 @@ export default function LandingPage() {
         <section className="border-t-4 border-t-[var(--gold)] bg-[var(--surface)]" aria-labelledby="cta">
           <div className={`${SECTION} flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between`}>
             <h2 id="cta" className="max-w-[28ch] text-2xl font-semibold">
-              Ask for a demonstration with your own shifts and staff.
+              Register your facility and give your staff a code.
             </h2>
-            <ButtonLink href="/request-access">Request access</ButtonLink>
+            <ButtonLink href="/register">Register your facility</ButtonLink>
           </div>
         </section>
       </main>
