@@ -7,6 +7,7 @@ import { useResource } from "@/lib/useApi";
 import type { Cadre, Department } from "@/lib/types";
 import { Button, Checkbox, EmptyState, ErrorText, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, TD, TH } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
+import { QrCode } from "@/components/QrCode";
 
 interface Code { code: string; active: boolean; requiresApproval: boolean; usesCount: number; maxUses: number | null; expiresAt: string | null; problem: string | null; joinUrl: string; phoneCheck: boolean }
 interface Pending { id: string; fullName: string; staffNo: string; phone: string | null; email: string | null; position: string | null; phoneVerified: boolean; requestedCadre: string | null; requestedDepartment: string | null; createdAt: string; cadre: { id: string; name: string } | null; department: { id: string; name: string } | null }
@@ -157,12 +158,15 @@ export default function AccessCodePage() {
         <h1 className="text-3xl font-semibold">Join {facility?.name ?? "our facility"} on HealthFlow</h1>
         <p className="mt-4 text-xl">Staff access code</p>
         <p className="figures mt-2 text-6xl font-semibold">{c.code}</p>
-        <ol className="mt-6 list-decimal pl-6 text-xl leading-relaxed">
-          <li>Open {c.joinUrl.replace(/\/join\/.*/, "")} on your phone.</li>
-          <li>Choose “Join with your facility code”.</li>
-          <li>Enter the code, your name and staff number.</li>
-          <li>Wait for your in-charge to approve you.</li>
-        </ol>
+        <div className="mt-6 flex items-start gap-8">
+          <QrCode value={c.joinUrl} size={220} label={`QR code that opens the sign-up page with the code ${c.code}`} />
+          <ol className="list-decimal pl-6 text-xl leading-relaxed">
+            <li>Point your phone camera at the square. The code is filled in for you.</li>
+            <li>Or open {c.joinUrl.replace(/\/join\/.*/, "")} and choose “Join with your facility code”.</li>
+            <li>Enter your name and staff number.</li>
+            <li>Wait for your in-charge to approve you.</li>
+          </ol>
+        </div>
       </div>
     </>
   );

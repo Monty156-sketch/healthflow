@@ -11,7 +11,7 @@ For the person on call. It says where things run, how to put them back, and what
 | Database | Neon (Postgres) | Migrations run with `pnpm --filter @healthflow/db migrate:deploy`. |
 | Email | Resend | Needs `RESEND_API_KEY` and `EMAIL_FROM`. |
 | Card and mobile money | Paystack | Needs `PAYSTACK_SECRET_KEY` and the webhook `https://<api>/api/webhooks/paystack`. |
-| SMS | Arkesel | Needs `SMS_API_KEY` and `SMS_SENDER_ID`. Off until a facility turns it on. |
+| SMS | Arkesel, or SMS Gateway for Android | See "Text messages" below. Off until a facility turns it on. |
 
 ## Deploying and rolling back
 
@@ -35,6 +35,15 @@ For the person on call. It says where things run, how to put them back, and what
 - To restore from Neon history: in Neon, create a branch from a point in time before the damage, check the data on that branch, then either point `DATABASE_URL` on Render at the branch or copy the affected tables back. Never restore over the live database without a branch to compare.
 - To restore from an export: `gpg -d healthflow-DATE.dump.gpg | pg_restore --no-owner -d <NEW_EMPTY_DATABASE_URL>`. Restore into a new database first, check it, then switch.
 - No restore has been practised yet. Do one into a Neon branch before a facility depends on this, and write the date here.
+
+## Text messages
+
+There is no free bulk SMS service in Ghana that is fit for a live system. Two ways to start at little or no cost:
+
+1. **Your own phone as the gateway (free software).** Install SMS Gateway for Android (open source, Apache 2.0, from github.com/capcom6/android-sms-gateway) on an Android phone with a SIM and airtime or a bundle. Turn on "Cloud Server" in the app and note the username and password it shows. On Render set `SMS_PROVIDER=sms-gate`, `SMS_GATE_USER` and `SMS_GATE_PASSWORD`. Texts leave from that SIM at its normal tariff. The phone must stay on, charged and online. The project warns that carriers may restrict batch sending, so this suits a few hundred texts a day, not more. Its default build allows cleartext traffic, so keep that phone for this job only.
+2. **Arkesel (paid after a few free test texts).** Sign up at arkesel.com, register a sender ID (no fee, reviewed before use), and set `SMS_API_KEY` and `SMS_SENDER_ID`. Arkesel advertises free test credits on signup; the amount is on their pricing page.
+
+Either way, prove it: after setting the variables, a facility administrator opens Staff, Text messages, types a number and presses "Send test text". The test and its result are recorded.
 
 ## Staging and safe databases
 

@@ -1,23 +1,18 @@
-// The facility access code: a short word from the facility's name, a hyphen
-// and four characters, such as SOMBO-4K2P. It is read aloud in meetings and
-// written on notice boards, so it leaves out 0, O, 1, I and L.
+// The facility access code: HF- and six letters or digits, such as HF-FX8W8U.
+// It is read aloud in meetings and written on notice boards, so it leaves out
+// 0, O, 1, I and L, and it has no symbols that are hard to say or to type on
+// a phone. Six characters from 31 give about 887 million codes.
 import { randomInt } from "node:crypto";
 import { prisma } from "./prisma.js";
 
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 
-export function prefixFor(facilityName: string): string {
-  const word = facilityName.trim().split(/\s+/)[0] ?? "";
-  const letters = word.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
-  return letters.length >= 2 ? letters : "HF";
-}
-
 export const normaliseCode = (raw: string): string => raw.trim().toUpperCase().replace(/\s+/g, "");
 
-export function makeCode(facilityName: string): string {
+export function makeCode(): string {
   let tail = "";
-  for (let i = 0; i < 4; i++) tail += ALPHABET[randomInt(ALPHABET.length)];
-  return `${prefixFor(facilityName)}-${tail}`;
+  for (let i = 0; i < 6; i++) tail += ALPHABET[randomInt(ALPHABET.length)];
+  return `HF-${tail}`;
 }
 
 /** The one live code, if there is one. A paused code is still the facility's code. */
@@ -26,10 +21,10 @@ export function currentCode(facilityId: string) {
 }
 
 /** Makes a new code and revokes the old one, carrying the approval setting across. */
-export async function issueCode(facilityId: string, facilityName: string, by: string) {
+export async function issueCode(facilityId: string, by: string) {
   const old = await currentCode(facilityId);
   for (let tries = 0; tries < 8; tries++) {
-    const code = makeCode(facilityName);
+    const code = makeCode();
     try {
       return await prisma.$transaction(async (tx) => {
         if (old) await tx.facilityAccessCode.update({ where: { id: old.id }, data: { active: false, revokedAt: new Date(), revokedBy: by } });

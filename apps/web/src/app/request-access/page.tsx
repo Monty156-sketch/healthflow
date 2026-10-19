@@ -11,7 +11,7 @@ export default function RequestAccessPage() {
   return (
     <PublicPage
       title="Request access"
-      intro="HealthFlow is set up with each facility, not through self-sign-up. Tell us about your facility and we will arrange a demonstration. A facility can only start using HealthFlow once an agreement is in place and its shifts, cadres and rules are set up."
+      intro="Want to see HealthFlow before you register? Tell us about your facility and we will arrange a demonstration. Ready to start? Register your facility at /register and get your staff access code straight away."
     >
       <AccessRequestForm />
     </PublicPage>

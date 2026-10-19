@@ -73,9 +73,18 @@ services:
       - key: EMAIL_FROM
         sync: false
 
-      # Text messages (Arkesel). Leave empty until a sender ID is approved;
-      # facilities cannot turn texting on without them.
+      # Text messages. Leave empty until one provider is set up; facilities
+      # cannot turn texting on without it. Two providers work:
+      #   Arkesel (default): SMS_API_KEY and SMS_SENDER_ID.
+      #   SMS Gateway for Android (free software, your own phone and SIM):
+      #   SMS_PROVIDER=sms-gate, SMS_GATE_USER and SMS_GATE_PASSWORD.
       - key: SMS_API_KEY
         sync: false
       - key: SMS_SENDER_ID
+        sync: false
+      - key: SMS_PROVIDER
+        sync: false
+      - key: SMS_GATE_USER
+        sync: false
+      - key: SMS_GATE_PASSWORD
         sync: false
