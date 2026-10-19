@@ -143,7 +143,8 @@ describe("a facility registering itself", () => {
 
     expect((await pub.get(`/api/public/join/${res.body.code}`)).body.facilityName).toBe("Kaleo Health Centre");
     const login = await pub.post("/api/auth/login", { email: "abena@kaleo.test", password: PASSWORD, audience: "facility" });
-    expect(login.status).toBe(200); // the administrator is asked to set up two-step sign-in next
+    expect(login.status).toBe(403); // the password is right; the administrator must set up two-step sign-in next
+    expect(login.body.error).toBe("mfa_setup_required");
   });
 
   it("turns away a taken email, a repeated facility, a weak password, and missing consent", async () => {
