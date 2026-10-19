@@ -29,10 +29,27 @@ For the person on call. It says where things run, how to put them back, and what
 ## Backups and restore
 
 - The database is the only thing that holds state. The API and the website can be rebuilt from Git.
-- Neon keeps point-in-time history for the window your plan allows. Check the window in the Neon console and write it on the Security page only when it is confirmed.
-- To restore: in Neon, create a branch from a point in time before the damage, check the data on that branch, then either point `DATABASE_URL` on Render at the branch or copy the affected tables back. Do the restore on a branch first. Never restore over the live database without a branch to compare.
-- Once a month, export a copy: `pg_dump "$DATABASE_URL" > healthflow-YYYY-MM.sql`, and keep it somewhere that is not Neon.
-- Practise a restore at least once before a facility depends on it.
+- Two copies exist. Neon keeps point-in-time history for the window your plan allows (check it in the Neon console). And `.github/workflows/backup.yml` makes an encrypted export every Sunday, kept 30 days on the workflow run page.
+- The export needs two repository secrets: `BACKUP_DATABASE_URL` (Neon direct connection, a read-only role is best) and `BACKUP_PASSPHRASE`. Keep the passphrase somewhere outside GitHub as well. Without it the copies cannot be read. Until both are set the weekly run fails on purpose.
+- Make one by hand: `DATABASE_URL=... BACKUP_PASSPHRASE=... scripts/backup.sh ./exports`. It checks that the copy can be listed before it reports success.
+- To restore from Neon history: in Neon, create a branch from a point in time before the damage, check the data on that branch, then either point `DATABASE_URL` on Render at the branch or copy the affected tables back. Never restore over the live database without a branch to compare.
+- To restore from an export: `gpg -d healthflow-DATE.dump.gpg | pg_restore --no-owner -d <NEW_EMPTY_DATABASE_URL>`. Restore into a new database first, check it, then switch.
+- No restore has been practised yet. Do one into a Neon branch before a facility depends on this, and write the date here.
+
+## Staging and safe databases
+
+Local development, the tests and production used to share one database. Three guards now stop that:
+
+- `pnpm test` refuses to start unless the database is on this computer or its name contains `test`. The tests delete every row.
+- `pnpm dev:api`, `db:migrate`, `db:seed` and Prisma Studio refuse a hosted database unless `HEALTHFLOW_DB_ROLE=staging` is set. Production only ever runs `migrate deploy`, from Render.
+- The guard is `scripts/db-guard.mjs`. It reads `DATABASE_URL` from the environment or the `.env` file.
+
+To make the staging database (this needs the Neon console and cannot be done from the repository):
+
+1. In Neon, create a branch of the production database named `staging`. A branch is a copy that cannot change production.
+2. Copy its connection string into your local `.env` as `DATABASE_URL`, and add `HEALTHFLOW_DB_ROLE=staging`. Run `pnpm db:migrate` there to try a schema change before it reaches production.
+3. For a hosted staging API, create a second Render web service from `render.yaml`, change its name, give it the staging `DATABASE_URL` and its own secrets, and turn auto-deploy off. Staging must not share production's `MFA_ENCRYPTION_KEY` unless it holds a copy of production data.
+4. A staging branch holds a copy of real staff data. Treat it as production for access, or reset it from a branch of an empty schema.
 
 ## When something is wrong
 
@@ -54,6 +71,6 @@ The Terms and the Data Processing Agreement promise facilities notice within 48 
 ## Known limits
 
 - One API instance, one database. A restart interrupts requests for a moment.
-- Local development and production share one database. A staging database would remove that risk.
+- Local development is guarded against the live database, but a staging database exists only once you make it in Neon (see above).
 - The website's Content Security Policy does not yet restrict scripts and styles. That needs a nonce on every page.
 - `pnpm audit` reports one high advisory, in a package the Prisma command line uses while migrating. It is not loaded by the running API or website.

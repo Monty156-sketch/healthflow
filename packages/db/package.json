@@ -6,10 +6,10 @@
   "types": "generated/client/index.d.ts",
   "scripts": {
     "generate": "prisma generate",
-    "migrate": "prisma migrate dev",
+    "migrate": "node ../../scripts/db-guard.mjs develop && prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts",
-    "studio": "prisma studio"
+    "seed": "node ../../scripts/db-guard.mjs develop && tsx prisma/seed.ts",
+    "studio": "node ../../scripts/db-guard.mjs develop && prisma studio"
   },
   "dependencies": {
     "@prisma/client": "^6.1.0"

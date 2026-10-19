@@ -324,12 +324,12 @@ export const DPA: LegalDoc = {
         p("The Processor shall maintain, as a minimum:"),
         {
           ul: [
-            "Encryption of personal data in transit and at rest, including backups",
+            "Encryption of personal data in transit and at rest, and encryption of the separate database exports",
             "Role-based access control on the principle of least privilege, enforced server-side and not in the user interface alone",
             "Strict isolation between facilities, verified by automated testing, such that no facility can access another's data by any route",
             "Multi-factor authentication required for administrative and district accounts",
             "Audit logging of access and changes, readable by the Controller, including any access by the Processor's own support staff",
-            "Automated backups with periodically tested restores",
+            "A point-in-time history of the database kept by the database host, and a scheduled encrypted export of the database held outside it",
             "Immediate revocation of access when a staff member is deactivated",
             "A documented incident response procedure with named roles",
             "Secure development practice, including vulnerability scanning of dependencies",
@@ -407,7 +407,7 @@ export const SECURITY: LegalDoc = {
   effective: "18 October 2026",
   sections: [
     { title: "Read this before approving", blocks: [p("This page describes the technical and organisational measures HealthFlow applies to staff personal data, so a district health directorate can review them before approval.")] },
-    { title: "Measures", blocks: [{ ul: ["**Encryption in transit and at rest.** All data is transmitted over TLS and encrypted at rest.", "**Role-based access and least privilege.** Every action is scoped to the caller's facility or district.", "**Multi-factor authentication** for facility administrators, district officers and PS Tech staff, with no option to skip.", "**Append-only audit logging.** Every material change is recorded with who made it and when. Changes to a person's status, attendance corrections, accepted rule findings, restored rosters, write-offs and data-request decisions also record the reason given.", "**Automated backups.** Recovery point objective of 24 hours."] }] },
+    { title: "Measures", blocks: [{ ul: ["**Encryption in transit and at rest.** All data is transmitted over TLS and encrypted at rest.", "**Role-based access and least privilege.** Every action is scoped to the caller's facility or district.", "**Multi-factor authentication** for facility administrators, district officers and PS Tech staff, with no option to skip.", "**Append-only audit logging.** Every material change is recorded with who made it and when. Changes to a person's status, attendance corrections, accepted rule findings, restored rosters, write-offs and data-request decisions also record the reason given.", "**Backups.** The database host keeps a point-in-time history for the window its plan allows, and a separate encrypted export is taken every week and held outside the host for 30 days. The weekly export means we can lose up to a week of changes if the host's own history is also unavailable."] }] },
     { title: "Where the data is hosted", blocks: [p("HealthFlow runs on Cloudflare (the website), Render (the application server) and Neon (the database).")] },
     { title: "Sub-processors", blocks: [{ ul: ["Cloudflare: website delivery", "Render: application server", "Neon: database", "Resend: sending email", "Paystack: online payments. It receives the administrator's email address and the invoice amount only."] }, p("No other sub-processor processes personal data.")] },
     { title: "Data Protection Commission registration", blocks: [p("Registration is pending. The registration number will be shown here once issued.")] },
