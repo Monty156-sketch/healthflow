@@ -1,0 +1,56 @@
+// The facility access code: a short word from the facility's name, a hyphen
+// and four characters, such as SOMBO-4K2P. It is read aloud in meetings and
+// written on notice boards, so it leaves out 0, O, 1, I and L.
+import { randomInt } from "node:crypto";
+import { prisma } from "./prisma.js";
+
+const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+
+export function prefixFor(facilityName: string): string {
+  const word = facilityName.trim().split(/\s+/)[0] ?? "";
+  const letters = word.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 5);
+  return letters.length >= 2 ? letters : "HF";
+}
+
+export const normaliseCode = (raw: string): string => raw.trim().toUpperCase().replace(/\s+/g, "");
+
+export function makeCode(facilityName: string): string {
+  let tail = "";
+  for (let i = 0; i < 4; i++) tail += ALPHABET[randomInt(ALPHABET.length)];
+  return `${prefixFor(facilityName)}-${tail}`;
+}
+
+/** The one live code, if there is one. A paused code is still the facility's code. */
+export function currentCode(facilityId: string) {
+  return prisma.facilityAccessCode.findFirst({ where: { facilityId, revokedAt: null }, orderBy: { createdAt: "desc" } });
+}
+
+/** Makes a new code and revokes the old one, carrying the approval setting across. */
+export async function issueCode(facilityId: string, facilityName: string, by: string) {
+  const old = await currentCode(facilityId);
+  for (let tries = 0; tries < 8; tries++) {
+    const code = makeCode(facilityName);
+    try {
+      return await prisma.$transaction(async (tx) => {
+        if (old) await tx.facilityAccessCode.update({ where: { id: old.id }, data: { active: false, revokedAt: new Date(), revokedBy: by } });
+        return tx.facilityAccessCode.create({ data: { facilityId, code, createdBy: by, requiresApproval: old?.requiresApproval ?? true } });
+      });
+    } catch (e) {
+      if ((e as { code?: string }).code !== "P2002") throw e; // a clash with another facility's code: try again
+    }
+  }
+  throw new Error("Could not make a free access code.");
+}
+
+/** Why a code cannot be used right now, or null if it can. */
+export function codeProblem(c: { active: boolean; revokedAt: Date | null; expiresAt: Date | null; maxUses: number | null; usesCount: number }): string | null {
+  if (!c.active || c.revokedAt) return "off";
+  if (c.expiresAt && c.expiresAt < new Date()) return "expired";
+  if (c.maxUses !== null && c.usesCount >= c.maxUses) return "used_up";
+  return null;
+}
+
+/** People who register without an email get a sign-in name made from their phone. The domain can never be a real mailbox. */
+export const PHONE_LOGIN_DOMAIN = "phone.healthflow.invalid";
+export const phoneLogin = (phone: string) => `${phone}@${PHONE_LOGIN_DOMAIN}`;
+export const isPhoneLogin = (email: string) => email.endsWith(`@${PHONE_LOGIN_DOMAIN}`);

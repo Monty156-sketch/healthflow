@@ -42,6 +42,8 @@ import {
   RESET_LINK_MINUTES,
 } from "../lib/signedTokens.js";
 import { appUrl, sendEmail } from "../lib/email.js";
+import { normalisePhone } from "../lib/sms.js";
+import { phoneLogin } from "../lib/accessCode.js";
 import { describeDevice } from "../lib/userAgent.js";
 import { displayDate } from "../lib/labels.js";
 import {
@@ -133,7 +135,8 @@ const normaliseEmail = (e: string) => e.trim().toLowerCase();
 // ------------------------------------------------------------- sign in
 
 const loginSchema = z.object({
-  email: z.string().trim().email(),
+  /** An email address, or for staff who joined with a phone number, that number. */
+  email: z.string().trim().min(3).max(254),
   password: z.string().min(1),
   totp: z.string().trim().optional(),
   recoveryCode: z.string().trim().optional(),
@@ -154,7 +157,12 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
   const { password, totp, recoveryCode, audience } = parsed.data;
-  const email = normaliseEmail(parsed.data.email);
+  let email = normaliseEmail(parsed.data.email);
+  if (!email.includes("@")) {
+    const phone = normalisePhone(email);
+    if (!phone) return res.status(401).json({ error: "invalid_credentials" });
+    email = phoneLogin(phone);
+  }
 
   const user = await prisma.userProfile.findUnique({ where: { userEmail: email } });
   // The same answer whether or not the account exists.
@@ -174,6 +182,10 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
       const d = await prisma.district.findUnique({ where: { id: user.scopeId }, select: { status: true } });
       if (d?.status === "PENDING") return res.status(403).json({ error: "district_pending" });
       if (d?.status === "DECLINED") return res.status(403).json({ error: "district_declined" });
+    }
+    if (user.role === "STAFF" && user.staffId) {
+      const s = await prisma.staff.findUnique({ where: { id: user.staffId }, select: { status: true } });
+      if (s?.status === "PENDING") return res.status(403).json({ error: "account_pending" });
     }
     return res.status(403).json({ error: "account_inactive" });
   }

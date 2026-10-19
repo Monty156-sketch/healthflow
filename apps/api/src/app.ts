@@ -13,6 +13,7 @@ import { errorReportRouter, platformRouter, recordServerError } from "./routes/e
 import { internalRouter } from "./routes/internal.js";
 import { districtRouter } from "./routes/district.js";
 import { publicRouter } from "./routes/public.js";
+import { joinRouter } from "./routes/join.js";
 import { webhookRouter } from "./routes/webhooks.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
@@ -48,6 +49,7 @@ export function createApp() {
   app.use("/api/facility", facilityRouter);
   app.use("/api/invitations", invitationRouter);
   app.use("/api/errors", errorReportRouter);
+  app.use("/api/public/join", joinRouter);
   app.use("/api/public", publicRouter);
   app.use("/api/district", districtRouter);
   app.use("/api/internal", internalRouter);
