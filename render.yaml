@@ -67,7 +67,18 @@ services:
       - key: PROXY_SHARED_SECRET
         sync: false
 
-      # Email. Can stay empty until email sending is built.
+      # Email. Leave empty to send nothing. Two providers work, Gmail first:
+      #   Gmail (free, no domain): GMAIL_USER, GMAIL_CLIENT_ID,
+      #   GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN. See RUNBOOK.md, "Email".
+      #   Resend (needs a domain you own): RESEND_API_KEY and EMAIL_FROM.
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GMAIL_REFRESH_TOKEN
+        sync: false
       - key: RESEND_API_KEY
         sync: false
       - key: EMAIL_FROM

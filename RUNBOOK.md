@@ -9,7 +9,7 @@ For the person on call. It says where things run, how to put them back, and what
 | Website (Next.js) | Cloudflare Workers | Deploys from `main` through Workers Builds. `/api/*` is forwarded to the API by the Worker. |
 | API (Express) | Render | `render.yaml`. Health check: `/health`. Runs the scheduler (support expiry, overdue invoices, retention). |
 | Database | Neon (Postgres) | Migrations run with `pnpm --filter @healthflow/db migrate:deploy`. |
-| Email | Resend | Needs `RESEND_API_KEY` and `EMAIL_FROM`. |
+| Email | Gmail, or Resend | Gmail needs no domain. See "Email" below. |
 | Card and mobile money | Paystack | Needs `PAYSTACK_SECRET_KEY` and the webhook `https://<api>/api/webhooks/paystack`. |
 | SMS | Arkesel, or SMS Gateway for Android | See "Text messages" below. Off until a facility turns it on. |
 
@@ -25,6 +25,24 @@ For the person on call. It says where things run, how to put them back, and what
 - **`MFA_ENCRYPTION_KEY`.** Every authenticator secret is encrypted with it. A different key makes every administrator's two-step sign-in unreadable and locks them out. Local development and production share one Neon database today, so the key must be the same in both.
 - **`JWT_REFRESH_PEPPER` / `JWT_ACCESS_SECRET`.** Changing them signs everyone out. That is the way to force a sign-out after a suspected leak, and loses no data.
 - **`PROXY_SHARED_SECRET`.** Must be identical on Render and Cloudflare, or the API cannot trust visitor IPs and rate limits misbehave.
+
+## Email
+
+Used for password resets and for the "new facility registered" alert to PS Tech. Nothing else depends on it.
+
+**Gmail (free, no domain).** The API sends as a Gmail account you own, through Google's web API. It does not use SMTP, which Render's free plan blocks. Gmail allows about 500 recipients a day, which is plenty for this. Use a Gmail account made for HealthFlow if you can, because sent mail appears in its Sent folder.
+
+1. Sign in to <https://console.cloud.google.com> with that Gmail account. Create a project named HealthFlow.
+2. **APIs & Services, Library**: search for Gmail API and press Enable.
+3. **OAuth consent screen** (Google Auth Platform): choose External, name the app HealthFlow, give your email for support and contact. Add the Gmail account as a test user. Then set the publishing status to **In production**. This matters: while an app is left in Testing, Google ends its refresh token after 7 days and email stops. The "unverified app" warning that follows is expected for your own account.
+4. **Credentials, Create credentials, OAuth client ID**: type Web application. Under authorized redirect URIs add `https://developers.google.com/oauthplayground`. Copy the client ID and client secret.
+5. Open <https://developers.google.com/oauthplayground>. Click the gear, tick **Use your own OAuth credentials**, and paste the client ID and secret. In step 1 type the scope `https://www.googleapis.com/auth/gmail.send` and press Authorize APIs. Sign in with the Gmail account, press Advanced, then continue to the app, and allow it. In step 2 press **Exchange authorization code for tokens** and copy the **Refresh token**.
+6. On Render, healthflow-api, Environment, set `GMAIL_USER` (the address), `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` and `GMAIL_REFRESH_TOKEN`. Save and wait for the deploy.
+7. Test: register a test facility, or ask for a password reset for a real address. PS Tech's alert goes to `ACCESS_REQUEST_NOTIFY`.
+
+If email stops working, the usual cause is that Google ended the refresh token (the app was in Testing, the Gmail password was changed, or access was removed at <https://myaccount.google.com/permissions>). Repeat step 5 and replace `GMAIL_REFRESH_TOKEN`. The Render log line is "Google refused the sign-in".
+
+**Resend.** Needs a domain you own. Set `RESEND_API_KEY` and `EMAIL_FROM`. Gmail wins if both are set.
 
 ## Backups and restore
 
