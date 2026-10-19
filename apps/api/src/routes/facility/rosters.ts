@@ -3,6 +3,7 @@
 // work on plain data; this file loads the data, calls them, and stores the
 // result. Editing cells, review and publishing arrive with the roster
 // builder.
+import { notifyRosterPublished } from "../../lib/rosterPublished.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
@@ -644,7 +645,11 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
     facilityId: who.facilityId, actorEmail: who.email, action: `roster_${input.action}`, entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} ${move.word} the ${monthName(roster)} roster${input.note ? `. Note: ${input.note}` : ""}.`,
   });
-  if (input.action === "publish") await settleAgainstRoster(who.facilityId, roster.id, who.email);
+  if (input.action === "publish") {
+    await settleAgainstRoster(who.facilityId, roster.id, who.email);
+    // Telling staff is best effort: a failed notice must not undo the publication.
+    await notifyRosterPublished(who.facilityId, roster.id).catch((e) => console.warn("Roster notice failed:", e instanceof Error ? e.message : e));
+  }
   const fresh = await prisma.roster.findUniqueOrThrow({ where: { id: roster.id } });
   res.json({ roster: presentRoster(fresh), summary: await summaryOf(roster.id) });
 });

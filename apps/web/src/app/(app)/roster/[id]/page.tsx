@@ -302,6 +302,16 @@ export default function RosterPage() {
             <Button variant="secondary" disabled={xlsBusy} onClick={downloadExcel}>
               {xlsBusy ? "Preparing Excel…" : "Download Excel"}
             </Button>
+            {roster.status === "PUBLISHED" && (
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(`${facility.facility.name}: the ${MONTHS[roster.month - 1]} ${roster.year} duty roster${roster.department ? ` for ${roster.department}` : ""} is published. Sign in to HealthFlow to see your duties: ${typeof window !== "undefined" ? window.location.origin : ""}/my-duties`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex min-h-11 items-center rounded-[var(--radius)] border border-[var(--border-strong)] px-4 text-[15px] font-medium hover:bg-[var(--accent-soft)]"
+              >
+                Share on WhatsApp
+              </a>
+            )}
             {generated && (
               <Button variant="quiet" onClick={() => window.print()}>
                 Print this page

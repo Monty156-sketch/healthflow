@@ -3,6 +3,10 @@
 import type { NotificationSeverity, Role } from "@healthflow/db";
 import { prisma } from "./prisma.js";
 import { categoryOf, mutedFrom } from "./notificationPrefs.js";
+import { textStaff } from "./sms.js";
+
+/** The notices worth a text: the ones that change a person's duties or ask them for something. */
+const SMS_TYPES = new Set(["roster_published", "duty_moved", "reinstated", "cover_asked", "cover_arranged", "swap_requested", "swap_decided", "leave_decided", "return_due"]);
 
 export interface NoteContent {
   type: string;
@@ -29,6 +33,9 @@ async function send(facilityId: string, everyone: { email: string; staffId: stri
       facilityId, recipientEmail: p.email, recipientStaffId: p.staffId, type: n.type, title: n.title, body: n.body, linkUrl: n.linkUrl ?? null, severity: n.severity ?? "INFO",
     })),
   });
+  if (SMS_TYPES.has(n.type)) {
+    await Promise.allSettled(people.filter((p) => p.staffId).map((p) => textStaff(facilityId, p.staffId!, n.type, n.body)));
+  }
 }
 
 /** Everyone who runs rosters here: facility admins, roster managers and supervisors. */

@@ -51,6 +51,7 @@ const staffInput = z
     eligibleShiftIds: z.array(z.string()).max(50).default([]),
     excludedFromNights: z.boolean().default(false),
     morningOnly: z.boolean().optional(),
+    smsOptOut: z.boolean().optional(),
     willingForExtraDuties: z.boolean().default(false),
     exclusionReason: optionalText(200, "Reason"),
     maxDutiesPerWeek: z
@@ -138,6 +139,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     eligibleShifts: s.eligibleForShifts,
     excludedFromNights: s.excludedFromNights,
     morningOnly: s.morningOnly,
+    smsOptOut: s.smsOptOut,
     willingForExtraDuties: s.willingForExtraDuties,
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
@@ -279,6 +281,7 @@ const FIELD_LABEL: Record<string, string> = {
   emergencyContactPhone: "emergency contact phone",
   excludedFromNights: "night duty exclusion",
   morningOnly: "weekday mornings only",
+  smsOptOut: "text messages",
   willingForExtraDuties: "willingness to cover extra duties",
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
@@ -320,6 +323,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       emergencyContactPhone: input.emergencyContactPhone,
       excludedFromNights: input.excludedFromNights,
       ...(input.morningOnly !== undefined ? { morningOnly: input.morningOnly } : {}),
+      ...(input.smsOptOut !== undefined ? { smsOptOut: input.smsOptOut } : {}),
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
@@ -362,6 +366,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
     }
     if (k === "willingForExtraDuties") return b ? "marked them willing to cover extra duties" : "marked them not available for extra duties";
+    if (k === "smsOptOut") return b ? "stopped text messages to them" : "turned text messages to them back on";
     if (k === "morningOnly") return b ? "set them to weekday mornings only" : "returned them to the full duty cycle";
     if (k === "excludedFromNights") return b ? "excluded them from night duty" : "returned them to night duty";
     if (k === "maxDutiesPerWeek") {
