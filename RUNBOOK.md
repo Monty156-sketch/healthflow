@@ -72,5 +72,5 @@ The Terms and the Data Processing Agreement promise facilities notice within 48 
 
 - One API instance, one database. A restart interrupts requests for a moment.
 - Local development is guarded against the live database, but a staging database exists only once you make it in Neon (see above).
-- The website's Content Security Policy does not yet restrict scripts and styles. That needs a nonce on every page.
+- The Content Security Policy is strict for scripts (a nonce on every page view, added by the Worker) but still allows inline styles, because React sets style attributes and those cannot carry a nonce.
 - `pnpm audit` reports one high advisory, in a package the Prisma command line uses while migrating. It is not loaded by the running API or website.

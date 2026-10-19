@@ -61,3 +61,80 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # Real browser, real Worker, real API and database. It catches what unit
+  # tests cannot: a page that does not hydrate, a script blocked by the
+  # security policy, a sign-in page that no longer works, an accessibility
+  # regression on a public page.
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: healthflow_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/healthflow_test"
+      JWT_ACCESS_SECRET: "ci-access-secret-not-for-production-0123456789"
+      JWT_REFRESH_PEPPER: "ci-refresh-pepper-not-for-production-0123456789"
+      MFA_ENCRYPTION_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      PROXY_SHARED_SECRET: "ci-proxy-secret"
+      WEB_ORIGIN: "http://localhost:8787"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm --filter @healthflow/db migrate:deploy
+
+      - name: Start the API
+        run: |
+          pnpm --filter @healthflow/api exec tsx src/server.ts > api.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf localhost:4000/health && break; sleep 2; done
+          curl -sf localhost:4000/health
+
+      - name: Build the website for Cloudflare
+        run: pnpm --filter @healthflow/web cf:build
+
+      - name: Start the Worker
+        working-directory: apps/web
+        run: |
+          npx wrangler dev --port 8787 --local --var API_ORIGIN:http://localhost:4000 --var PROXY_SHARED_SECRET:ci-proxy-secret > worker.log 2>&1 &
+          for i in $(seq 1 40); do curl -sf localhost:8787/login > /dev/null && break; sleep 3; done
+          curl -sf localhost:8787/login > /dev/null
+
+      - name: Install the browser
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run the browser tests
+        working-directory: apps/web
+        run: npx playwright test
+
+      - name: Keep the report when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            api.log
+            apps/web/worker.log
+          retention-days: 7
