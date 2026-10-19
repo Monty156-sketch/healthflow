@@ -21,7 +21,7 @@ export function RosterExample() {
         <span className="font-medium text-[var(--foreground)]">Example roster, one week</span>
         <span>Invented staff, to show the checks</span>
       </figcaption>
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" role="region" aria-label="Roster example" tabIndex={0}>
         <table className="w-full min-w-[34rem] border-separate border-spacing-0 text-sm">
           <caption className="sr-only">An example week of duties with one statutory finding</caption>
           <thead>
