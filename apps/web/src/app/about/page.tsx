@@ -21,7 +21,7 @@ export default function AboutPage() {
       </PublicSection>
       <PublicSection title="Get in touch">
         <p>
-          Call 055 457 1800 or 024 618 7422, or <Link href="/contact" className={A}>write to us</Link>. To ask for a demonstration, <Link href="/request-access" className={A}>request access</Link>.
+          Call 055 457 1800 or 024 618 7422, or <Link href="/contact" className={A}>write to us</Link>. To start using HealthFlow, <Link href="/register" className={A}>register your facility</Link>.
         </p>
       </PublicSection>
     </PublicPage>

@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-const PAGES = ["/", "/pricing", "/security", "/terms", "/privacy", "/login", "/district/login", "/platform/login", "/district/register", "/join", "/register", "/request-access", "/help"];
+const PAGES = ["/", "/pricing", "/security", "/terms", "/privacy", "/login", "/district/login", "/platform/login", "/district/register", "/join", "/register", "/help"];
 
 /** Collects what the browser complains about while a page loads. */
 function watch(page: Page) {

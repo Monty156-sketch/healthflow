@@ -5,12 +5,12 @@ import { useFacility } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import type { Cadre, Department } from "@/lib/types";
-import { Button, Checkbox, EmptyState, ErrorText, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, TD, TH } from "@/components/ui";
+import { Button, Checkbox, EmptyState, ErrorText, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, TableScroll, TD, TH } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { QrCode } from "@/components/QrCode";
 
 interface Code { code: string; active: boolean; requiresApproval: boolean; usesCount: number; maxUses: number | null; expiresAt: string | null; problem: string | null; joinUrl: string; phoneCheck: boolean }
-interface Pending { id: string; fullName: string; staffNo: string; phone: string | null; email: string | null; position: string | null; phoneVerified: boolean; requestedCadre: string | null; requestedDepartment: string | null; createdAt: string; cadre: { id: string; name: string } | null; department: { id: string; name: string } | null }
+interface Pending { id: string; fullName: string; staffNo: string; phone: string | null; email: string | null; position: string | null; requestedCadre: string | null; requestedDepartment: string | null; createdAt: string; cadre: { id: string; name: string } | null; department: { id: string; name: string } | null }
 
 const say = (e: unknown, fallback: string) => (e instanceof ApiError ? ((e.body as { message?: string } | undefined)?.message ?? fallback) : fallback);
 
@@ -55,7 +55,7 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
         <>
           <TableScroll label="People waiting for approval">
             <table className="w-full min-w-[40rem] border-collapse text-sm">
-              <thead><tr><th className={TH}>Select</th><th className={TH}>Name</th><th className={TH}>Staff number</th><th className={TH}>Cadre and department</th><th className={TH}>Phone</th></tr></thead>
+              <thead><tr><th className={TH}>Select</th><th className={TH}>Name</th><th className={TH}>Staff number</th><th className={TH}>Cadre and department</th><th className={TH}>Contact</th></tr></thead>
               <tbody>
                 {rows.map((p) => (
                   <tr key={p.id}>
@@ -63,7 +63,7 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
                     <td className={TD}>{p.fullName}</td>
                     <td className={TD}>{p.staffNo}</td>
                     <td className={TD}>{p.cadre?.name ?? (p.requestedCadre ? `${p.requestedCadre} (typed)` : "Not given")}, {p.department?.name ?? (p.requestedDepartment ? `${p.requestedDepartment} (typed)` : "none")}</td>
-                    <td className={TD}>{p.phone}{" "}<StatusBadge tone={p.phoneVerified ? "success" : "warning"}>{p.phoneVerified ? "Phone checked" : "Phone not checked"}</StatusBadge></td>
+                    <td className={TD}>{p.email}{p.phone ? `, ${p.phone}` : ""}</td>
                   </tr>
                 ))}
               </tbody>
@@ -147,8 +147,8 @@ export default function AccessCodePage() {
           <Panel title="Settings">
             <div className="space-y-3">
               <Checkbox label="The code is on" checked={c.active} disabled={busy} onChange={(on) => act(() => api.put("/api/facility/join/code", { active: on, requiresApproval: c.requiresApproval }))} />
-              <Checkbox label="I approve each person before they can sign in" checked={c.requiresApproval || !c.phoneCheck} disabled={busy || !c.phoneCheck} onChange={(on) => act(() => api.put("/api/facility/join/code", { active: c.active, requiresApproval: on }))} />
-              <p className="ml-8 text-sm text-[var(--muted)]">{c.phoneCheck ? "If you turn approval off, people whose phone number is checked by text get in at once. Anyone whose phone could not be checked still waits for you." : "Text messages are not set up on this server, so phone numbers cannot be checked and everyone waits for your approval."}</p>
+              <Checkbox label="I approve each person before they can sign in" checked={c.requiresApproval} disabled={busy} onChange={(on) => act(() => api.put("/api/facility/join/code", { active: c.active, requiresApproval: on }))} />
+              <p className="ml-8 text-sm text-[var(--muted)]">If you turn approval off, anyone who has the code and an email address gets in at once. Leave it on if the code might reach people outside your staff, because we cannot check an email address belongs to the person who typed it.</p>
             </div>
           </Panel>
           <Waiting onChanged={code.reload} />

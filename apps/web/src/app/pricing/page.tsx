@@ -62,7 +62,7 @@ export default function PricingPage() {
       <PublicSection title="If you stop">
         <p>Your data is yours. You can export all of it at any time without asking and without a fee, and it is deleted within 90 days of the agreement ending. An unpaid invoice never locks you out of your data. Read the <Link href="/terms" className="text-[var(--accent-text)] underline underline-offset-2">Terms</Link>.</p>
       </PublicSection>
-      <ButtonLink href="/request-access">Request access</ButtonLink>
+      <ButtonLink href="/register">Register your facility</ButtonLink>
     </PublicPage>
   );
 }

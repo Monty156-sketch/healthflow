@@ -13,7 +13,7 @@ export default function ContactPage() {
     <main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8 sm:py-12">
       <h1 className="text-3xl font-semibold leading-tight">Contact</h1>
       <p className="mt-3 leading-relaxed">
-        HealthFlow is built and run by PS Tech in Wa, Upper West Region, Ghana. Write or call for help using HealthFlow or about your data. We reply within 48 hours, usually sooner. To ask for a demonstration, use the <Link href="/request-access" className={A}>request access form</Link>.
+        HealthFlow is built and run by PS Tech in Wa, Upper West Region, Ghana. Write or call for help using HealthFlow or about your data. We reply within 48 hours, usually sooner. To start using HealthFlow, <Link href="/register" className={A}>register your facility</Link>.
       </p>
 
       <dl className="mt-6 divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">

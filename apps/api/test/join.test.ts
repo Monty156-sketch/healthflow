@@ -23,10 +23,10 @@ async function setup() {
   return { facility, api, code };
 }
 
-const details = (code: string, extra: object = {}) => ({ code, fullName: "Ama Dery", staffNo: "S-100", phone: "024 618 7422", ...extra });
+const reg = (code: string, extra: object = {}) => ({ code, fullName: "Ama Dery", email: "ama@sombo.test", password: PASSWORD, acceptedNoticeVersion: "1", ...extra });
 
 describe("staff joining with the facility access code", () => {
-  it("makes a readable code that is the same on the next visit", async () => {
+  it("makes a readable HF- code that is the same on the next visit", async () => {
     const { api, code } = await setup();
     expect(code).toMatch(/^HF-[2-9A-HJKMNP-Z]{6}$/);
     expect((await api.get("/api/facility/join/code")).body.code).toBe(code);
@@ -34,65 +34,41 @@ describe("staff joining with the facility access code", () => {
     expect((await pub.get("/api/public/join/HF-NOPE00")).status).toBe(404);
   });
 
-  it("without a text service, registers a pending account that cannot sign in and waits for approval", async () => {
+  it("code, email and password make a pending account that cannot sign in until approved", async () => {
     const { api, facility, code } = await setup();
-    const start = await pub.post("/api/public/join", details(code));
-    expect(start.status).toBe(201);
-    expect(start.body.verifyMethod).toBe("NONE");
-    const done = await pub.post("/api/public/join/complete", { token: start.body.token, password: PASSWORD, acceptedNoticeVersion: "1" });
+    const done = await pub.post("/api/public/join/register", reg(code));
     expect(done.status).toBe(201);
     expect(done.body.status).toBe("pending");
-
-    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, staffNo: "S-100" } });
-    expect(staff).toMatchObject({ status: "PENDING", joinedVia: "CODE", phoneVerified: false });
-    const login = await pub.post("/api/auth/login", { email: "0246187422", password: PASSWORD });
+    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email: "ama@sombo.test" } });
+    expect(staff).toMatchObject({ status: "PENDING", joinedVia: "CODE", staffNo: "S-002" });
+    const login = await pub.post("/api/auth/login", { email: "ama@sombo.test", password: PASSWORD });
     expect(login.status).toBe(403);
     expect(login.body.error).toBe("account_pending");
 
-    const list = await api.get("/api/facility/join/pending");
-    expect(list.body.pending).toHaveLength(1);
+    expect((await api.get("/api/facility/join/pending")).body.pending).toHaveLength(1);
     expect((await api.post("/api/facility/join/approve", { staffIds: [staff.id] })).body.approved).toBe(1);
-    const ok = await pub.post("/api/auth/login", { email: "0246187422", password: PASSWORD });
-    expect(ok.status).toBe(200);
+    expect((await pub.post("/api/auth/login", { email: "ama@sombo.test", password: PASSWORD })).status).toBe(200);
   });
 
-  it("checks the phone by text, locks after three wrong codes, and can skip approval when the facility allows it", async () => {
-    process.env.SMS_API_KEY = "k";
-    process.env.SMS_SENDER_ID = "HealthFlow";
-    const sent: string[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (_u: unknown, init: { body: string }) => { sent.push(JSON.parse(init.body).message); return new Response(JSON.stringify({ status: "success" }), { status: 200 }); }));
-    const { api, facility, code } = await setup();
+  it("lets people straight in when the facility turns approval off", async () => {
+    const { api, code } = await setup();
     await api.put("/api/facility/join/code", { requiresApproval: false, active: true });
-
-    const start = await pub.post("/api/public/join", details(code));
-    expect(start.body.verifyMethod).toBe("SMS");
-    const real = /code is (\d{6})/.exec(sent[0])![1];
-    const token = start.body.token;
-    expect((await pub.post("/api/public/join/complete", { token, password: PASSWORD, acceptedNoticeVersion: "1" })).body.error).toBe("not_verified");
-    const wrong = real === "111111" ? "222222" : "111111";
-    expect((await pub.post("/api/public/join/verify", { token, code: wrong })).body.error).toBe("wrong_code");
-    expect((await pub.post("/api/public/join/verify", { token, code: wrong })).body.error).toBe("wrong_code");
-    expect((await pub.post("/api/public/join/verify", { token, code: wrong })).status).toBe(423);
-    expect((await pub.post("/api/public/join/verify", { token, code: real })).status).toBe(423);
-
-    const again = await pub.post("/api/public/join", details(code, { staffNo: "S-101", phone: "0555555555" }));
-    const realB = /code is (\d{6})/.exec(sent[1])![1];
-    expect((await pub.post("/api/public/join/verify", { token: again.body.token, code: realB })).body.verified).toBe(true);
-    const done = await pub.post("/api/public/join/complete", { token: again.body.token, password: PASSWORD, acceptedNoticeVersion: "1" });
+    const done = await pub.post("/api/public/join/register", reg(code));
     expect(done.body.status).toBe("active");
-    expect((await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, staffNo: "S-101" } })).phoneVerified).toBe(true);
+    expect((await pub.post("/api/auth/login", { email: "ama@sombo.test", password: PASSWORD })).status).toBe(200);
   });
 
-  it("refuses a taken staff number, a revoked code, and respects the use limit", async () => {
+  it("turns away a taken email or staff number, a weak password, a stale notice, a revoked code, and respects the use limit", async () => {
     const { api, facility, code } = await setup();
     await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "S-100", fullName: "Someone", status: "ACTIVE" } });
-    expect((await pub.post("/api/public/join", details(code))).body.error).toBe("staff_number_taken");
+    expect((await pub.post("/api/public/join/register", reg(code, { staffNo: "s-100" }))).body.error).toBe("staff_number_taken");
+    expect((await pub.post("/api/public/join/register", reg(code, { password: "short" }))).body.fields.password).toBeTruthy();
+    expect((await pub.post("/api/public/join/register", reg(code, { acceptedNoticeVersion: "0" }))).body.error).toBe("notice_changed");
 
     await prisma.facilityAccessCode.updateMany({ where: { facilityId: facility.id }, data: { maxUses: 1 } });
-    const a = await pub.post("/api/public/join", details(code, { staffNo: "S-200", phone: "0201111111" }));
-    const b = await pub.post("/api/public/join", details(code, { staffNo: "S-201", phone: "0202222222" }));
-    expect((await pub.post("/api/public/join/complete", { token: a.body.token, password: PASSWORD, acceptedNoticeVersion: "1" })).status).toBe(201);
-    expect((await pub.post("/api/public/join/complete", { token: b.body.token, password: PASSWORD, acceptedNoticeVersion: "1" })).status).toBe(404);
+    expect((await pub.post("/api/public/join/register", reg(code, { email: "a@sombo.test" }))).status).toBe(201);
+    expect((await pub.post("/api/public/join/register", reg(code, { email: "b@sombo.test" }))).status).toBe(404);
+    expect((await pub.post("/api/public/join/register", reg(code, { email: "a@sombo.test" }))).status).toBe(404);
 
     const fresh = (await api.post("/api/facility/join/code/regenerate", {})).body.code;
     expect(fresh).not.toBe(code);
@@ -101,9 +77,8 @@ describe("staff joining with the facility access code", () => {
 
   it("lets an administrator reject with a reason, and only administrators use the screens", async () => {
     const { api, facility, code } = await setup();
-    const start = await pub.post("/api/public/join", details(code));
-    await pub.post("/api/public/join/complete", { token: start.body.token, password: PASSWORD, acceptedNoticeVersion: "1" });
-    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, staffNo: "S-100" } });
+    await pub.post("/api/public/join/register", reg(code));
+    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email: "ama@sombo.test" } });
     expect((await api.post("/api/facility/join/reject", { staffIds: [staff.id], reason: "" })).status).toBe(400);
     expect((await api.post("/api/facility/join/reject", { staffIds: [staff.id], reason: "Not on our staff." })).body.rejected).toBe(1);
     expect((await prisma.staff.findUniqueOrThrow({ where: { id: staff.id } })).status).toBe("INACTIVE");
@@ -127,7 +102,7 @@ describe("staff choosing not to get texts", () => {
 describe("a facility registering itself", () => {
   const body = (extra: object = {}) => ({
     facilityName: "Kaleo Health Centre", facilityType: "HEALTH_CENTRE", region: "Upper West", adminName: "Abena Mensah", adminEmail: "abena@kaleo.test",
-    adminPhone: "024 111 2233", password: PASSWORD, acceptedTerms: true, ...extra,
+    adminPhone: "024 111 2233", password: PASSWORD, acceptedTerms: true, departments: ["Outpatient", "Maternity"], cadres: ["Nurse", "Midwife", "Pharmacist"], ...extra,
   });
 
   it("creates the facility, its administrator and an HF- access code that staff can use straight away", async () => {
@@ -136,7 +111,9 @@ describe("a facility registering itself", () => {
     expect(res.body.code).toMatch(/^HF-[2-9A-HJKMNP-Z]{6}$/);
     const facility = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" } });
     expect(facility.status).toBe("TRIAL");
-    expect(await prisma.department.count({ where: { facilityId: facility.id } })).toBeGreaterThan(5);
+    expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Maternity", "Outpatient"]);
+    expect(await prisma.cadre.count({ where: { facilityId: facility.id } })).toBe(3);
+    expect(res.body.enrolmentToken).toBeTruthy();
     expect(await prisma.privacyNotice.count({ where: { facilityId: facility.id, publishedAt: { not: null } } })).toBe(1);
     const admin = await prisma.userProfile.findUniqueOrThrow({ where: { userEmail: "abena@kaleo.test" } });
     expect(admin).toMatchObject({ role: "FACILITY_ADMIN", active: true, facilityId: facility.id });
@@ -147,12 +124,26 @@ describe("a facility registering itself", () => {
     expect(login.body.error).toBe("mfa_setup_required");
   });
 
+  it("needs a plan when plans exist, starts a 30 day trial on it, and files the facility under the chosen district", async () => {
+    const plan = await prisma.plan.create({ data: { name: "Health centre", monthlyPriceGhs: 100, sortOrder: 1 } });
+    const district = await prisma.district.create({ data: { name: "Nadowli-Kaleo", region: "Upper West" } });
+    expect((await pub.post("/api/public/register-facility", body())).body.fields.planId).toBeTruthy();
+    expect((await pub.post("/api/public/register-facility", body({ planId: "nope" }))).status).toBe(400);
+    const ok = await pub.post("/api/public/register-facility", body({ planId: plan.id, districtId: district.id }));
+    expect(ok.status).toBe(201);
+    const facility = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" }, include: { subscription: true } });
+    expect(facility.districtId).toBe(district.id);
+    expect(facility.subscription).toMatchObject({ planId: plan.id, status: "TRIAL" });
+    expect((await pub.get("/api/public/register-facility/options")).body.plans).toHaveLength(1);
+  });
+
   it("turns away a taken email, a repeated facility, a weak password, and missing consent", async () => {
     expect((await pub.post("/api/public/register-facility", body())).status).toBe(201);
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Other Clinic" }))).body.error).toBe("email_taken");
     expect((await pub.post("/api/public/register-facility", body({ adminEmail: "x@kaleo.test" }))).body.error).toBe("facility_exists");
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Third", adminEmail: "y@kaleo.test", password: "short" }))).body.fields.password).toBeTruthy();
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Fourth", adminEmail: "z@kaleo.test", acceptedTerms: false }))).status).toBe(400);
+    expect((await pub.post("/api/public/register-facility", body({ facilityName: "Fifth", adminEmail: "w@kaleo.test", departments: [] }))).body.fields.departments).toBeTruthy();
   });
 });
 
