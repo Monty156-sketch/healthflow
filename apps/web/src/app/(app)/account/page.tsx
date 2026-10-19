@@ -439,6 +439,40 @@ function NotificationsPanel() {
   );
 }
 
+function TextsPanel() {
+  const { data, error, reload } = useResource<{ optOut: boolean; hasPhone: boolean }>("/api/facility/me/sms-opt-out");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (error || !data) return null;
+
+  async function change(optOut: boolean) {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.put("/api/facility/me/sms-opt-out", { optOut });
+      reload();
+    } catch {
+      setProblem("That could not be saved. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="Text messages" description="Your facility may text you when your roster is published or a duty changes.">
+      {problem && (
+        <div className="mb-3">
+          <Notice tone="block">{problem}</Notice>
+        </div>
+      )}
+      <Checkbox label="Send me text messages" checked={!data.optOut} disabled={busy} onChange={(on) => change(!on)} />
+      <p className="ml-8 text-sm text-[var(--muted)]">
+        {data.hasPhone ? "Texts go to the phone number your facility has for you." : "Your facility has no phone number for you yet, so none are sent."} Switching this off stops all of them. You can still see everything in the app.
+      </p>
+    </Panel>
+  );
+}
+
 export default function AccountPage() {
   const { data, error, reload } = useResource<{ account: Account }>("/api/auth/account");
 
@@ -462,6 +496,7 @@ export default function AccountPage() {
           <TwoStepPanel account={a} onChanged={reload} />
           <PasswordPanel />
           {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <NotificationsPanel />}
+          {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <TextsPanel />}
         </div>
         <SessionsPanel />
       </div>

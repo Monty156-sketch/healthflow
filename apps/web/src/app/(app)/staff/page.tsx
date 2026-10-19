@@ -72,6 +72,9 @@ export default function StaffListPage() {
           isAdmin && (
             <>
               <ButtonLink href="/staff/invite">Invite staff</ButtonLink>
+              <ButtonLink href="/staff/access" variant="secondary">
+                Access code
+              </ButtonLink>
               <ButtonLink href="/staff/new" variant="secondary">
                 Add staff member
               </ButtonLink>

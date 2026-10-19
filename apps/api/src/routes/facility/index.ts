@@ -48,6 +48,7 @@ import { dashboardRouter } from "./dashboard.js";
 import { meRouter } from "./me.js";
 import { directorateRouter } from "./directorate.js";
 import { smsRouter } from "./sms.js";
+import { joinAdminRouter } from "./join.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
 export const facilityRouter = Router();
@@ -64,6 +65,7 @@ facilityRouter.use("/shifts", shiftsRouter);
 facilityRouter.use("/rules", rulesRouter);
 facilityRouter.use("/cycles", cyclesRouter);
 facilityRouter.use("/sms", smsRouter);
+facilityRouter.use("/join", joinAdminRouter);
 facilityRouter.use("/rotations", rotationsRouter);
 facilityRouter.use("/rosters", rostersRouter);
 facilityRouter.use("/ward-demand", wardDemandRouter);

@@ -188,6 +188,27 @@ function presentPrefs(prefs: unknown) {
   };
 }
 
+meRouter.get("/sms-opt-out", async (req, res) => {
+  const who = caller(req);
+  if (!who.staffId) return res.json({ optOut: false, hasPhone: false });
+  const s = await prisma.staff.findUnique({ where: { id: who.staffId }, select: { smsOptOut: true, phone: true } });
+  res.json({ optOut: s?.smsOptOut ?? false, hasPhone: Boolean(s?.phone) });
+});
+
+// A person decides about texts to their own phone. The administrator can also set it, but never overrides this.
+meRouter.put("/sms-opt-out", async (req, res) => {
+  const who = caller(req);
+  if (!who.staffId) return res.status(404).json({ error: "not_found" });
+  const input = parseOr400(z.object({ optOut: z.boolean() }), req.body, res);
+  if (!input) return;
+  await prisma.staff.update({ where: { id: who.staffId }, data: { smsOptOut: input.optOut } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "sms_opt_out_changed", entityType: "Staff", entityId: who.staffId,
+    summary: input.optOut ? `${who.displayName} stopped text messages to their own phone.` : `${who.displayName} allowed text messages to their own phone again.`,
+  });
+  res.json({ optOut: input.optOut });
+});
+
 meRouter.get("/notification-preferences", async (req, res) => {
   const me = await ownProfile(req);
   if (!me) return res.status(404).json({ error: "not_found" });

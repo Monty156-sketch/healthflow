@@ -43,14 +43,15 @@ export async function sendSms(to: string, text: string): Promise<{ ok: boolean; 
  * Texts one staff member, if every condition holds. Never throws: a text that
  * fails must not stop the change that caused it.
  */
-export async function textStaff(facilityId: string, staffId: string, type: string, body: string): Promise<void> {
+export async function textStaff(facilityId: string, staffId: string, type: string, body: string, opts: { force?: boolean } = {}): Promise<void> {
   try {
     const [facility, staff] = await Promise.all([
       prisma.facility.findUnique({ where: { id: facilityId }, select: { name: true, smsEnabled: true } }),
       prisma.staff.findFirst({ where: { id: staffId, facilityId }, select: { phone: true, smsOptOut: true, status: true } }),
     ]);
-    if (!facility?.smsEnabled || !staff || staff.smsOptOut) return;
-    if (staff.status !== "ACTIVE" && staff.status !== "ON_LEAVE") return;
+    // "force" is for a message the person asked for by registering, such as the answer to their sign-up. It still honours an opt-out.
+    if (!facility || !staff || staff.smsOptOut || (!facility.smsEnabled && !opts.force)) return;
+    if (staff.status !== "ACTIVE" && staff.status !== "ON_LEAVE" && !opts.force) return;
 
     const to = normalisePhone(staff.phone);
     const text = `${facility.name}: ${body}`.slice(0, MAX_LENGTH);

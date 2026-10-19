@@ -47,6 +47,8 @@ function messageFor(err: unknown): string {
       return "That code didn't match. Check the time on your phone and use the newest code.";
     case "account_inactive":
       return "This account is not active. Contact your facility admin.";
+    case "account_pending":
+      return "Your in-charge has not approved your account yet. You will get a text message when it is approved.";
     case "district_pending":
       return "Your district registration is waiting for approval. We will email you as soon as it is approved.";
     case "district_declined":
@@ -220,8 +222,8 @@ export function SignInScreen({ audience }: { audience: Audience }) {
             <form onSubmit={handleSignIn} noValidate className="space-y-4">
               {stage === "credentials" && (
                 <>
-                  <Field label="Email">
-                    {(a) => <Input {...a} type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />}
+                  <Field label={audience === "facility" ? "Email or phone number" : "Email"}>
+                    {(a) => <Input {...a} type={audience === "facility" ? "text" : "email"} autoComplete={audience === "facility" ? "username" : "email"} value={email} onChange={(e) => setEmail(e.target.value)} />}
                   </Field>
                   <Field label="Password">
                     {(a) => (
@@ -274,6 +276,14 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                       Is your district new to HealthFlow?{" "}
                       <Link href="/district/register" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
                         Register your district
+                      </Link>
+                    </p>
+                  )}
+                  {audience === "facility" && (
+                    <p className="mt-2 border-t border-[var(--border)] pt-3 text-[var(--muted)]">
+                      New to your facility on HealthFlow?{" "}
+                      <Link href="/join" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
+                        Join with your facility code
                       </Link>
                     </p>
                   )}

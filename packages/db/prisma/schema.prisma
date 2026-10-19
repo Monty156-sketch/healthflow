@@ -485,6 +485,12 @@ model Staff {
   staffNo              String
   fullName             String
   /// Set when this person asked not to be texted, or an administrator was told so.
+  /// How this record came to exist when it was not typed in: "CODE" for someone who registered with the access code.
+  joinedVia            String?
+  /// What they typed when the facility had no cadre or department list to choose from.
+  requestedCadre       String?
+  requestedDepartment  String?
+  phoneVerified        Boolean  @default(false)
   smsOptOut            Boolean  @default(false)
   phone                String?
   email                String?
@@ -1402,4 +1408,27 @@ model SmsMessage {
   createdAt  DateTime  @default(now())
 
   @@index([facilityId, createdAt])
+}
+
+/// A registration in progress. Nothing is written to Staff until the person has verified their phone and chosen a password.
+model JoinAttempt {
+  id             String    @id @default(cuid())
+  tokenHash      String    @unique
+  facilityId     String
+  codeId         String
+  phone          String
+  details        Json
+  verifyMethod   String
+  verifyCodeHash String?
+  sends          Int       @default(0)
+  attempts       Int       @default(0)
+  lockedUntil    DateTime?
+  verifiedAt     DateTime?
+  completedAt    DateTime?
+  ip             String?
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+
+  @@index([phone, createdAt])
+  @@index([facilityId])
 }
