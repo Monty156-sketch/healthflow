@@ -12,3 +12,7 @@ build/
 /apps/*/coverage/
 /packages/*/coverage/
 packages/db/generated/
+
+# Playwright
+apps/web/test-results/
+apps/web/playwright-report/

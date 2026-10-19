@@ -6,6 +6,7 @@
 // resource limits" (error 1102) fix.
 import openNext from "./.open-next/worker.js";
 import { forwardToApi } from "./src/lib/apiProxy.ts";
+import { withScriptPolicy } from "./src/lib/csp.ts";
 
 export * from "./.open-next/worker.js";
 
@@ -15,6 +16,7 @@ export default {
     if (pathname === "/api" || pathname.startsWith("/api/")) {
       return forwardToApi(request, env.API_ORIGIN ?? "", env.PROXY_SHARED_SECRET);
     }
-    return openNext.fetch(request, env, ctx);
+    // Pages get a policy that allows only scripts carrying this view's nonce.
+    return withScriptPolicy(await openNext.fetch(request, env, ctx));
   },
 };
