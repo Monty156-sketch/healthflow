@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button, Field, Input, Notice, Select, Textarea } from "@/components/ui";
 
@@ -19,6 +19,16 @@ export function AccessRequestForm({ source = "LANDING_PAGE" }: { source?: "LANDI
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hours, setHours] = useState<number | null>(null);
+  // Districts that have registered and been approved. Null while loading, empty when there are none yet.
+  const [districts, setDistricts] = useState<{ id: string; name: string; region: string }[] | null>(null);
+  const [districtId, setDistrictId] = useState("");
+  useEffect(() => {
+    let live = true;
+    api.get<{ districts: { id: string; name: string; region: string }[] }>("/api/public/districts").then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
+    return () => { live = false; };
+  }, []);
+  const listed = districts !== null && districts.length > 0;
+  const other = districtId === "other";
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
 
   async function submit(e: React.FormEvent) {
@@ -27,7 +37,11 @@ export function AccessRequestForm({ source = "LANDING_PAGE" }: { source?: "LANDI
     setProblem(null);
     setErrors({});
     const body: Record<string, unknown> = { source };
-    for (const [k, val] of Object.entries(v)) if (val.trim()) body[k] = k === "staffCountEstimate" ? Number(val) : val.trim();
+    for (const [k, val] of Object.entries(v)) {
+      if (k === "district" && districtId && !other) continue; // the chosen district's name is set by the server
+      if (val.trim()) body[k] = k === "staffCountEstimate" ? Number(val) : val.trim();
+    }
+    if (districtId && !other) body.districtId = districtId;
     try {
       const res = await api.post<{ responseHours: number }>("/api/public/access-requests", body);
       setHours(res.responseHours);
@@ -63,8 +77,27 @@ export function AccessRequestForm({ source = "LANDING_PAGE" }: { source?: "LANDI
             </Select>
           )}
         </Field>
-        <Field label="District" optional>{(a) => <Input {...a} value={v.district} onChange={set("district")} />}</Field>
-        <Field label="Region" optional>{(a) => <Input {...a} value={v.region} onChange={set("region")} />}</Field>
+        {listed ? (
+          <Field label="District" hint="Your facility joins this district when we set it up." error={errors.districtId}>
+            {(a) => (
+              <Select {...a} value={districtId} onChange={(e) => {
+                setDistrictId(e.target.value);
+                const d = districts?.find((x) => x.id === e.target.value);
+                if (d) setV({ ...v, district: d.name, region: d.region });
+              }}>
+                <option value="">Choose your district</option>
+                {districts!.map((d) => (
+                  <option key={d.id} value={d.id}>{d.name}, {d.region}</option>
+                ))}
+                <option value="other">My district is not listed</option>
+              </Select>
+            )}
+          </Field>
+        ) : (
+          <Field label="District" optional>{(a) => <Input {...a} value={v.district} onChange={set("district")} />}</Field>
+        )}
+        {(!listed || other) && <Field label={other ? "Your district's name" : "Region"} optional>{(a) => <Input {...a} value={other ? v.district : v.region} onChange={set(other ? "district" : "region")} />}</Field>}
+        {other && <Field label="Region" optional>{(a) => <Input {...a} value={v.region} onChange={set("region")} />}</Field>}
         <Field label="Your name" error={errors.contactName}>{(a) => <Input {...a} value={v.contactName} onChange={set("contactName")} autoComplete="name" required />}</Field>
         <Field label="Your role" optional>{(a) => <Input {...a} value={v.contactRole} onChange={set("contactRole")} />}</Field>
         <Field label="Email" error={errors.contactEmail} hint="We reply here.">{(a) => <Input {...a} type="email" value={v.contactEmail} onChange={set("contactEmail")} autoComplete="email" required />}</Field>

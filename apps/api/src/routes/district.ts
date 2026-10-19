@@ -228,3 +228,31 @@ districtRouter.get("/report-pack.csv", async (req, res) => {
 });
 
 export type { Granted };
+
+// ------------------------------------------------------------- the district's own details and directory
+
+/** The details the district registered with. Read only: a change goes through PS Tech. */
+districtRouter.get("/profile", async (req, res) => {
+  const d = await prisma.district.findUnique({ where: { id: req.district!.districtId } });
+  if (!d) return res.status(404).json({ error: "not_found" });
+  res.json({
+    district: {
+      name: d.name, region: d.region, status: d.status, registeredAt: d.registeredAt, approvedAt: d.approvedAt,
+      contact: { name: d.contactName, role: d.contactRole, email: d.contactEmail, phone: d.contactPhone, officeAddress: d.officeAddress },
+    },
+  });
+});
+
+/**
+ * Facilities that chose this district. Name, type and whether they have given
+ * access: nothing about their staff or rosters, which stay behind the grants.
+ */
+districtRouter.get("/facilities", async (req, res) => {
+  const districtId = req.district!.districtId;
+  const [facilities, grants] = await Promise.all([
+    prisma.facility.findMany({ where: { districtId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, facilityType: true, createdAt: true } }),
+    prisma.districtGrant.findMany({ where: { districtId, status: "ACTIVE" }, select: { facilityId: true } }),
+  ]);
+  const granted = new Set(grants.map((g) => g.facilityId));
+  res.json({ facilities: facilities.map((f) => ({ id: f.id, name: f.name, type: f.facilityType, joinedAt: f.createdAt, grantedAccess: granted.has(f.id) })) });
+});

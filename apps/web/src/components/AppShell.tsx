@@ -287,7 +287,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const supporting = user?.role === "PLATFORM_ADMIN" && support !== null;
 
   useEffect(() => {
-    if (!authLoading && !user) router.replace("/login");
+    if (!authLoading && !user) router.replace(pathname === "/platform" || pathname.startsWith("/platform/") ? "/platform/login" : pathname === "/district" || pathname.startsWith("/district/") ? "/district/login" : "/login");
     // The platform console is where a platform admin starts, unless acting inside a facility.
     if (user?.role === "PLATFORM_ADMIN" && pathname === "/dashboard" && !supporting) router.replace("/platform");
     if (user?.role === "STAFF" && pathname === "/dashboard") router.replace("/today");

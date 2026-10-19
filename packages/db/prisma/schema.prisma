@@ -408,6 +408,12 @@ model Facility {
   @@index([districtId])
 }
 
+enum DistrictStatus {
+  PENDING
+  ACTIVE
+  DECLINED
+}
+
 model District {
   id        String   @id @default(cuid())
   name      String
@@ -415,6 +421,16 @@ model District {
   code      String?  @unique
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
+  /// A district that registers itself waits as PENDING until PS Tech approves it. Only ACTIVE districts can be chosen by a facility.
+  status         DistrictStatus @default(ACTIVE)
+  contactName    String?
+  contactRole    String?
+  contactEmail   String?
+  contactPhone   String?
+  officeAddress  String?
+  registeredAt   DateTime?
+  approvedAt     DateTime?
+  declineReason  String?
 
   facilities     Facility[]
   districtGrants DistrictGrant[]
@@ -1225,6 +1241,8 @@ model AccessRequest {
   declineReason      String?
   /// The facility this request became, so the link survives.
   provisionedFacilityId String?
+  /// The registered district the requester picked, when they picked one.
+  districtId String?
 
   threadNotes AccessRequestNote[]
 
