@@ -38,7 +38,7 @@ function BlockView({ b }: { b: Block }) {
       </ul>
     );
   return (
-    <div className="mb-3 overflow-x-auto">
+    <div className="mb-3 overflow-x-auto" role="region" aria-label="Table" tabIndex={0}>
       <table className="w-full min-w-[32rem] border-collapse text-left text-[15px]">
         <thead>
           <tr>
@@ -104,7 +104,7 @@ export function LegalDocument({ doc: fallback, other, print, slug }: { doc: Lega
   const doc: LegalDoc = stored
     ? { title: stored.current.title, version: stored.current.version, effective: stored.current.effectiveDate ? new Date(stored.current.effectiveDate).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "", sections: parseBody(stored.current.body) }
     : fallback;
-  if (!loaded) return (<><PublicNav /><main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8"><p role="status" className="text-[var(--muted)]">Loading</p></main></>);
+  if (!loaded) return (<><PublicNav /><main id="main" className="mx-auto w-full max-w-3xl flex-1 px-5 py-8"><h1 className="text-3xl font-semibold leading-tight">{doc.title}</h1><p role="status" className="mt-3 text-[var(--muted)]">Loading</p></main></>);
   const short = doc.sections.length <= 8;
   return (
     <>

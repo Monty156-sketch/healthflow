@@ -23,6 +23,7 @@ export const JOBS: Job[] = [
   { name: "support-expiry", label: "End expired support sessions", everyMs: 5 * MIN, run: async () => { await closeExpiredSessions(); return "Checked."; } },
   { name: "overdue-invoices", label: "Mark overdue invoices", everyMs: 6 * HOUR, run: async () => `${await markOverdue()} invoice(s) marked overdue.` },
   { name: "retention-scan", label: "Retention scan", everyMs: 24 * HOUR, run: async () => JSON.stringify(await runRetentionJob()).slice(0, 500) },
+  { name: "sms-log-cleanup", label: "Delete text message records older than 90 days", everyMs: 24 * HOUR, run: async () => `${(await prisma.smsMessage.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86_400_000) } } })).count} record(s) removed.` },
 ];
 
 /** Runs one job now and records it. Never throws. */

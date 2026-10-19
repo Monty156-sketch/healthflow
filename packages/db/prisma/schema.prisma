@@ -367,6 +367,8 @@ model Facility {
   coverAckWindowHours          Int     @default(4)
   coverAckUrgentHours          Int     @default(1)
 
+  /// Texts the staff who have a phone number when their duties change. Off until an administrator turns it on.
+  smsEnabled                  Boolean       @default(false)
   active                      Boolean       @default(true)
   createdAt                   DateTime      @default(now())
   updatedAt                   DateTime      @updatedAt
@@ -387,6 +389,7 @@ model Facility {
   attendance          Attendance[]
   dutySwaps           DutySwap[]
   notifications       Notification[]
+  smsMessages         SmsMessage[]
   invitations         StaffInvitation[]
   consentRecords      ConsentRecord[]
   dsrRequests         DataSubjectRequest[]
@@ -481,6 +484,8 @@ model Staff {
   facility             Facility         @relation(fields: [facilityId], references: [id])
   staffNo              String
   fullName             String
+  /// Set when this person asked not to be texted, or an administrator was told so.
+  smsOptOut            Boolean  @default(false)
   phone                String?
   email                String?
   cadreId              String?
@@ -1375,4 +1380,26 @@ model JobRun {
   detail     String?
 
   @@index([name, startedAt])
+}
+
+enum SmsStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Every text HealthFlow tried to send, kept for 90 days so an administrator can see who was told what.
+model SmsMessage {
+  id         String    @id @default(cuid())
+  facilityId String
+  facility   Facility  @relation(fields: [facilityId], references: [id])
+  staffId    String?
+  toPhone    String
+  type       String
+  body       String
+  status     SmsStatus
+  error      String?
+  createdAt  DateTime  @default(now())
+
+  @@index([facilityId, createdAt])
 }

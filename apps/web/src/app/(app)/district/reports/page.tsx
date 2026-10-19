@@ -39,7 +39,7 @@ export default function DistrictReports() {
             {rows.length === 0 ? (
               <p className="text-[15px] text-[var(--muted)]">No facility has granted this information.</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto" role="region" aria-label="Report table" tabIndex={0}>
                 <table className="w-full min-w-[28rem] border-collapse text-[15px]">
                   <thead>
                     <tr>

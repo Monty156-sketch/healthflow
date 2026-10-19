@@ -22,6 +22,7 @@ interface FormValues {
   eligibleShiftIds: string[];
   excludedFromNights: boolean;
   morningOnly: boolean;
+  smsOptOut: boolean;
   willingForExtraDuties: boolean;
   exclusionReason: string;
   maxDutiesPerWeek: string;
@@ -43,6 +44,7 @@ function initialValues(s?: Staff): FormValues {
     eligibleShiftIds: (s?.eligibleShifts ?? []).map((x) => x.id),
     excludedFromNights: s?.excludedFromNights ?? false,
     morningOnly: s?.morningOnly ?? false,
+    smsOptOut: s?.smsOptOut ?? false,
     willingForExtraDuties: s?.willingForExtraDuties ?? false,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
@@ -85,6 +87,7 @@ export function StaffForm({
         ...v,
         // A new person whose position says in-charge is set to mornings by the server; ticking it here does the same.
         morningOnly: staff ? v.morningOnly : v.morningOnly || undefined,
+        smsOptOut: staff ? v.smsOptOut : v.smsOptOut || undefined,
         maxDutiesPerWeek: v.maxDutiesPerWeek === "" ? 0 : Number(v.maxDutiesPerWeek),
         exclusionReason: v.excludedFromNights ? v.exclusionReason : "",
       };
@@ -205,6 +208,10 @@ export function StaffForm({
             checked={values.excludedFromNights}
             onChange={set("excludedFromNights")}
           />
+        </div>
+        <div className="sm:col-span-2">
+          <Checkbox label="Do not send this person text messages" checked={values.smsOptOut} onChange={set("smsOptOut")} />
+          <p className="mt-1 text-sm text-[var(--muted)]">Tick this if they asked not to be texted. They still see everything in the app.</p>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="In-charge: weekday mornings only" checked={values.morningOnly} onChange={set("morningOnly")} />

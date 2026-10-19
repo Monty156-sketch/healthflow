@@ -16,5 +16,10 @@
     "db:generate": "pnpm --filter @healthflow/db generate",
     "db:migrate": "pnpm --filter @healthflow/db migrate",
     "db:seed": "pnpm --filter @healthflow/db seed"
+  },
+  "pnpm": {
+    "overrides": {
+      "uuid@<11.1.1": ">=11.1.1"
+    }
   }
 }

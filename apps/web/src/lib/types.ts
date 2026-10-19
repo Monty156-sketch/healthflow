@@ -22,6 +22,7 @@ export interface Staff {
   emergencyContactPhone: string | null;
   excludedFromNights: boolean;
   morningOnly: boolean;
+  smsOptOut: boolean;
   willingForExtraDuties: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;

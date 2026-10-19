@@ -5,6 +5,7 @@ import { useFacility, type Facility } from "@/components/AppShell";
 import { api } from "@/lib/api";
 import { useSave } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS } from "@/lib/format";
+import { SmsPanel } from "@/components/SmsPanel";
 import { Button, Checkbox, Field, Input, Notice, PageHeader, Panel, SaveStatus, Select } from "@/components/ui";
 
 type Values = Omit<Facility, "id" | "status">;
@@ -159,6 +160,11 @@ export default function FacilitySettingsPage() {
           <SaveStatus state={save.state} onRetry={save.retry} />
         </div>
       </form>
+      {isAdmin && (
+        <div className="mt-6">
+          <SmsPanel />
+        </div>
+      )}
     </>
   );
 }
