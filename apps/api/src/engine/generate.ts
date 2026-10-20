@@ -583,11 +583,9 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
    */
   const dutyShiftsAll = input.shifts.filter((x) => x.countsAsDuty && !x.isOnCall && x.startMin !== null);
   const avgDutyHours = dutyShiftsAll.length ? dutyShiftsAll.reduce((t, x) => t + hoursOf(x), 0) / dutyShiftsAll.length : 8;
+  const peerTotals = new Map<string, { given: number; available: number }>();
   const deficitPull = (s: EStaff, day: number): number => {
     if (day === period.startDay) return 0;
-    const peers = staff.filter((p) => p.cadreId === s.cadreId && !p.morningOnly);
-    let given = 0;
-    let available = 0;
     const mineAvail = (p: EStaff) => {
       let n = 0;
       for (let d = period.startDay; d < day; d++) if (!onLeave(p, d)) n++;
@@ -599,10 +597,15 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (const [d, sid] of by.get(id)!) if (d >= period.startDay && d < day) h += hoursOf(shiftById.get(sid)!);
       return h;
     };
-    for (const p of peers) {
-      given += hoursSoFar(p.id);
-      available += mineAvail(p);
+    // Only days before `day` count, so the cadre's totals are worked out once per day, not once per candidate.
+    const key = `${s.cadreId}|${day}`;
+    let totals = peerTotals.get(key);
+    if (!totals) {
+      totals = { given: 0, available: 0 };
+      for (const p of staff) if (p.cadreId === s.cadreId && !p.morningOnly) { totals.given += hoursSoFar(p.id); totals.available += mineAvail(p); }
+      peerTotals.set(key, totals);
     }
+    const { given, available } = totals;
     if (available === 0) return 0;
     // Duties owed through the ledger, or carried from earlier months, move a person's share up or down.
     const unit = avgDutyHours;
@@ -611,7 +614,6 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     return -DEFICIT_WEIGHT * Math.max(-4, Math.min(4, behind));
   };
 
-  /** Weekend duties already done in the last three months, against the cadre: more than the others means later in the queue. */
   // Public holidays: who has worked more of them in the last year, against their cadre.
   const holidayCarry: Record<string, number> = {};
   if (input.holidayWorked) {
@@ -636,6 +638,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     if (want === shift.id) return -PLAN_FOLLOW;
     return want ? PLAN_OTHER_SHIFT : PLAN_REST_DAY;
   };
+  /** Weekend duties already done in the last three months, against the cadre: more than the others means later in the queue. */
   const carryPull = (s: EStaff): number => CARRY_SPECIAL_WEIGHT * Math.max(-4, Math.min(4, carrySpecial[s.id] ?? 0));
 
   const nightWeight = rule.has("C12") ? 10 * (limit("C12") ?? 1) : 10;
@@ -880,21 +883,15 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         totalAll += b.picks.length;
         if (b.night) totalNight += b.picks.length;
       }
-      // Nights in whole blocks: the same number for everyone who takes them, the few extra to those with the fewest nights lately.
-      const nLen = nightRule ? capOf(nightRule, true) : 1;
-      const nightBlocksNeeded = takers.length ? blocks.filter((b) => b.night).length : 0;
-      void nLen;
-      const each = takers.length ? Math.floor(nightBlocksNeeded / takers.length) : 0;
-      const extraTo = new Set(
-        [...takers].sort((x, y) => nightsLast90(x.id) - nightsLast90(y.id) || x.staffNo.localeCompare(y.staffNo, undefined, { numeric: true })).slice(0, nightBlocksNeeded - each * takers.length).map((x) => x.id)
-      );
       // Fair by hours, not by duty count: a 12-hour night weighs twice a 6-hour morning. Loads are kept in "average duties"
       // (hours divided by the average duty's hours), so the weights below read the same whatever the shift lengths.
       const totalHours = blocks.reduce((t, b) => t + b.picks.reduce((h, [, x]) => h + hoursOf(shiftById.get(x)!), 0), 0);
       const avgH = totalAll ? totalHours / totalAll : 1;
       const loadOf = (b: Block) => b.picks.reduce((h, [, x]) => h + hoursOf(shiftById.get(x)!), 0) / avgH;
       const meanLast90 = takers.length ? takers.reduce((t, x) => t + nightsLast90(x.id), 0) / takers.length : 0;
-      interface Who { s: EStaff; plan: Map<number, string>; target: number; nights: number; nightBlocks: number; nightTarget: number; free: number; lastNight: boolean; lastShift: string | null; special: number; hols: number; duties: number }
+      // Nights by count, against an even share, less whatever extra they did in the last three months.
+      const nightShareOf = (s: EStaff) => totalNight / Math.max(1, takers.length) - 0.5 * (nightsLast90(s.id) - meanLast90);
+      interface Who { s: EStaff; plan: Map<number, string>; target: number; nights: number; free: number; lastNight: boolean; lastShift: string | null; special: number; hols: number; duties: number }
       const people: Who[] = pool.map((s) => {
         const mine = by.get(s.id)!;
         let last = -Infinity;
@@ -904,7 +901,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         const r = lastShift ? ruleFor(s, lastNight) : undefined;
         const adjust = (input.settlement?.[s.id] ?? 0) + (carryTotal[s.id] ?? 0);
         return {
-          s, plan: new Map(), target: (totalAll / pool.length) * 1.04 + adjust, nightBlocks: 0, nightTarget: canNight(s) ? each + (extraTo.has(s.id) ? 1 : 0) : 0,
+          s, plan: new Map(), target: (totalAll / pool.length) * 1.04 + adjust,
           // A run that began last month may carry straight on; otherwise the rest it earned comes first.
           free: last > -Infinity ? (last === period.startDay - 1 ? period.startDay : last + 1 + (r?.offDaysRequired ?? 0)) : period.startDay,
           lastNight, lastShift, special: 0, hols: 0, duties: 0, nights: 0,
@@ -944,8 +941,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           }
           // Days the person has asked to have off, still waiting for a decision.
           cost += ASKED_OFF * b.picks.filter(([d]) => askedOff.has(`${s.id}:${d}`)).length;
-          // Nights by count, against an even share, less whatever extra they did in the last three months.
-          const nightShare = totalNight / Math.max(1, takers.length) - 0.5 * (nightsLast90(s.id) - meanLast90);
+          const nightShare = nightShareOf(s);
           if (b.night) {
             const over = w.nights + b.picks.length - nightShare;
             cost += over > 0.5 ? 15 * over : -5 * Math.min(b.picks.length, -over + 0.5);
@@ -953,15 +949,10 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             // Someone who still owes nights is kept free for them; day blocks go first to those who do not take nights.
             cost += 2 * Math.max(0, nightShare - w.nights);
           }
-          // A fair pace through the month.
+          // A fair pace through the month; someone more than a block behind is pulled in hard, so nobody is left with a thin month.
           const end = b.picks[b.picks.length - 1][0];
-          // Someone more than a block behind is pulled in hard, so nobody is left with a thin month.
-          // Day blocks are paced against what is left of the person's share once their nights are counted, so whoever
-          // takes an extra night block later in the month is not also loaded with day duties early on.
-          {
-            const ahead = (w.duties + loadOf(b)) - (w.target * (end - period.startDay + 1)) / days;
-            cost += 3 * ahead + (ahead < -3 ? 12 * (ahead + 3) : 0);
-          }
+          const ahead = (w.duties + loadOf(b)) - (w.target * (end - period.startDay + 1)) / days;
+          cost += 3 * ahead + (ahead < -3 ? 12 * (ahead + 3) : 0);
           // The shift after a night rest, and the rotation order.
           if (w.lastNight && !b.night) {
             const back = ruleFor(s, true)?.nextShiftAfterRestId;
@@ -1006,7 +997,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         w.lastNight = b.night;
         w.lastShift = b.picks[b.picks.length - 1][1];
         w.duties += loadOf(b);
-        if (b.night) { w.nightBlocks++; w.nights += b.picks.length; }
+        if (b.night) w.nights += b.picks.length;
         w.special += b.picks.filter(([d]) => isSpecial(d)).length;
         w.hols += b.picks.filter(([d]) => holidays.has(d)).length;
         owners.push({ b, w });
@@ -1028,7 +1019,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             .sort((x, y) => x.duties - x.target - (y.duties - y.target));
           for (const u of under) {
             const s = u.s;
-            if (b.night ? !canNight(s) || u.nightBlocks >= u.nightTarget + 1 : !canDay(s)) continue;
+            if (b.night ? !canNight(s) || u.nights >= nightShareOf(s) : !canDay(s)) continue;
             const mine = by.get(s.id)!;
             const st0 = state.get(s.id)!;
             if (b.picks.some(([d, x]) => staticReason(s, shiftById.get(x)!, d) || st0.rest.get(d) === "BLOCK" || mine.has(d) || askedOff.has(`${s.id}:${d}`))) continue;
@@ -1044,6 +1035,10 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             let broken = false;
             for (let ws = week(first - 1); ws <= last + 1 && !broken; ws += 7) if (weekBroken(ws, dutyOf)) broken = true;
             if (broken) continue;
+            // The same days-off and weekend checks as when the block was first given out.
+            const planOf = (d: number) => u.plan.get(d) ?? mine.get(d);
+            if (c14 !== null && [...Array(days)].filter((_, i) => dutyOf(period.startDay + i)).length > days - c14) continue;
+            if (c13 !== null && freeWeekends(dutyOf) < freeWeekends(planOf) && freeWeekends(dutyOf) < Math.min(c13, saturdays.length)) continue;
             for (const [d] of b.picks) o.w.plan.delete(d);
             for (const [d, x] of b.picks) u.plan.set(d, x);
             const sp = b.picks.filter(([d]) => isSpecial(d)).length;
@@ -1051,7 +1046,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             o.w.duties -= loadOf(b); u.duties += loadOf(b);
             o.w.special -= sp; u.special += sp;
             o.w.hols -= hl; u.hols += hl;
-            if (b.night) { o.w.nightBlocks--; u.nightBlocks++; o.w.nights -= b.picks.length; u.nights += b.picks.length; }
+            if (b.night) { o.w.nights -= b.picks.length; u.nights += b.picks.length; }
             o.w = u;
             moved = true;
             break;
@@ -1146,7 +1141,9 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (const [d, sid] of mine) if (d >= period.startDay && d <= period.endDay && plan.get(d) !== sid) offPlan++;
       for (const [d, sid] of plan) if (mine.get(d) !== sid) offPlan++;
     }
-    return nightWeight * nights * nights + 4 * special * special + 2 * (hours / 40) * (hours / 40) - BLOCK_REWARD * pairs + stray + soft + 30 * offPlan;
+    let asked = 0;
+    for (const [d] of mine) if (askedOff.has(`${s.id}:${d}`)) asked++;
+    return nightWeight * nights * nights + 4 * special * special + 2 * (hours / 40) * (hours / 40) - BLOCK_REWARD * pairs + stray + soft + 30 * offPlan + ASKED_OFF * asked;
   };
 
   const violations = (s: EStaff): number => {
@@ -1176,11 +1173,23 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         if (run > cr.consecutiveDuties && d >= period.startDay) overruns++;
       }
     }
+    // The person's own monthly limits, which no tidying move may break either.
+    let nights = 0;
+    let hours = 0;
+    for (const [d, sid] of mine) {
+      if (d < period.startDay || d > period.endDay) continue;
+      if (shiftById.get(sid)!.isOvernight) nights++;
+      hours += hoursOf(shiftById.get(sid)!);
+    }
+    if (s.maxNightsPerMonth && nights > s.maxNightsPerMonth) violationsCount += nights - s.maxNightsPerMonth;
+    if (s.maxHoursPerMonth && hours > s.maxHoursPerMonth) violationsCount++;
     // Off blocks, the shift after a rest, and block orders that are set to Block.
     return n + 1_000_000 * (violationsCount + scan(s).hard) + 1000 * overruns;
   };
 
   const lockedKeys = new Set(input.locked.map((l) => `${l.staffId}:${l.day}`));
+  /** Handing a duty from someone who can lead to someone who cannot would take the lead off a shift that asks for one. */
+  const losesLead = (from: EStaff, to: EStaff, shift: EShift) => Boolean(shift.minLeads) && Boolean(from.canLead) && !to.canLead;
   const random = mulberry32(period.startDay + (input.variation ?? 0) * 7919);
   let improvements = 0;
 
@@ -1224,7 +1233,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       }
       // c now holds its final state while the hand-over is looked for, and nobody already in the chain is asked again.
       const takers = staff
-        .filter((r) => !chain.has(r.id) && r.id !== c.id && r.cadreId === c.cadreId && !r.morningOnly && !lockedKeys.has(`${r.id}:${move.day}`))
+        .filter((r) => !chain.has(r.id) && r.id !== c.id && r.cadreId === c.cadreId && !r.morningOnly && !lockedKeys.has(`${r.id}:${move.day}`) && !losesLead(c, r, moved))
         .sort((x, y) => dutyCount(x.id, period.startDay, period.endDay, () => true) - dutyCount(y.id, period.startDay, period.endDay, () => true) || x.staffNo.localeCompare(y.staffNo, undefined, { numeric: true }));
       for (const r of takers) {
         if (by.get(r.id)!.has(move.day)) continue;
@@ -1265,6 +1274,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       const shiftA = shiftById.get(a.shiftId)!;
       const shiftB = shiftById.get(b.shiftId)!;
       if (staticReason(sb, shiftA, a.day) || staticReason(sa, shiftB, b.day)) continue;
+      if (losesLead(sa, sb, shiftA) || losesLead(sb, sa, shiftB)) continue;
       if (by.get(sb.id)!.has(a.day) && !(b.day === a.day && b.staffId === sb.id)) continue;
       if (by.get(sa.id)!.has(b.day) && !(a.day === b.day && a.staffId === sa.id)) continue;
       if (lockedKeys.has(`${sb.id}:${a.day}`) || lockedKeys.has(`${sa.id}:${b.day}`)) continue;
@@ -1299,7 +1309,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       if (!peers.length) continue;
       const to = peers[Math.floor(random() * peers.length)];
       const shift = shiftById.get(a.shiftId)!;
-      if (staticReason(to, shift, a.day) || by.get(to.id)!.has(a.day) || lockedKeys.has(`${from.id}:${a.day}`)) continue;
+      if (staticReason(to, shift, a.day) || by.get(to.id)!.has(a.day) || lockedKeys.has(`${from.id}:${a.day}`) || losesLead(from, to, shift)) continue;
       const before = cost(from) + cost(to);
       const vBefore = violations(from) + violations(to);
       by.get(from.id)!.delete(a.day);
