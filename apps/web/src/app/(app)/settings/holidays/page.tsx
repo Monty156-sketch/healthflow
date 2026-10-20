@@ -82,8 +82,8 @@ export default function HolidaysPage() {
 
   return (
     <>
-      <PageHeader title="Public holidays" description="Skipped when working days are counted, and used by the roster for fair spreading of holiday duties." />
-      <div className="mb-4"><Notice tone="warning">The fixed holidays were added from the Ministry of the Interior list. Eid days are set by the Chief Imam during the year, and a holiday that falls on a weekend may be moved. Add or change those here when the official notice is out. Check every date against it.</Notice></div>
+      <PageHeader title="Public holidays" description="Not counted as leave days. Shared fairly on the roster." />
+      <div className="mb-4"><Notice tone="warning">Add Eid days and moved holidays when they are announced.</Notice></div>
       <div className="mb-4 max-w-[10rem]">
         <label htmlFor="ho-year" className="mb-1 block text-sm font-medium">Year</label>
         <Select id="ho-year" value={year} onChange={(e) => setYear(Number(e.target.value))}>

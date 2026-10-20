@@ -61,7 +61,7 @@ export default function ImportPage() {
 
   return (
     <>
-      <PageHeader title="Import staff from a file" description="Use the template, or your own file with a heading row. People are matched on staff number, so importing again updates them instead of adding them twice." actions={<Button variant="secondary" onClick={() => api.download("/api/facility/staff-import/template.csv", "staff-import-template.csv")}>Download the template</Button>} />
+      <PageHeader title="Import staff from a file" description="Use the template. Importing again updates people by staff number." actions={<Button variant="secondary" onClick={() => api.download("/api/facility/staff-import/template.csv", "staff-import-template.csv")}>Download the template</Button>} />
       {problem && <Notice tone="block">{problem}</Notice>}
       {result ? (
         <Panel title="Import finished">

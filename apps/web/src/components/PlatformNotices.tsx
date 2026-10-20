@@ -46,7 +46,7 @@ export function PlatformNotices() {
         <div role="dialog" aria-modal="true" aria-labelledby="legal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-5">
             <h2 id="legal-title" className="text-lg font-semibold">A document you agreed to has changed</h2>
-            <p className="mt-1 text-[15px] text-[var(--muted)]">As the facility administrator you need to read the change and acknowledge it. Your name and the version are recorded.</p>
+            <p className="mt-1 text-[15px] text-[var(--muted)]">Read and acknowledge this change. Your name is recorded.</p>
             <ul className="mt-4 space-y-4">
               {data.legalPending.map((d) => (
                 <li key={d.slug} className="border-t border-[var(--border)] pt-3 text-[15px]">

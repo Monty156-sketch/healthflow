@@ -165,7 +165,7 @@ export function FacilityRegisterForm() {
     const message = `Join ${done.facilityName} on HealthFlow. Open ${done.joinUrl} or go to the HealthFlow site, choose "Join with your facility code" and enter ${done.code}.`;
     return (
       <div className="space-y-5">
-        <Notice tone="success"><strong className="block">{done.facilityName} is registered.</strong>Your staff use the code below to join. It is also under Staff, Access code, whenever you need it.</Notice>
+        <Notice tone="success"><strong className="block">{done.facilityName} is registered.</strong>Staff join with this code. It is also under Staff, Access code.</Notice>
         <div>
           <p className="text-sm text-[var(--muted)]">Your staff access code</p>
           <p className="figures text-3xl font-semibold tracking-wide" aria-label={`Access code ${done.code.split("").join(" ")}`}>{done.code}</p>
@@ -176,21 +176,21 @@ export function FacilityRegisterForm() {
         </div>
         <div className="border-t border-[var(--border)] pt-4">
           <h2 className="text-base font-semibold">One last step: protect your account</h2>
-          <p className="mt-1 text-[15px] text-[var(--muted)]">As administrator you sign in with a code from an authenticator app such as Google Authenticator. You scan a square or copy a key into the app, once.</p>
+          <p className="mt-1 text-[15px] text-[var(--muted)]">You sign in with a code from an authenticator app. Set it up once.</p>
           {problem && <div className="mt-2"><Notice tone="warning">{problem}</Notice></div>}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button disabled={busy} onClick={startAuthenticator}>{busy ? "Starting…" : "Set up my authenticator"}</Button>
             <Link href="/login" className="inline-flex min-h-11 items-center px-2 text-sm underline underline-offset-4">Do it later at sign-in</Link>
           </div>
         </div>
-        <p className="text-sm text-[var(--muted)]">Your facility starts on a 30 day trial. PS Tech has been told and will contact you. If anything looks wrong, call 055 457 1800 or 024 618 7422.</p>
+        <p className="text-sm text-[var(--muted)]">Your 30 day trial has started. PS Tech will contact you. Help: 055 457 1800 or 024 618 7422.</p>
       </div>
     );
   }
   if (step === "enrol" && pending) {
     return (
       <div>
-        <p className="mb-6 text-[var(--muted)]">Open Google Authenticator (or any authenticator app), add an account, and scan the square or type in the key. The app then shows a new 6-digit code every 30 seconds. Enter the current one to switch two-step sign-in on.</p>
+        <p className="mb-6 text-[var(--muted)]">In your authenticator app, scan the square or type the key. Enter the 6-digit code it shows.</p>
         <AuthenticatorSetup pending={pending} onConfirm={confirmCode} error={codeError} busy={busy} />
       </div>
     );
@@ -267,7 +267,7 @@ export function FacilityRegisterForm() {
         <div className="space-y-4">
           <fieldset>
             <legend className="text-base font-semibold">Choose a plan</legend>
-            <p className="text-sm text-[var(--muted)]">Every facility starts with a 30 day trial. You are not charged to register. PS Tech contacts you before the trial ends.</p>
+            <p className="text-sm text-[var(--muted)]">Free 30 day trial. No charge to register.</p>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {options.plans.map((p) => (
                 <label key={p.id} className={`block cursor-pointer rounded-[var(--radius)] border p-4 ${planId === p.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)]"}`}>
@@ -294,7 +294,7 @@ export function FacilityRegisterForm() {
 
       {step === 3 && options && departments && cadres && (
         <div className="space-y-6">
-          <p className="text-[15px] text-[var(--muted)]">Tick the departments and the kinds of staff (cadres) your facility has. You can add, rename or remove them later in Settings.</p>
+          <p className="text-[15px] text-[var(--muted)]">Tick your departments and cadres. You can change them later.</p>
           <ChooseMany legend="Departments" items={options.departments} chosen={departments} onChange={setDepartments} extra="Add a department that is not listed" error={errors.departments} />
           <ChooseMany legend="Cadres" items={options.cadres} chosen={cadres} onChange={setCadres} extra="Add a cadre that is not listed" error={errors.cadres} />
           {problem && <Notice tone="block">{problem}</Notice>}

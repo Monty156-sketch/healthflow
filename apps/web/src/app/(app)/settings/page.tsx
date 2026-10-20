@@ -137,7 +137,7 @@ export default function FacilitySettingsPage() {
 
         <Group
           title="Data protection"
-          description="The Data Protection Commission registration that covers this facility's staff records."
+          description="Data Protection Commission registration."
         >
           <Field label="DPC registration number" optional error={err.dpcRegistrationNumber}>
             {(a) => <Input {...a} className="figures" value={v.dpcRegistrationNumber ?? ""} onChange={(e) => set("dpcRegistrationNumber", e.target.value)} />}

@@ -128,7 +128,7 @@ export default function MyDutiesPage() {
       ) : !data ? (
         <Loading label="Loading your duties" />
       ) : !data.linked ? (
-        <Notice tone="warning">Your account is not linked to a staff record yet, so there are no duties to show. Ask your in-charge to link it.</Notice>
+        <Notice tone="warning">Your account is not linked to a staff record. Ask your in-charge.</Notice>
       ) : data.duties.length === 0 ? (
         <EmptyState title="No published duties">There is nothing published for you in {MONTHS[month - 1]} {year}.</EmptyState>
       ) : (

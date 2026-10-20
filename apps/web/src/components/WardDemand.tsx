@@ -42,7 +42,7 @@ export function WardDemand({ departmentId, editable }: { departmentId: string; e
   }
 
   return (
-    <Panel title={`People ${data.department.name} needs on each shift`} description="The least number of people this ward must have on a shift. Leave weekends or holidays blank to use the weekday number. A shift you have not set uses the facility figure.">
+    <Panel title={`People ${data.department.name} needs on each shift`} description="Leave weekend or holiday blank to use the weekday number.">
       <div className="overflow-x-auto">
         <table className="text-sm">
           <thead>

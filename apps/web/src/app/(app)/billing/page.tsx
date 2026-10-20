@@ -47,7 +47,7 @@ export default function FacilityBilling() {
   return (
     <>
       <PageHeader title="Billing" description="Your plan, when it renews, and your invoices." />
-      {data.facilityStatus === "SUSPENDED" && <div className="mb-4"><Notice tone="warning">Your account is suspended. You can still read your rosters and export all of your data. Contact PS Tech to restore changes.</Notice></div>}
+      {data.facilityStatus === "SUSPENDED" && <div className="mb-4"><Notice tone="warning">Your account is suspended. Rosters can still be read and exported. Contact PS Tech.</Notice></div>}
       {say && <div className="mb-4"><Notice tone={say.tone}>{say.text}</Notice></div>}
       <div className="space-y-6">
         <Panel title="Your plan">
@@ -61,7 +61,7 @@ export default function FacilityBilling() {
             </dl>
           ) : <p className="text-[15px]">No plan has been set for your facility yet.</p>}
         </Panel>
-        <div id="ways-to-pay" className="scroll-mt-4"><Panel title="Ways to pay" description="Pay an invoice in whichever way suits your facility. Every payment is matched to its invoice and receipted.">
+        <div id="ways-to-pay" className="scroll-mt-4"><Panel title="Ways to pay" description="Invoices and payments.">
           <div className="grid gap-3 md:grid-cols-3">
             {[
               { name: "Mobile money", text: "MTN MoMo, Telecel Cash and AirtelTigo Money. Approve the prompt on your phone.", live: data.payOnline, icon: <><rect x="7" y="2.5" width="10" height="19" rx="2" /><path d="M11 18.5h2" /></> },
@@ -127,7 +127,7 @@ export default function FacilityBilling() {
             </TableScroll>
           )}
         </Panel>
-        {data.payOnline && <p className="text-sm text-[var(--muted)]">Pay online takes you to Paystack, where you can pay by mobile money, card or bank transfer. Bank transfer to PS Tech directly is also accepted, using the details on the invoice.</p>}
+        {data.payOnline && <p className="text-sm text-[var(--muted)]">Pay online by mobile money, card or bank, or transfer using the invoice details.</p>}
         <Panel title="Questions about billing">
           <p className="text-[15px]">{data.contact.email ? `Write to ${data.contact.email}` : "Contact PS Tech"}{data.contact.phone ? ` or call ${data.contact.phone}` : ""}.</p>
         </Panel>

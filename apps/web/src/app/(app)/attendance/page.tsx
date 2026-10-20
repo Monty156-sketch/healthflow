@@ -66,7 +66,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
   return (
     <div className="space-y-6">
       {data.review.length > 0 && (
-        <Panel title="Check these" description="The duty changed after attendance was recorded. The record was kept as it was.">
+        <Panel title="Check these" description="The duty changed after this was recorded.">
           <ul className="divide-y divide-[var(--border)]">
             {data.review.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-[15px]">
@@ -195,7 +195,7 @@ export default function AttendancePage() {
 
   return (
     <>
-      <PageHeader title="Daily attendance" description="Everyone starts as present. Change only the people who were not. Night duty counts on the day it started." />
+      <PageHeader title="Daily attendance" description="Everyone starts as present. Change only those who were not." />
       <div className="mb-4 max-w-xs">
         <Field label="Date">{(a) => <Input {...a} type="date" max={todayIso()} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />}</Field>
       </div>

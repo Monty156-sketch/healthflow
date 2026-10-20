@@ -57,7 +57,7 @@ export default function LeaveCalendarPage() {
 
   return (
     <>
-      <PageHeader title="Leave calendar" description="Approved leave as a code. Leave still waiting for a decision has a dashed outline." />
+      <PageHeader title="Leave calendar" description="Dashed: waiting for a decision." />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="cal-month" className="mb-1 block text-sm font-medium">

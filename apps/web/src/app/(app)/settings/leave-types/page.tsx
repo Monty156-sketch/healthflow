@@ -71,7 +71,7 @@ function Editor({ value, onDone }: { value: LeaveTypeFull; onDone: (saved: boole
           <Checkbox label="A short absence (a day or two, asked of the in-charge)" checked={v.isShortAbsence} onChange={set("isShortAbsence")} />
           <Checkbox
             label="Time away is worked back"
-            hint="Leave this off for sick and compassionate leave. Making people work back time lost to illness discourages them from saying they are unwell."
+            hint="Leave off for sick and compassionate leave."
             checked={v.createsDutyDebt}
             onChange={set("createsDutyDebt")}
           />
@@ -100,7 +100,7 @@ export default function LeaveTypesPage() {
     <>
       <PageHeader
         title="Leave types"
-        description="Confirm these match your facility's existing leave practice before the first leave year."
+        description="Check these match your leave practice."
         actions={<Button onClick={() => setEditing(blank)}>Add a leave type</Button>}
       />
       {editing && <div className="mb-6"><Editor key={editing.id || "new"} value={editing} onDone={(saved) => { setEditing(null); if (saved) reload(); }} /></div>}

@@ -77,11 +77,11 @@ export function SmsPanel() {
   return (
     <Panel
       title="Text messages"
-      description="Staff with a mobile number get a text when their roster is published, a duty moves, they are asked to cover or swap, or leave is decided. People without an account in the app are reached this way too."
+      description="Texts for published rosters, duty changes, cover, swaps and leave."
       actions={<StatusBadge tone={data.enabled ? "success" : "neutral"}>{data.enabled ? "On" : "Off"}</StatusBadge>}
     >
       {problem && <div className="mb-3"><Notice tone="block">{problem}</Notice></div>}
-      {!data.configured && <div className="mb-3"><Notice>Text messages are not set up on the server yet. PS Tech sets up the text gateway; until then this cannot be turned on.</Notice></div>}
+      {!data.configured && <div className="mb-3"><Notice>Texts are not set up yet. PS Tech turns them on.</Notice></div>}
       <dl className="mb-4 grid gap-3 text-[15px] sm:grid-cols-4">
         {([["Can be reached", data.reachable], ["No usable number", data.withoutNumber], ["Asked not to be texted", data.optedOut], ["Sent, last 30 days", data.sent30]] as [string, number][]).map(([k, n]) => (
           <div key={k}><dt className="text-sm text-[var(--muted)]">{k}</dt><dd className="figures text-xl font-semibold">{n}</dd></div>
@@ -91,7 +91,7 @@ export function SmsPanel() {
       <Button variant={data.enabled ? "secondary" : "primary"} disabled={busy || (!data.enabled && !data.configured)} onClick={toggle}>
         {data.enabled ? "Turn text messages off" : "Turn text messages on"}
       </Button>
-      <p className="mt-2 text-sm text-[var(--muted)]">Each text costs money and reaches a person&apos;s own phone, so they are only used for changes that matter. A number is kept on the staff record; change it or tick &quot;Do not send text messages&quot; on the person&apos;s page.</p>
+      <p className="mt-2 text-sm text-[var(--muted)]">Numbers come from staff records.</p>
 
       {data.configured && <TestText onSent={reload} />}
 

@@ -67,7 +67,7 @@ export function RosterExample() {
       </div>
       <div className="mt-3 border-l-[3px] border-l-[var(--status-block)] bg-[var(--status-block-soft)] px-3 py-2 text-sm">
         <p className="font-semibold text-[var(--status-block)]">Cannot be published</p>
-        <p>Staff B finishes the Monday Night shift at 08:00 on Tuesday and starts Afternoon at 14:00. That is 6 hours between shifts, and the minimum set for this facility is 11. Change one duty, or record an override with a reason.</p>
+        <p>Staff B gets 6 hours between shifts; the minimum is 11. Change a duty or record a reason.</p>
       </div>
     </figure>
   );

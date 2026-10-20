@@ -47,7 +47,7 @@ export function ReturnActions({ request: r, onDone }: { request: LeaveRequestRow
   return (
     <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
       <h3 className="text-[15px] font-semibold">Back on duty</h3>
-      {r.isOpenEnded && <p className="text-[15px] text-[var(--muted)]">This leave has no end date. The person stays off the roster until their return is confirmed.</p>}
+      {r.isOpenEnded && <p className="text-[15px] text-[var(--muted)]">No end date. Off the roster until return is confirmed.</p>}
       {!mode && (
         <div className="flex flex-wrap gap-2">
           {started && (

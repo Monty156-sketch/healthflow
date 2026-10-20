@@ -48,7 +48,7 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
   }
 
   return (
-    <Panel title="Waiting for approval" description="These people registered with your code. They cannot sign in until you approve them.">
+    <Panel title="Waiting for approval" description="Approve each person before they can sign in.">
       {rows.length === 0 ? (
         <EmptyState title="No one is waiting">New registrations appear here.</EmptyState>
       ) : (
@@ -126,7 +126,7 @@ export default function AccessCodePage() {
   return (
     <>
       <div className="no-print">
-        <PageHeader title="Staff access code" description="Staff use this code to register themselves. You approve each person before they can sign in." />
+        <PageHeader title="Staff access code" description="Staff register with this code." />
         <Panel title="Your code">
           <p className="figures text-3xl font-semibold tracking-wide" aria-label={`Access code ${c.code.split("").join(" ")}`}>{c.code}</p>
           <p className="mt-2 text-sm text-[var(--muted)]">{c.problem ? "People cannot use it right now." : "People can use it now."} Used {c.usesCount} {c.usesCount === 1 ? "time" : "times"}{c.maxUses !== null ? ` of ${c.maxUses}` : ""}.</p>
@@ -141,14 +141,14 @@ export default function AccessCodePage() {
               <Button variant="secondary" onClick={() => setConfirmNew(true)}>Make a new code</Button>
             )}
           </div>
-          {confirmNew && <p className="mt-2 text-sm text-[var(--muted)]">The old code stops working at once. People already registered are not affected.</p>}
+          {confirmNew && <p className="mt-2 text-sm text-[var(--muted)]">The old code stops working at once.</p>}
         </Panel>
         <div className="mt-6 space-y-6">
           <Panel title="Settings">
             <div className="space-y-3">
               <Checkbox label="The code is on" checked={c.active} disabled={busy} onChange={(on) => act(() => api.put("/api/facility/join/code", { active: on, requiresApproval: c.requiresApproval }))} />
               <Checkbox label="I approve each person before they can sign in" checked={c.requiresApproval} disabled={busy} onChange={(on) => act(() => api.put("/api/facility/join/code", { active: c.active, requiresApproval: on }))} />
-              <p className="ml-8 text-sm text-[var(--muted)]">If you turn approval off, anyone who has the code and an email address gets in at once. Leave it on if the code might reach people outside your staff, because we cannot check an email address belongs to the person who typed it.</p>
+              <p className="ml-8 text-sm text-[var(--muted)]">With approval off, anyone with the code gets in at once.</p>
             </div>
           </Panel>
           <Waiting onChanged={code.reload} />

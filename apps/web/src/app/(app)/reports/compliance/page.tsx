@@ -32,7 +32,7 @@ export default function CompliancePage() {
 
   return (
     <>
-      <PageHeader title="Compliance report" description="Per person for the month, against the roster as it stands. Signed by the preparer and the facility head, it is the record of how every duty was scheduled." />
+      <PageHeader title="Compliance report" description="Each person's month against the rules. For signing." />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="max-w-[12rem]">
           <Field label="Month">{(a) => <Input {...a} type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />}</Field>
@@ -101,7 +101,7 @@ export default function CompliancePage() {
             </table>
           </TableScroll>
 
-          <Panel title="Overrides" description="Every rule that was knowingly overridden, with the reason and who approved it.">
+          <Panel title="Overrides" description="Overrides, with reason and approver.">
             {data.overrides!.length === 0 ? (
               <p className="text-[15px] text-[var(--muted)]">No rule was overridden in this roster.</p>
             ) : (
@@ -117,7 +117,7 @@ export default function CompliancePage() {
             )}
           </Panel>
           <p className="max-w-3xl text-sm text-[var(--muted)]">
-            Limits come from published summaries of the Labour Act 2003 (Act 651) and should be confirmed with a qualified labour law practitioner. This report is not legal advice.
+            Limits are from the Labour Act 2003 (Act 651). Not legal advice.
           </p>
         </div>
       )}

@@ -38,10 +38,10 @@ export function VersionsPanel({ rosterId, canRestore, onRestored, refreshKey }: 
   }
 
   return (
-    <Panel title="Saved versions" description="A version is saved when the roster is approved, published, generated again or restored. Restoring saves the roster as it is now first, so nothing is lost.">
+    <Panel title="Saved versions" description="Saved on approve, publish, regenerate and restore.">
       {!data && !error && <Loading label="Loading versions" />}
       {error && !data && <Notice tone="block">The versions could not be loaded.</Notice>}
-      {data && data.versions.length === 0 && <p className="text-[15px] text-[var(--muted)]">No versions yet. The first is saved when you approve the roster or generate it again.</p>}
+      {data && data.versions.length === 0 && <p className="text-[15px] text-[var(--muted)]">No versions yet.</p>}
       {problem && (
         <div className="mb-3">
           <Notice tone="block">{problem}</Notice>

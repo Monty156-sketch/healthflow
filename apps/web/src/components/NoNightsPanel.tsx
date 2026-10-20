@@ -43,7 +43,7 @@ export function NoNightsPanel({ staffId }: { staffId: string }) {
   }
 
   return (
-    <Panel title="No nights for a while" description="For pregnancy, breastfeeding or recovery. The roster gives no night duty between these dates.">
+    <Panel title="No nights for a while" description="No night duty between these dates.">
       {data.restrictions.length > 0 ? (
         <ul className="space-y-2">
           {data.restrictions.map((r) => (

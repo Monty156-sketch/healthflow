@@ -57,7 +57,7 @@ function CapacityPanel() {
   const { data, error, reload } = useResource<{ month: string; daysInMonth: number; cadres: CapacityRow[] }>(`/api/facility/cycles/capacity?month=${key}`);
   const years = Array.from({ length: 3 }, (_, i) => now.getFullYear() + i - 1);
   return (
-    <Panel title="Capacity check" description="Can your staff cover what your shifts require, under these rules?">
+    <Panel title="Capacity check" description="Can your staff cover your shifts under these rules?">
       <div className="mb-4 flex flex-wrap gap-2">
         <div>
           <label htmlFor="cap-month" className="sr-only">
@@ -88,7 +88,7 @@ function CapacityPanel() {
         <Loading />
       ) : data.cadres.length === 0 ? (
         <p className="text-[15px] text-[var(--muted)]">
-          Nothing to check yet. Set a minimum number of people from a cadre on at least one shift, under Shifts, and this will compare it with your staff.
+          Set a cadre minimum on a shift to see this.
         </p>
       ) : (
         <div className="space-y-3 text-[15px]">
@@ -98,8 +98,7 @@ function CapacityPanel() {
         </div>
       )}
       <p className="mt-4 text-sm text-[var(--muted)]">
-        This is a bound worked out from the most restrictive rule that applies to each cadre, not a simulation. It does not allow for leave, so it will be
-        optimistic in a month with heavy leave.
+        An estimate. Leave is not counted.
       </p>
     </Panel>
   );
@@ -163,7 +162,7 @@ export default function DutyCyclesPage() {
     <>
       <PageHeader
         title="Duty cycles"
-        description="One rule for nights and one for days: how many duties in a row, then how many days off. The roster follows both and blends them."
+        description="Duties in a row, then days off. One rule for nights, one for days."
         actions={
           isAdmin && editing === null && data.shifts.length > 0 && (
             <div className="flex flex-wrap gap-2">
@@ -180,11 +179,7 @@ export default function DutyCyclesPage() {
       )}
       <div className="mb-6">
         <Notice>
-          A night rule counts overnight shifts and a day rule counts the rest. When a roster is generated, each person&apos;s month is laid out in whole
-          blocks: a night block when it is their turn for nights, day blocks otherwise, each followed by the days off the rule gives. The blocks of the whole
-          team are placed so they overlap to cover every shift, keep each week&apos;s unbroken rest, and share weekends and nights evenly over the months.
-          If a month is too tight for clean blocks, the roster falls back to filling day by day so no shift is left short. Change the numbers here and the
-          next roster uses them.
+          Staff work in whole blocks, each followed by its days off. Changes apply to the next roster.
         </Notice>
       </div>
       {data.checks && data.checks.length > 0 && (
@@ -288,7 +283,7 @@ export default function DutyCyclesPage() {
         onConfirm={remove}
         onCancel={() => setDeleting(null)}
       >
-        The roster will no longer follow this rule, and it will not be set up again. Past rosters are not changed. You can add a rule of your own at any time. Turn it off instead if you may want it back.
+        Past rosters are not changed. Turn it off instead if you may want it back.
       </ConfirmDialog>
     </>
   );

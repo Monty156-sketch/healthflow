@@ -70,7 +70,7 @@ export default function ReturnsPage() {
     <>
       <PageHeader
         title="Returns due"
-        description="A date passing is never a return. Until someone confirms the day a person is back, they stay off the roster."
+        description="Confirm each return. Until then the person stays off the roster."
       />
       {chosen && (
         <div className="mb-6">
@@ -84,7 +84,7 @@ export default function ReturnsPage() {
         </div>
       )}
       {none ? (
-        <EmptyState title="Nobody is waiting to be confirmed back">Anyone whose leave ends in the next two weeks, or who has not been confirmed back, will appear here.</EmptyState>
+        <EmptyState title="Nobody is waiting to be confirmed back">Nobody due back in the next two weeks.</EmptyState>
       ) : (
         <div className="space-y-8">
           {data.overdue.length > 0 && (
@@ -92,7 +92,7 @@ export default function ReturnsPage() {
               <h2 id="overdue-h" className="mb-1 text-lg font-semibold">
                 Overdue, not confirmed back
               </h2>
-              <p className="mb-3 text-[15px] text-[var(--muted)]">These people are still treated as away. Confirm the day they came back, or ask for the leave to be extended.</p>
+              <p className="mb-3 text-[15px] text-[var(--muted)]">Confirm their return or extend the leave.</p>
               <Table label="Overdue returns" rows={data.overdue} kind="overdue" onOpen={setSelected} />
             </section>
           )}

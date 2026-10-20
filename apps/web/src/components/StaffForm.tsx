@@ -219,25 +219,25 @@ export function StaffForm({
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="Do not send this person text messages" checked={values.smsOptOut} onChange={set("smsOptOut")} />
-          <p className="mt-1 text-sm text-[var(--muted)]">Tick this if they asked not to be texted. They still see everything in the app.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">If they asked not to be texted.</p>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="In-charge: weekday mornings only" checked={values.morningOnly} onChange={set("morningOnly")} />
-          <p className="mt-1 text-sm text-[var(--muted)]">Works the morning shift every weekday, no nights or afternoons, and sits outside the duty cycles. Set automatically when the position says in-charge.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Weekday mornings only, outside the duty cycles.</p>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="Can lead a shift" checked={values.canLead} onChange={set("canLead")} />
-          <p className="mt-1 text-sm text-[var(--muted)]">Senior enough to take charge of a shift. Shifts that ask for a lead get one of these people first.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Senior enough to take charge of a shift.</p>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="Willing to cover extra duties" checked={values.willingForExtraDuties} onChange={set("willingForExtraDuties")} />
-          <p className="mt-1 text-sm text-[var(--muted)]">Used only to rank who is asked first when a colleague is absent. It never obliges anyone.</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">Asked first when cover is needed.</p>
         </div>
         {values.excludedFromNights && (
           <div className="sm:col-span-2">
             <Field
               label="Reason for the exclusion"
-              hint="Operational only, for example breastfeeding mother or studying. Never record a medical condition, diagnosis or symptom here."
+              hint="Operational only. Never a medical reason."
               error={err.exclusionReason}
             >
               {(a) => <Input {...a} value={values.exclusionReason} onChange={(e) => set("exclusionReason")(e.target.value)} />}
@@ -247,7 +247,7 @@ export function StaffForm({
         {dutyShifts.length > 0 && (
           <fieldset className="sm:col-span-2">
             <legend className="mb-1 text-sm font-medium">Shifts this person may work</legend>
-            <p className="mb-2 text-sm text-[var(--muted)]">Tick none to allow every shift their cadre is allowed. Tick some to limit them to those shifts only.</p>
+            <p className="mb-2 text-sm text-[var(--muted)]">None ticked: every shift their cadre allows.</p>
             <div className="flex flex-wrap gap-x-6">
               {dutyShifts.map((sh) => (
                 <Checkbox
@@ -259,7 +259,6 @@ export function StaffForm({
               ))}
             </div>
             {err.eligibleShiftIds && <p className="mt-1 text-sm text-[var(--status-block)]">{err.eligibleShiftIds}</p>}
-            <p className="mt-2 text-sm text-[var(--muted)]">A roster already made keeps its duties. Check it again from the roster page to see any that no longer fit.</p>
           </fieldset>
         )}
         <Field label="Maximum duties per week" hint="0 means no limit." error={err.maxDutiesPerWeek}>

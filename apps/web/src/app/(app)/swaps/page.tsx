@@ -141,7 +141,7 @@ export default function SwapsPage() {
 
   return (
     <>
-      <PageHeader title="Duty swaps" description="Hand a duty over, or trade for another. Every swap is checked against the rules again when it is approved." />
+      <PageHeader title="Duty swaps" description="Hand over or trade a duty." />
       <div role="tablist" aria-label="Swaps" className="mb-4 flex flex-wrap gap-1 border-b border-[var(--border)]">
         {tabs.map((t) => {
           const count = data.swaps.filter((s) => (t.key === "respond" ? s.status === "REQUESTED" && s.targetId === me : t.key === "approve" ? s.status === "ACCEPTED" : false)).length;

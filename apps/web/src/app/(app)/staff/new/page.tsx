@@ -23,7 +23,7 @@ export default function NewStaffPage() {
       </p>
       <PageHeader
         title="Add staff member"
-        description="Their record is used for rostering. Inviting them to sign in to HealthFlow is a separate step."
+        description="Add them to the roster. Invite them to sign in later."
       />
       <Panel>
         <StaffForm

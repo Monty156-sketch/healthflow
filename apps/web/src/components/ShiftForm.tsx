@@ -98,7 +98,7 @@ export function ShiftForm({
       </div>
 
       {isOff ? (
-        <p className="text-sm text-[var(--muted)]">Off Duty has no hours. Every blank on a roster is filled with it, so it cannot be turned off or given times.</p>
+        <p className="text-sm text-[var(--muted)]">Fills every blank on the roster. It has no hours.</p>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -124,7 +124,7 @@ export function ShiftForm({
             {onCall && (
               <div className="mt-2 space-y-3 border-l-2 border-[var(--border)] pl-4">
                 <p className="text-sm text-[var(--muted)]">
-                  How on-call time counts toward working hours under the Labour Act is a legal question. Set this only on advice, and record what that advice was.
+                  Set only on legal advice, and record it.
                 </p>
                 <div className="max-w-40">
                   <Field label="Counts as" hint="0 to 1 of its hours" error={e.onCallHoursFactor}>
@@ -170,8 +170,7 @@ export function ShiftForm({
               </Field>
             </div>
             <p className="mt-2 text-sm text-[var(--muted)]">
-              Fewer people on weekends and holidays means more of your staff are home on those days. The roster shares the days that are worked evenly, and gives
-              public holidays first to whoever has worked the fewest over the past year.
+              Weekend and holiday duties are shared evenly.
             </p>
             {cadres.length > 0 && (
               <div className="mt-3">

@@ -148,8 +148,7 @@ export default function StaffListPage() {
             title="No staff yet"
             action={isAdmin && <ButtonLink href="/staff/new">Add the first staff member</ButtonLink>}
           >
-            Add the people who appear on your duty roster. Set up departments and cadres first so each person can be
-            placed correctly.
+            Set up departments and cadres first, then add staff.
           </EmptyState>
         )
       )}
