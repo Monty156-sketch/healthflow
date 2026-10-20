@@ -15,6 +15,12 @@ export interface EShift {
   countsAsDuty: boolean;
   minStaff: number;
   minByCadre: Record<string, number>;
+  /** Saturday and Sunday, when they differ from the weekday minimum. Null means the same as weekdays. */
+  weekendMinStaff?: number | null;
+  weekendMinByCadre?: Record<string, number> | null;
+  /** Public holidays. Null means the weekend numbers, or the weekday numbers when there are none. */
+  holidayMinStaff?: number | null;
+  holidayMinByCadre?: Record<string, number> | null;
   eligibleCadreIds: string[];
   sortOrder: number;
 }
@@ -99,6 +105,8 @@ export interface EContext {
   referenceWeeks: number;
   /** For wording only: cadre id to name. */
   cadreNames?: Record<string, string>;
+  /** Public holidays, which may ask for fewer people. */
+  holidays?: number[];
 }
 
 export interface Finding {

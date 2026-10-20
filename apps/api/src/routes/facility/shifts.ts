@@ -32,6 +32,10 @@ const shiftInput = z.object({
   onCallAdviceNote: z.string().trim().max(300).nullish(),
   minStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60."),
   minByCadre: z.record(z.string(), z.number().int("Whole numbers only.").min(1, "At least 1.").max(60)).default({}),
+  /** Blank means the same as weekdays. */
+  weekendMinStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60.").nullish(),
+  /** Blank means the weekend number, or the weekday number when there is none. */
+  holidayMinStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60.").nullish(),
   eligibleCadreIds: z.array(z.string()).default([]),
   colour: z.enum(colours, { errorMap: () => ({ message: "Choose one of the colours." }) }),
 });
@@ -57,6 +61,8 @@ function present(s: ShiftRow) {
     onCallAdviceNote: s.onCallAdviceNote,
     minStaff: s.minStaff,
     minByCadre: s.minByCadre as Record<string, number>,
+    weekendMinStaff: s.weekendMinStaff,
+    holidayMinStaff: s.holidayMinStaff,
     eligibleCadreIds: s.eligibleCadreIds,
     colour: s.colour,
     countsAsDuty: s.countsAsDuty,
@@ -156,6 +162,8 @@ async function build(facilityId: string, body: unknown, res: import("express").R
           onCallAdviceNote: input.isOnCall && input.onCallHoursFactor !== 0 ? (input.onCallAdviceNote?.trim() || null) : null,
           minStaff: input.minStaff,
           minByCadre: input.minByCadre,
+          weekendMinStaff: input.weekendMinStaff ?? null,
+          holidayMinStaff: input.holidayMinStaff ?? null,
           eligibleCadreIds: input.eligibleCadreIds,
           colour: input.colour,
         },
@@ -221,7 +229,7 @@ shiftsRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
   if (changed.length) {
     const LABEL: Record<string, string> = {
       name: "name", code: "code", startTime: "start time", endTime: "end time", durationHours: "duration", isOvernight: "overnight setting",
-      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre",
+      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre", weekendMinStaff: "weekend minimum", holidayMinStaff: "public holiday minimum",
       eligibleCadreIds: "eligible cadres", colour: "colour", onCallAdviceNote: "on-call advice note",
     };
     const parts = changed.filter((k) => LABEL[k]).map((k) => LABEL[k]);

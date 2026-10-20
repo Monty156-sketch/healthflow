@@ -1,6 +1,7 @@
 // The facility dashboard: one read that gathers what the home page shows.
 // Every figure is counted from the facility's own records; nothing is
 // estimated, and an empty facility gets zeros rather than made-up values.
+import { demandOn } from "../../engine/demand.js";
 import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -21,13 +22,14 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const month = today.getUTCMonth() + 1;
   const year = today.getUTCFullYear();
 
+  const todayHoliday = await prisma.publicHoliday.findFirst({ where: { OR: [{ facilityId }, { facilityId: null }], date: today }, select: { id: true } });
   const [statusGroups, shifts, todayAssignments, todayAttendance, onLeaveToday, monthRosters, nextRosters, leavePending, swapsPending, returns, weekAssignments, weekAttendance] =
     await Promise.all([
       prisma.staff.groupBy({ by: ["status"], where: { facilityId }, _count: { _all: true } }),
       prisma.shift.findMany({
         where: { facilityId, active: true, countsAsDuty: true, isOnCall: false },
         orderBy: { sortOrder: "asc" },
-        select: { id: true, name: true, code: true, colour: true, startTime: true, endTime: true, minStaff: true },
+        select: { id: true, name: true, code: true, colour: true, startTime: true, endTime: true, minStaff: true, weekendMinStaff: true, holidayMinStaff: true },
       }),
       prisma.rosterAssignment.groupBy({ by: ["shiftId"], where: { facilityId, dutyDate: today }, _count: { _all: true } }),
       prisma.attendance.groupBy({ by: ["status"], where: { facilityId, dutyDate: today }, _count: { _all: true } }),
@@ -84,7 +86,11 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       present: (attBy.PRESENT ?? 0) + (attBy.LATE ?? 0) + (attBy.OFFICIAL_ASSIGNMENT ?? 0),
       late: attBy.LATE ?? 0,
       absent: attBy.ABSENT ?? 0,
-      shifts: shifts.map((s) => ({ ...s, scheduled: scheduledByShift[s.id] ?? 0 })),
+      // Today's minimum: weekends and public holidays may ask for fewer.
+      shifts: shifts.map(({ weekendMinStaff, holidayMinStaff, ...s }) => ({
+        ...s, minStaff: demandOn({ minStaff: s.minStaff, minByCadre: {}, weekendMinStaff, holidayMinStaff }, Math.floor(today.getTime() / 86_400_000), todayHoliday ? [Math.floor(today.getTime() / 86_400_000)] : []).minStaff,
+        scheduled: scheduledByShift[s.id] ?? 0,
+      })),
     },
     roster: roster
       ? {

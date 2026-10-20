@@ -2,6 +2,7 @@
 // A facility with no grant is not here at all, not even as a locked row. Every
 // response says which grants it was read under, and every read is written to
 // the facility's own audit log.
+import { demandOn, hasDemand } from "../engine/demand.js";
 import { Router, type Request } from "express";
 import { prisma } from "../lib/prisma.js";
 import { auditDistrictRead, grantedFor, readingUnder, type Granted } from "../lib/district.js";
@@ -30,11 +31,17 @@ interface Day { date: string; state: DayState; staffed: number; required: number
 /** Staffed against required, for each of the next days, from the published roster only. */
 export async function coverageFor(facilityId: string, from: number, days: number): Promise<Day[]> {
   const [shifts, cadres, rosters] = await Promise.all([
-    prisma.shift.findMany({ where: { facilityId, active: true, countsAsDuty: true, isOnCall: false }, select: { id: true, minStaff: true, minByCadre: true } }),
+    prisma.shift.findMany({ where: { facilityId, active: true, countsAsDuty: true, isOnCall: false }, select: { id: true, minStaff: true, minByCadre: true, weekendMinStaff: true, weekendMinByCadre: true, holidayMinStaff: true, holidayMinByCadre: true } }),
     prisma.cadre.findMany({ where: { facilityId }, select: { id: true, name: true } }),
     prisma.roster.findMany({ where: { facilityId, status: "PUBLISHED" }, select: { id: true, year: true, month: true } }),
   ]);
-  const needy = shifts.filter((s) => s.minStaff > 0 || Object.keys((s.minByCadre ?? {}) as object).length > 0);
+  const shaped = shifts.map((s) => ({
+    ...s, minByCadre: (s.minByCadre ?? {}) as Record<string, number>,
+    weekendMinByCadre: (s.weekendMinByCadre ?? null) as Record<string, number> | null, holidayMinByCadre: (s.holidayMinByCadre ?? null) as Record<string, number> | null,
+  }));
+  const needy = shaped.filter((s) => hasDemand(s));
+  const holidayRows = await prisma.publicHoliday.findMany({ where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: new Date(from * DAY), lte: new Date((from + days - 1) * DAY) } }, select: { date: true } });
+  const holidays = new Set(holidayRows.map((h) => Math.floor(h.date.getTime() / DAY)));
   const published = new Set(rosters.map((r) => `${r.year}-${r.month}`));
   const assigned = await prisma.rosterAssignment.findMany({
     where: { facilityId, rosterId: { in: rosters.map((r) => r.id) }, shiftId: { in: needy.map((s) => s.id) }, dutyDate: { gte: new Date(from * DAY), lte: new Date((from + days - 1) * DAY) } },
@@ -49,11 +56,12 @@ export async function coverageFor(facilityId: string, from: number, days: number
     const cadreShort = new Set<string>();
     for (const s of needy) {
       const here = assigned.filter((a) => a.shiftId === s.id && Math.floor(a.dutyDate.getTime() / DAY) === d);
-      const byCadre = Object.entries((s.minByCadre ?? {}) as Record<string, number>);
-      const need = Math.max(s.minStaff, byCadre.reduce((n, [, v]) => n + v, 0));
+      const today = demandOn(s, d, holidays);
+      const byCadre = Object.entries(today.minByCadre);
+      const need = Math.max(today.minStaff, byCadre.reduce((n, [, v]) => n + v, 0));
       required += need;
       staffed += Math.min(here.length, need);
-      if (here.length < s.minStaff) short = true;
+      if (here.length < today.minStaff) short = true;
       for (const [cid, v] of byCadre) if (here.filter((a) => a.staff.cadreId === cid).length < v) cadreShort.add(cadreName.get(cid) ?? "a cadre");
     }
     out.push({ date: iso(d), state: short ? "SHORT" : cadreShort.size ? "CADRE" : "OK", staffed, required, cadres: [...cadreShort] });

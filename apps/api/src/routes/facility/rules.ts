@@ -61,10 +61,31 @@ export async function ensureRules(facilityId: string) {
   const have = await prisma.constraintRule.findMany({ where: { facilityId }, select: { code: true } });
   const haveCodes = new Set(have.map((r) => r.code));
   const missing = RULE_SEEDS.filter((s) => !haveCodes.has(s.code));
-  if (!missing.length) return;
-  await prisma.constraintRule.createMany({
-    data: missing.map(({ min: _min, max: _max, ...s }) => ({ ...s, facilityId })),
-    skipDuplicates: true,
+  if (missing.length) {
+    await prisma.constraintRule.createMany({
+      data: missing.map(({ min: _min, max: _max, ...s }) => ({ ...s, facilityId })),
+      skipDuplicates: true,
+    });
+  }
+  await raiseNightLimit(facilityId);
+}
+
+/**
+ * The first standard for consecutive nights was 3, which cut every "4 nights on,
+ * 3 off" cycle short. A facility that never changed it is moved to the new
+ * standard of 4, once, with a line in the audit log. One that set its own number
+ * keeps it.
+ */
+async function raiseNightLimit(facilityId: string) {
+  const c8 = await prisma.constraintRule.findFirst({ where: { facilityId, code: "C8", thresholdValue: 3 }, select: { id: true } });
+  if (!c8) return;
+  const touched = await prisma.auditLog.findFirst({ where: { facilityId, entityId: c8.id, action: { in: ["rule_updated", "rule_standard_raised"] } }, select: { id: true } });
+  if (touched) return;
+  await prisma.constraintRule.update({ where: { id: c8.id }, data: { thresholdValue: 4 } });
+  await writeAuditLog({
+    facilityId, actorEmail: null, action: "rule_standard_raised", entityType: "ConstraintRule", entityId: c8.id,
+    before: { thresholdValue: 3 }, after: { thresholdValue: 4 },
+    summary: "Maximum consecutive night duties moved from 3 to the new standard of 4, so the 4 nights on, 3 off cycle is followed in full. It had not been changed by the facility.",
   });
 }
 

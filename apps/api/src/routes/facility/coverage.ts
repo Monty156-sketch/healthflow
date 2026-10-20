@@ -1,5 +1,6 @@
 // Coverage: dates against shifts, staffed against required. The question is
 // "are we covered this week", so a seven-day strip comes first.
+import { demandOn, hasDemand } from "../../engine/demand.js";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -37,20 +38,26 @@ coverageRouter.get("/", async (req, res) => {
     prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { shiftId: true, dutyDate: true, staff: { select: { cadreId: true } } } }),
   ]);
   const shifts = shiftRows.map((s) => {
-    const own = demand.find((d) => d.shiftId === s.id);
-    return own ? { ...s, minStaff: own.minStaff, minByCadre: own.minByCadre } : s;
+    const src = demand.find((d) => d.shiftId === s.id) ?? s;
+    return {
+      ...s, minStaff: src.minStaff, minByCadre: (src.minByCadre ?? {}) as Record<string, number>, weekendMinStaff: src.weekendMinStaff, holidayMinStaff: src.holidayMinStaff,
+      weekendMinByCadre: (src.weekendMinByCadre ?? null) as Record<string, number> | null, holidayMinByCadre: (src.holidayMinByCadre ?? null) as Record<string, number> | null,
+    };
   });
-  const needy = shifts.filter((s) => s.minStaff > 0 || Object.keys((s.minByCadre ?? {}) as object).length > 0);
+  const needy = shifts.filter((s) => hasDemand(s));
+  const holidayRows = await prisma.publicHoliday.findMany({ where: { OR: [{ facilityId: who.facilityId }, { facilityId: null }], date: { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) } }, select: { date: true } });
+  const holidays = new Set(holidayRows.map((h) => Math.floor(h.date.getTime() / DAY)));
   const cadreName = new Map(cadres.map((c) => [c.id, c.name]));
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
   const days = Array.from({ length: last }, (_, i) => {
     const date = new Date(Date.UTC(y, m - 1, i + 1));
     const cells = needy.map((s) => {
       const here = assigned.filter((a) => a.shiftId === s.id && a.dutyDate.getTime() === date.getTime());
-      const byCadre = Object.entries((s.minByCadre ?? {}) as Record<string, number>);
-      const required = Math.max(s.minStaff, byCadre.reduce((n, [, v]) => n + v, 0));
+      const need = demandOn(s, Math.floor(date.getTime() / DAY), holidays);
+      const byCadre = Object.entries(need.minByCadre);
+      const required = Math.max(need.minStaff, byCadre.reduce((n, [, v]) => n + v, 0));
       const shortCadres = byCadre.filter(([cid, v]) => here.filter((a) => a.staff.cadreId === cid).length < v).map(([cid]) => cadreName.get(cid) ?? "a cadre");
-      const state: State = here.length < s.minStaff ? "SHORT" : shortCadres.length ? "CADRE" : "OK";
+      const state: State = here.length < need.minStaff ? "SHORT" : shortCadres.length ? "CADRE" : "OK";
       return { shiftId: s.id, staffed: here.length, required, state, cadres: shortCadres };
     });
     return { date: date.toISOString().slice(0, 10), cells };

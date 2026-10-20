@@ -29,13 +29,26 @@ wardDemandRouter.get("/:departmentId", allowRoles(...READ_ROLES), async (req, re
     department: dept,
     shifts: shifts.map((s) => {
       const own = rows.find((r) => r.shiftId === s.id);
-      return { shiftId: s.id, code: s.code, name: s.name, minStaff: own?.minStaff ?? s.minStaff, custom: Boolean(own), facilityMinStaff: s.minStaff };
+      const src = own ?? s;
+      return {
+        shiftId: s.id, code: s.code, name: s.name, minStaff: src.minStaff, weekendMinStaff: src.weekendMinStaff, holidayMinStaff: src.holidayMinStaff,
+        custom: Boolean(own), facilityMinStaff: s.minStaff, facilityWeekendMinStaff: s.weekendMinStaff, facilityHolidayMinStaff: s.holidayMinStaff,
+      };
     }),
   });
 });
 
+const count = z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(200, "That is more than a ward can need.");
+
 const putInput = z.object({
-  shifts: z.array(z.object({ shiftId: z.string(), minStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(200, "That is more than a ward can need.") })).max(50),
+  shifts: z.array(z.object({
+    shiftId: z.string(),
+    minStaff: count,
+    /** Blank means the same as weekdays. */
+    weekendMinStaff: count.nullish(),
+    /** Blank means the weekend number, or the weekday number when there is none. */
+    holidayMinStaff: count.nullish(),
+  })).max(50),
 });
 
 wardDemandRouter.put("/:departmentId", allowRoles(...WRITE_ROLES), async (req, res) => {
@@ -50,13 +63,13 @@ wardDemandRouter.put("/:departmentId", allowRoles(...WRITE_ROLES), async (req, r
     if (!known.has(s.shiftId)) continue;
     await prisma.shiftDemand.upsert({
       where: { departmentId_shiftId: { departmentId: dept.id, shiftId: s.shiftId } },
-      create: { facilityId: who.facilityId, departmentId: dept.id, shiftId: s.shiftId, minStaff: s.minStaff },
-      update: { minStaff: s.minStaff, minByCadre: {} },
+      create: { facilityId: who.facilityId, departmentId: dept.id, shiftId: s.shiftId, minStaff: s.minStaff, weekendMinStaff: s.weekendMinStaff ?? null, holidayMinStaff: s.holidayMinStaff ?? null },
+      update: { minStaff: s.minStaff, minByCadre: {}, weekendMinStaff: s.weekendMinStaff ?? null, holidayMinStaff: s.holidayMinStaff ?? null },
     });
   }
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "ward_demand_set", entityType: "Department", entityId: dept.id,
-    summary: `${who.displayName} set the minimum staff for ${dept.name}: ${input.shifts.filter((s) => known.has(s.shiftId)).map((s) => `${shifts.find((x) => x.id === s.shiftId)!.code} ${s.minStaff}`).join(", ")}.`,
+    summary: `${who.displayName} set the minimum staff for ${dept.name}: ${input.shifts.filter((s) => known.has(s.shiftId)).map((s) => `${shifts.find((x) => x.id === s.shiftId)!.code} ${s.minStaff}${s.weekendMinStaff != null ? ` (weekends ${s.weekendMinStaff})` : ""}${s.holidayMinStaff != null ? ` (holidays ${s.holidayMinStaff})` : ""}`).join(", ")}.`,
   });
   res.json({ ok: true });
 });

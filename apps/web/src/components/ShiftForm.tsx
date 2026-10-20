@@ -42,6 +42,8 @@ export function ShiftForm({
   const [factor, setFactor] = useState(String(shift?.onCallHoursFactor ?? 0));
   const [advice, setAdvice] = useState(shift?.onCallAdviceNote ?? "");
   const [minStaff, setMinStaff] = useState(String(shift?.minStaff ?? 0));
+  const [weekendMin, setWeekendMin] = useState(shift?.weekendMinStaff == null ? "" : String(shift.weekendMinStaff));
+  const [holidayMin, setHolidayMin] = useState(shift?.holidayMinStaff == null ? "" : String(shift.holidayMinStaff));
   const [minBy, setMinBy] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(shift?.minByCadre ?? {}).map(([k, v]) => [k, String(v)]))
   );
@@ -63,12 +65,14 @@ export function ShiftForm({
       onCallHoursFactor: onCall ? Number(factor) || 0 : 0,
       onCallAdviceNote: advice || null,
       minStaff: Number(minStaff),
+      weekendMinStaff: weekendMin.trim() === "" ? null : Number(weekendMin),
+      holidayMinStaff: holidayMin.trim() === "" ? null : Number(holidayMin),
       minByCadre,
       eligibleCadreIds: eligible,
       colour,
     };
     return shift ? api.patch(`/api/facility/shifts/${shift.id}`, body) : api.post("/api/facility/shifts", body);
-  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, minBy, eligible, colour, shift]);
+  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, weekendMin, holidayMin, minBy, eligible, colour, shift]);
 
   const save = useSave(submit);
   const e = save.fieldErrors;
@@ -134,11 +138,21 @@ export function ShiftForm({
 
           <fieldset>
             <legend className="text-sm font-medium">Minimum staff</legend>
-            <div className="mt-1 max-w-40">
-              <Field label="On this shift, in total" error={e.minStaff}>
+            <div className="mt-1 grid max-w-xl gap-3 sm:grid-cols-3">
+              <Field label="Monday to Friday" error={e.minStaff}>
                 {(a) => <Input {...a} inputMode="numeric" className="figures" value={minStaff} onChange={(x) => setMinStaff(x.target.value)} />}
               </Field>
+              <Field label="Saturday and Sunday" optional hint="Blank: same as weekdays" error={e.weekendMinStaff}>
+                {(a) => <Input {...a} inputMode="numeric" className="figures" value={weekendMin} onChange={(x) => setWeekendMin(x.target.value)} />}
+              </Field>
+              <Field label="Public holidays" optional hint="Blank: same as weekends" error={e.holidayMinStaff}>
+                {(a) => <Input {...a} inputMode="numeric" className="figures" value={holidayMin} onChange={(x) => setHolidayMin(x.target.value)} />}
+              </Field>
             </div>
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              Fewer people on weekends and holidays means more of your staff are home on those days. The roster shares the days that are worked evenly, and gives
+              public holidays first to whoever has worked the fewest over the past year.
+            </p>
             {cadres.length > 0 && (
               <div className="mt-3">
                 <p className="text-sm text-[var(--muted)]">Of those, at least this many from a cadre (leave blank for no minimum):</p>
