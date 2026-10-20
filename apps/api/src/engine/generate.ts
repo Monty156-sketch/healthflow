@@ -40,6 +40,12 @@ export interface GenerateInput {
    * generating again gives another lawful roster built from the same rules.
    */
   variation?: number;
+  /**
+   * Fill what can be filled and report the rest as unfilled, instead of
+   * refusing when a day does not have enough people. Used to refill the
+   * duties of someone who has gone on leave, when everything else stays put.
+   */
+  partial?: boolean;
 }
 
 export interface Shortfall {
@@ -253,8 +259,11 @@ export function generate(input: GenerateInput): GenerateResult {
   }
 
   // ---- Step 2 and 3: who could work what, and whether it can be done at all
+  // A day someone has been deliberately kept off is not offered to them.
+  const keptOff = new Set(input.locked.filter((l) => shiftById.get(l.shiftId) && !shiftById.get(l.shiftId)!.countsAsDuty).map((l) => `${l.staffId}:${l.day}`));
   const staticReason = (s: EStaff, shift: EShift, day: number): string | null => {
     if (onLeave(s, day)) return "leave";
+    if (keptOff.has(`${s.id}:${day}`)) return "kept off duty";
     if (s.morningOnly && (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day))) return "in-charges work weekday mornings only";
     return ineligibleReason(s, shift);
   };
@@ -314,7 +323,7 @@ export function generate(input: GenerateInput): GenerateResult {
     daySlots.set(day, slots);
     preflight.push(...shortfalls);
   }
-  if (preflight.length) {
+  if (preflight.length && !input.partial) {
     return { feasible: false, shortfalls: preflight, cells: [], unfilled: [], findings: [], stats: { duties: 0, unfilled: 0, improvements: 0, carried: 0 } };
   }
 
