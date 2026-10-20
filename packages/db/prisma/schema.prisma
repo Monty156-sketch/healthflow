@@ -606,6 +606,12 @@ model Shift {
   onCallAdviceNote  String? // what advice the on-call factor is based on
   minStaff       Int      @default(0)
   minByCadre     Json     @default("{}")
+  /// Saturday and Sunday, when different from weekdays. Null means the same as weekdays.
+  weekendMinStaff   Int?
+  weekendMinByCadre Json?
+  /// Public holidays. Null means the weekend numbers, or the weekday numbers when there are none.
+  holidayMinStaff   Int?
+  holidayMinByCadre Json?
   colour         String?
   countsAsDuty   Boolean  @default(true)
   sortOrder      Int      @default(0)
@@ -632,6 +638,10 @@ model ShiftDemand {
   shiftId      String
   minStaff     Int        @default(0)
   minByCadre   Json       @default("{}")
+  weekendMinStaff   Int?
+  weekendMinByCadre Json?
+  holidayMinStaff   Int?
+  holidayMinByCadre Json?
 
   @@unique([departmentId, shiftId])
   @@index([facilityId])

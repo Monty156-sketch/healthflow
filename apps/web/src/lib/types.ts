@@ -70,6 +70,10 @@ export interface Shift {
   onCallAdviceNote: string | null;
   minStaff: number;
   minByCadre: Record<string, number>;
+  /** Null means the same as weekdays. */
+  weekendMinStaff: number | null;
+  /** Null means the weekend number, or the weekday number when there is none. */
+  holidayMinStaff: number | null;
   eligibleCadreIds: string[];
   colour: string | null;
   countsAsDuty: boolean;

@@ -46,7 +46,9 @@ export default function ShiftsPage() {
   function minimum(s: Shift) {
     if (!s.countsAsDuty) return "None";
     const by = Object.entries(s.minByCadre).map(([id, n]) => `${n} ${cadreName.get(id) ?? "from a removed cadre"}`);
-    return by.length ? `${s.minStaff} (${by.join(", ")})` : String(s.minStaff);
+    const base = by.length ? `${s.minStaff} (${by.join(", ")})` : String(s.minStaff);
+    const extra = [s.weekendMinStaff != null ? `weekends ${s.weekendMinStaff}` : null, s.holidayMinStaff != null ? `holidays ${s.holidayMinStaff}` : null].filter(Boolean);
+    return extra.length ? `${base}; ${extra.join(", ")}` : base;
   }
 
   return (

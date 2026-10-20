@@ -50,6 +50,16 @@ describe("shifts", () => {
     expect(ok.status).toBe(201);
   });
 
+  it("keeps weekend and public-holiday minimums, blank meaning the weekday number", async () => {
+    const { api } = await setup();
+    const made = await api.post("/api/facility/shifts", { ...NIGHT, weekendMinStaff: 2, holidayMinStaff: null });
+    expect(made.status).toBe(201);
+    expect(made.body.shift).toMatchObject({ minStaff: 3, weekendMinStaff: 2, holidayMinStaff: null });
+    const changed = await api.patch(`/api/facility/shifts/${made.body.shift.id}`, { ...NIGHT, weekendMinStaff: null, holidayMinStaff: 1 });
+    expect(changed.body.shift).toMatchObject({ weekendMinStaff: null, holidayMinStaff: 1 });
+    expect((await api.post("/api/facility/shifts", { ...NIGHT, code: "Z", weekendMinStaff: -1 })).status).toBe(400);
+  });
+
   it("an on-call factor needs the advice it is based on", async () => {
     const { api } = await setup();
     const oc = { ...NIGHT, code: "OC", name: "On Call", startTime: "17:00", isOnCall: true, minStaff: 0 };
@@ -93,6 +103,21 @@ describe("constraint rules", () => {
     expect(by("C5")).toMatchObject({ ruleType: "POLICY", thresholdValue: 11, behaviour: "BLOCK" });
     expect(by("C6").overridable).toBe(false);
     expect(by("C12").behaviour).toBe("OPTIMISE");
+  });
+
+  it("moves an untouched night limit of 3 to the new standard of 4, once, and leaves one the facility chose", async () => {
+    const { api, facility } = await setup();
+    await api.get("/api/facility/rules");
+    const c8 = await prisma.constraintRule.findFirstOrThrow({ where: { facilityId: facility.id, code: "C8" } });
+    expect(c8.thresholdValue).toBe(4);
+    await prisma.constraintRule.update({ where: { id: c8.id }, data: { thresholdValue: 3 } });
+    await api.get("/api/facility/rules");
+    expect((await prisma.constraintRule.findUniqueOrThrow({ where: { id: c8.id } })).thresholdValue).toBe(4);
+    expect(await prisma.auditLog.count({ where: { facilityId: facility.id, action: "rule_standard_raised" } })).toBe(1);
+    // Once raised it is never raised again, so a facility that sets 3 itself keeps it.
+    await prisma.constraintRule.update({ where: { id: c8.id }, data: { thresholdValue: 3 } });
+    await api.get("/api/facility/rules");
+    expect((await prisma.constraintRule.findUniqueOrThrow({ where: { id: c8.id } })).thresholdValue).toBe(3);
   });
 
   it("logical rules cannot be changed or turned off", async () => {

@@ -1,6 +1,7 @@
 // The compliance rule registry (spec AD2). Every rule is one function with
 // the same signature, and a rule's code maps to its function. Adding C13 is
 // one new function and one new row here. Each can be tested on its own.
+import { demandOn, hasDemand } from "./demand.js";
 import type { EAssignment, EContext, ERule, EShift, EStaff, Evaluator, Finding } from "./types.js";
 import { DAY_MIN, hm, hoursOf, interval, sayDay, sayRange, weekdayOf } from "./time.js";
 
@@ -296,9 +297,12 @@ export const evaluateEligibility: Evaluator = (rule, ctx) => {
 export const evaluateMinimumStaffing: Evaluator = (rule, ctx) => {
   const ix = indexOf(ctx);
   const out: Finding[] = [];
-  const duty = ctx.shifts.filter((s) => s.countsAsDuty && !s.isOnCall && (s.minStaff > 0 || Object.keys(s.minByCadre).length));
+  const duty = ctx.shifts.filter((s) => s.countsAsDuty && !s.isOnCall && hasDemand(s));
+  const holidays = new Set(ctx.holidays ?? []);
   for (let day = ctx.period.startDay; day <= ctx.period.endDay; day++) {
-    for (const shift of duty) {
+    for (const base of duty) {
+      const need = demandOn(base, day, holidays);
+      const shift = { ...base, minStaff: need.minStaff, minByCadre: need.minByCadre };
       const present: EStaff[] = [];
       for (const s of ctx.staff) if ((ix.duties.get(s.id)?.get(day) ?? []).some((a) => a.shiftId === shift.id)) present.push(s);
       if (present.length < shift.minStaff) {

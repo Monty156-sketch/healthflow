@@ -24,6 +24,7 @@ import { ensureOffDuty } from "./shifts.js";
 import { generate, type Shortfall } from "../../engine/generate.js";
 import { evaluateCompliance } from "../../engine/evaluators.js";
 import { rosterInsights } from "../../engine/insights.js";
+import { hasDemand } from "../../engine/demand.js";
 import { dayOf, daysInMonth, isoOf, sayDay } from "../../engine/time.js";
 import type { EAssignment, ECycleRule, ERotation, EShift, EStaff, Finding } from "../../engine/types.js";
 
@@ -92,9 +93,20 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const shifts: EShift[] = shiftRows.map((s) => ({
     id: s.id, code: s.code, name: s.name, startMin: toMin(s.startTime), durationMin: Math.round(s.durationHours * 60), isOvernight: s.isOvernight,
     isOnCall: s.isOnCall, onCallFactor: s.onCallHoursFactor, countsAsDuty: s.countsAsDuty,
-    // A shift that is switched off asks for nobody.
-    minStaff: s.active ? (demand.find((d) => d.shiftId === s.id)?.minStaff ?? s.minStaff) : 0,
-    minByCadre: s.active ? ((demand.find((d) => d.shiftId === s.id)?.minByCadre ?? s.minByCadre ?? {}) as Record<string, number>) : {},
+    // A shift that is switched off asks for nobody. A ward's own numbers replace the facility's, weekday, weekend and holiday alike.
+    ...(() => {
+      const own = demand.find((d) => d.shiftId === s.id);
+      const src = own ?? s;
+      if (!s.active) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+      return {
+        minStaff: src.minStaff,
+        minByCadre: (src.minByCadre ?? {}) as Record<string, number>,
+        weekendMinStaff: src.weekendMinStaff,
+        weekendMinByCadre: (src.weekendMinByCadre ?? null) as Record<string, number> | null,
+        holidayMinStaff: src.holidayMinStaff,
+        holidayMinByCadre: (src.holidayMinByCadre ?? null) as Record<string, number> | null,
+      };
+    })(),
     eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder,
   }));
 
@@ -114,9 +126,25 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }));
   const toAssignment = (a: { staffId: string; shiftId: string; dutyDate: Date; locked?: boolean }): EAssignment => ({ staffId: a.staffId, shiftId: a.shiftId, day: dayFromDate(a.dutyDate), locked: a.locked });
 
+  // Public-holiday duties each person worked over the last twelve months, so holidays are shared over the year.
+  const pastHolidays = await prisma.publicHoliday.findMany({
+    where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: dateFromDay(period.startDay - 365), lt: dateFromDay(period.startDay) } },
+    select: { date: true },
+  });
+  const holidayWorked: Record<string, number> = {};
+  if (pastHolidays.length) {
+    const worked = await prisma.rosterAssignment.groupBy({
+      by: ["staffId"],
+      where: { facilityId, dutyDate: { in: pastHolidays.map((h) => h.date) }, shift: { countsAsDuty: true }, staffId: { in: staff.map((x) => x.id) } },
+      _count: { _all: true },
+    });
+    for (const w of worked) holidayWorked[w.staffId] = w._count._all;
+  }
+
   return {
     period,
     staff,
+    holidayWorked,
     shifts,
     rules,
     cycles,
@@ -403,7 +431,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
 
   const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
   if (!data.staff.length) return res.status(409).json({ error: "no_staff", message: "There are no active staff to roster. Add staff first." });
-  if (!data.shifts.some((s) => s.countsAsDuty && !s.isOnCall && (s.minStaff > 0 || Object.keys(s.minByCadre).length))) {
+  if (!data.shifts.some((s) => s.countsAsDuty && !s.isOnCall && hasDemand(s))) {
     return res.status(409).json({ error: "no_demand", message: "No shift asks for any staff yet. Set a minimum number of people on at least one shift, under Shifts." });
   }
 
@@ -418,6 +446,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
     variation,
     staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations, leave: data.leave, holidays: data.holidays,
     period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames, settlement,
+    holidayWorked: data.holidayWorked,
   });
 
   if (!result.feasible) {
@@ -479,7 +508,7 @@ rostersRouter.post("/:id/validate", allowRoles(...ROSTER_ROLES), async (req, res
   const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
   const findings = evaluateCompliance(data.rules, {
     staff: data.staff, shifts: data.shifts, assignments: [...data.history, ...data.current], leave: data.leave, period: data.period,
-    weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames,
+    weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames, holidays: data.holidays,
   });
   const blocking = findings.filter((f) => f.severity === "BLOCK").length;
   await prisma.$transaction(async (tx) => {
@@ -503,7 +532,7 @@ const cellInput = z.object({
 export function checkOf(data: Data, assignments: EAssignment[]) {
   return evaluateCompliance(data.rules, {
     staff: data.staff, shifts: data.shifts, assignments: [...data.history, ...assignments], leave: data.leave, period: data.period,
-    weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames,
+    weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, cadreNames: data.cadreNames, holidays: data.holidays,
   });
 }
 

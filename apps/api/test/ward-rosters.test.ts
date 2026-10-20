@@ -49,8 +49,10 @@ describe("ward rosters", () => {
     const before = await api.post(`/api/facility/rosters/${id}/generate`, {});
     expect(before.status).toBe(409);
     expect(before.body.message).toMatch(/how many people this ward needs/i);
-    const put = await api.put(`/api/facility/ward-demand/${maternity.id}`, { shifts: [{ shiftId: shifts[0].id, minStaff: 2 }, { shiftId: shifts[1].id, minStaff: 1 }, { shiftId: shifts[2].id, minStaff: 1 }] });
+    const put = await api.put(`/api/facility/ward-demand/${maternity.id}`, { shifts: [{ shiftId: shifts[0].id, minStaff: 2, weekendMinStaff: 1 }, { shiftId: shifts[1].id, minStaff: 1 }, { shiftId: shifts[2].id, minStaff: 1, holidayMinStaff: 1 }] });
     expect(put.status).toBe(200);
+    const read = (await api.get(`/api/facility/ward-demand/${maternity.id}`)).body.shifts;
+    expect(read[0]).toMatchObject({ minStaff: 2, weekendMinStaff: 1, holidayMinStaff: null, custom: true });
     const gen = await api.post(`/api/facility/rosters/${id}/generate`, {});
     expect(gen.status).toBe(200);
     const rows = await prisma.rosterAssignment.findMany({ where: { rosterId: id }, include: { staff: true } });

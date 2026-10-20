@@ -1,6 +1,7 @@
 // What the roster manager needs to read off a finished roster: who carries
 // how much (fairness), and where a cadre is short and what would fix it.
 // Plain data in, plain data out, like the rest of the engine.
+import { demandOn, hasDemand } from "./demand.js";
 import type { EAssignment, ECycleRule, ELeave, EShift, EStaff, Period } from "./types.js";
 import { hoursOf, isoOf, sayDay, weekdayOf } from "./time.js";
 
@@ -126,7 +127,7 @@ export function rosterInsights(input: InsightsInput): Insights {
   cadres.sort((a, b) => a.cadreName.localeCompare(b.cadreName));
 
   // ---- cover advice: which cadre is short, and what would close it
-  const needy = input.shifts.filter((s) => s.countsAsDuty && !s.isOnCall && (s.minStaff > 0 || Object.keys(s.minByCadre).length > 0));
+  const needy = input.shifts.filter((s) => s.countsAsDuty && !s.isOnCall && hasDemand(s));
   const here = new Map<string, EAssignment[]>();
   for (const a of input.assignments) {
     const k = `${a.shiftId}|${a.day}`;
@@ -137,7 +138,7 @@ export function rosterInsights(input: InsightsInput): Insights {
   for (let day = period.startDay; day <= period.endDay; day++) {
     for (const sh of needy) {
       const list = here.get(`${sh.id}|${day}`) ?? [];
-      for (const [cid, need] of Object.entries(sh.minByCadre)) {
+      for (const [cid, need] of Object.entries(demandOn(sh, day, holidays).minByCadre)) {
         const have = list.filter((a) => cadreOf.get(a.staffId) === cid).length;
         if (have >= need) continue;
         const g: Gap = gaps.get(cid) ?? { short: 0, dayList: [], byShift: new Map<string, number>() };
