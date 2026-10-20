@@ -84,8 +84,39 @@ cyclesRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
     prisma.cadre.findMany({ where: { facilityId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     prisma.department.findMany({ where: { facilityId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
-  res.json({ rules: rules.map(present), shifts, cadres, departments });
+  res.json({ rules: rules.map(present), shifts, cadres, departments, checks: await cycleChecks(facilityId, rules) });
 });
+
+/**
+ * Where a cycle asks for something the facility's own rules will not allow. The roster
+ * still works, but it quietly shortens the block, so say so and say which number to change.
+ */
+async function cycleChecks(facilityId: string, rules: RuleRow[]): Promise<string[]> {
+  const limits = await prisma.constraintRule.findMany({ where: { facilityId, enabled: true, code: { in: ["C2", "C7", "C8"] } }, select: { code: true, thresholdValue: true } });
+  const limit = (code: string) => limits.find((l) => l.code === code)?.thresholdValue ?? null;
+  const shifts = await prisma.shift.findMany({ where: { facilityId, active: true, countsAsDuty: true }, select: { id: true, name: true, durationHours: true, isOvernight: true } });
+  const out: string[] = [];
+  for (const r of rules.filter((x) => x.active)) {
+    const counted = shifts.filter((s) => r.countingShifts.some((c) => c.id === s.id));
+    if (!counted.length) continue;
+    const night = counted.every((s) => s.isOvernight);
+    const c8 = limit("C8");
+    const c7 = limit("C7");
+    const c2 = limit("C2");
+    if (night && c8 !== null && r.consecutiveDuties > c8) {
+      out.push(`${r.name} asks for ${r.consecutiveDuties} nights in a row, but Maximum consecutive night duties is ${c8}, so the roster plans blocks of ${c8}. Raise that rule to ${r.consecutiveDuties} under Rules, or change this cycle to ${c8} nights.`);
+    }
+    if (c7 !== null && r.consecutiveDuties > c7) {
+      out.push(`${r.name} asks for ${r.consecutiveDuties} duties in a row, but Maximum consecutive duty days is ${c7}, so the roster plans blocks of ${c7}.`);
+    }
+    const longest = Math.max(...counted.map((s) => s.durationHours));
+    const inWeek = Math.min(r.consecutiveDuties, 7);
+    if (c2 !== null && longest * inWeek > c2) {
+      out.push(`${r.name}: ${inWeek} ${counted.find((s) => s.durationHours === longest)!.name.toLowerCase()} shifts of ${longest} hours come to ${longest * inWeek} hours in a week, above the weekly limit of ${c2}. The roster will not plan a full block. Shorten the block or raise Maximum normal hours per week under Rules.`);
+    }
+  }
+  return out;
+}
 
 const cycleInput = z.object({
   name: requiredText(80, "Name"),
