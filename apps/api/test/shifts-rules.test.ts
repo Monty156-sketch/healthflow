@@ -58,6 +58,9 @@ describe("shifts", () => {
     const changed = await api.patch(`/api/facility/shifts/${made.body.shift.id}`, { ...NIGHT, weekendMinStaff: null, holidayMinStaff: 1 });
     expect(changed.body.shift).toMatchObject({ weekendMinStaff: null, holidayMinStaff: 1 });
     expect((await api.post("/api/facility/shifts", { ...NIGHT, code: "Z", weekendMinStaff: -1 })).status).toBe(400);
+    const kept = await api.post("/api/facility/shifts", { ...NIGHT, code: "K", keepFull: 1 });
+    expect(kept.body.shift.keepFull).toBe(1);
+    expect((await api.post("/api/facility/shifts", { ...NIGHT, code: "K2", keepFull: 3 })).status).toBe(400);
   });
 
   it("an on-call factor needs the advice it is based on", async () => {

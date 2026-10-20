@@ -57,7 +57,7 @@ export async function copyConfiguration(fromId: string, toId: string) {
     await prisma.shift.create({
       data: {
         facilityId: toId, name: s.name, code: s.code, startTime: s.startTime, endTime: s.endTime, durationHours: s.durationHours, isOvernight: s.isOvernight, isOnCall: s.isOnCall,
-        onCallHoursFactor: s.onCallHoursFactor, onCallAdviceNote: s.onCallAdviceNote, minStaff: s.minStaff, minByCadre: mins, weekendMinStaff: s.weekendMinStaff, holidayMinStaff: s.holidayMinStaff, colour: s.colour, countsAsDuty: s.countsAsDuty, sortOrder: s.sortOrder,
+        onCallHoursFactor: s.onCallHoursFactor, onCallAdviceNote: s.onCallAdviceNote, minStaff: s.minStaff, minByCadre: mins, weekendMinStaff: s.weekendMinStaff, holidayMinStaff: s.holidayMinStaff, keepFull: s.keepFull, colour: s.colour, countsAsDuty: s.countsAsDuty, sortOrder: s.sortOrder,
         eligibleCadreIds: s.eligibleCadreIds.flatMap((id) => (toNew.has(id) ? [toNew.get(id)!] : [])),
       },
     });

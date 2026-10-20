@@ -53,6 +53,9 @@ describe("ward rosters", () => {
     expect(put.status).toBe(200);
     const read = (await api.get(`/api/facility/ward-demand/${maternity.id}`)).body.shifts;
     expect(read[0]).toMatchObject({ minStaff: 2, weekendMinStaff: 1, holidayMinStaff: null, custom: true });
+    const check = (await api.get(`/api/facility/rosters/${id}/staffing`)).body;
+    expect(["OK", "TIGHT", "SHORT"]).toContain(check.verdict);
+    expect(check.duties.needed).toBeGreaterThan(0);
     const gen = await api.post(`/api/facility/rosters/${id}/generate`, {});
     expect(gen.status).toBe(200);
     const rows = await prisma.rosterAssignment.findMany({ where: { rosterId: id }, include: { staff: true } });

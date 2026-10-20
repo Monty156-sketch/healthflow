@@ -23,6 +23,11 @@ export interface EShift {
   holidayMinByCadre?: Record<string, number> | null;
   eligibleCadreIds: string[];
   sortOrder: number;
+  /**
+   * When there are not enough people: 1 keeps this shift full first, 0 is normal,
+   * -1 lets it run short first. Default 0.
+   */
+  keepFull?: number;
 }
 
 export interface EStaff {

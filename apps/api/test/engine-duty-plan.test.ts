@@ -48,10 +48,11 @@ describe("who is on which duty", () => {
   it("shares nights and total duties fairly among the people who take nights", () => {
     const takers = staff.filter((x) => !x.excludedFromNights);
     const nights = takers.map((s) => mine(r, s.id).filter((c) => c.shiftId === "N").length);
-    const totals = takers.map((s) => mine(r, s.id).length);
+    const totals = takers.map((s) => mine(r, s.id).reduce((t, c) => t + (c.shiftId === "N" ? 12 : 6), 0));
     console.log("nights", nights.join(","), "totals", totals.join(","));
     expect(Math.max(...nights) - Math.min(...nights)).toBeLessThanOrEqual(4); // at most one four-night block apart
-    expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(4);
+    // Hours, not duty counts: within one four-night block of each other.
+    expect(Math.max(...totals) - Math.min(...totals)).toBeLessThanOrEqual(48);
   });
 
   it("keeps the four-night and four-day cycles", () => {
