@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generate, type GenerateInput } from "../src/engine/generate.js";
+import { evaluateWeekendsOff } from "../src/engine/evaluators.js";
 import { A, M, N, OFF, RULES, cycle, person, periodFrom } from "./engineKit.js";
 import type { EStaff } from "../src/engine/types.js";
 
@@ -82,5 +83,26 @@ describe("weekends and days off in the month", () => {
   it("reports anyone left without a weekend off", () => {
     const r = generate(base({ rules: withRules(5, 0) }));
     expect(r.findings.some((f) => f.ruleCode === "C13" && f.message.includes("the facility asks for at least 5"))).toBe(true);
+  });
+});
+
+describe("full weekends off on Block", () => {
+  it("leaves no one without a full weekend off when the rule blocks", () => {
+    const r = generate(base({ staff: team(14), rules: [...rules, { code: "C13", threshold: 1, severity: "BLOCK" as const }] }));
+    expect(r.findings.filter((f) => f.ruleCode === "C13")).toEqual([]);
+  });
+
+  it("does not count a weekend as free after a Friday night", () => {
+    let fri = period.startDay;
+    while (new Date(fri * 86_400_000).getUTCDay() !== 5) fri++;
+    const s = person(1);
+    const ctx = { staff: [s], shifts: [A, M, N, OFF], assignments: [] as { staffId: string; shiftId: string; day: number }[], leave: [], period, weekStartsOn: 1, referenceWeeks: 4 };
+    // Work every Saturday except one, and a night on the Friday before that one.
+    for (let d = period.startDay; d <= period.endDay; d++) if (new Date(d * 86_400_000).getUTCDay() === 6 && d !== fri + 1) ctx.assignments.push({ staffId: s.id, shiftId: "A", day: d });
+    const rule = { code: "C13", threshold: 1, severity: "WARN" as const };
+    expect(evaluateWeekendsOff(rule, ctx)).toEqual([]);
+    // A new context: the evaluators cache their index per context object.
+    const withNight = { ...ctx, assignments: [...ctx.assignments, { staffId: s.id, shiftId: "N", day: fri }] };
+    expect(evaluateWeekendsOff(rule, withNight)).toHaveLength(1);
   });
 });

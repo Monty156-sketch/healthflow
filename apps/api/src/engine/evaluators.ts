@@ -340,7 +340,9 @@ export const evaluateWeekendsOff: Evaluator = (rule, ctx) => {
   for (const s of ctx.staff) {
     const mine = ix.duties.get(s.id);
     if (!mine || ![...mine.keys()].some((d) => inPeriod(ctx, d))) continue;
-    const free = weekends.filter((sat) => !mine.has(sat) && !mine.has(sat + 1)).length;
+    // A night on the Friday runs into Saturday morning, so that weekend is not free either.
+    const nightBefore = (sat: number) => (mine.get(sat - 1) ?? []).some((a) => ix.shiftById.get(a.shiftId)?.isOvernight);
+    const free = weekends.filter((sat) => !mine.has(sat) && !mine.has(sat + 1) && !nightBefore(sat)).length;
     if (free < Math.min(want, weekends.length)) {
       out.push(finding(rule, s, null, `${s.name} has ${free === 0 ? "no" : free} full ${free === 1 ? "weekend" : "weekends"} off this month; the facility asks for at least ${want}.`, { free, required: want }));
     }
