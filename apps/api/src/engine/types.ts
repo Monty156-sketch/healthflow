@@ -28,6 +28,8 @@ export interface EShift {
    * -1 lets it run short first. Default 0.
    */
   keepFull?: number;
+  /** At least this many people on the shift who can lead it. */
+  minLeads?: number;
 }
 
 export interface EStaff {
@@ -43,6 +45,13 @@ export interface EStaff {
   maxDutiesPerWeek: number;
   /** Empty means every shift their cadre allows. */
   eligibleShiftIds: string[];
+  /** Can take charge of a shift. */
+  canLead?: boolean;
+  /** 0 or absent means no limit. */
+  maxNightsPerMonth?: number;
+  maxHoursPerMonth?: number;
+  /** Stretches with no night duty (pregnancy, breastfeeding, after illness). */
+  noNights?: { startDay: number; endDay: number }[];
 }
 
 export interface EAssignment {

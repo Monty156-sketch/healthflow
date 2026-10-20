@@ -53,6 +53,11 @@ export interface GenerateInput {
    * so over a year everyone gets their share of holidays at home.
    */
   holidayWorked?: Record<string, number>;
+  /**
+   * Days people asked to have off. Approved ones are kept free like leave;
+   * ones still waiting for a decision are avoided where the month allows.
+   */
+  daysOff?: { staffId: string; day: number; approved: boolean }[];
   /** False builds day by day only, without planning blocks first. For comparison and tests. */
   blocks?: boolean | "only";
 }
@@ -115,6 +120,8 @@ const CARRY_SPECIAL_WEIGHT = 1.5;
 const DEFICIT_WEIGHT = 6;
 /** Per holiday worked above the cadre's average over the last year. */
 const HOLIDAY_WEIGHT = 5;
+/** Working a day someone has asked to have off, while the request waits for a decision. */
+const ASKED_OFF = 25;
 /** How strongly the day-by-day pass follows the planned blocks. */
 const PLAN_FOLLOW = 60;
 const PLAN_OTHER_SHIFT = 20;
@@ -316,8 +323,12 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   // ---- Step 2 and 3: who could work what, and whether it can be done at all
   // A day someone has been deliberately kept off is not offered to them.
   const keptOff = new Set(input.locked.filter((l) => shiftById.get(l.shiftId) && !shiftById.get(l.shiftId)!.countsAsDuty).map((l) => `${l.staffId}:${l.day}`));
+  const approvedOff = new Set((input.daysOff ?? []).filter((o) => o.approved).map((o) => `${o.staffId}:${o.day}`));
+  const askedOff = new Set((input.daysOff ?? []).filter((o) => !o.approved).map((o) => `${o.staffId}:${o.day}`));
   const staticReason = (s: EStaff, shift: EShift, day: number): string | null => {
     if (onLeave(s, day)) return "leave";
+    if (approvedOff.has(`${s.id}:${day}`)) return "day off approved";
+    if (shift.isOvernight && s.noNights?.some((p) => day >= p.startDay && day <= p.endDay)) return "no nights for now";
     if (keptOff.has(`${s.id}:${day}`)) return "kept off duty";
     if (s.morningOnly && (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day))) return "in-charges work weekday mornings only";
     return ineligibleReason(s, shift);
@@ -329,6 +340,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     cadreId: string | null;
     scarcity: number;
     order: number;
+    /** Needs someone who can lead the shift. */
+    lead?: boolean;
   }
 
   const slotsOf = (day: number): { slots: Slot[]; shortfalls: Shortfall[] } => {
@@ -362,6 +375,17 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         for (let i = 0; i < anyLeft; i++) slots.push({ day, shift, cadreId: null, scarcity: pool, order: shift.sortOrder });
         needTotal += anyLeft;
       }
+      // Someone on the shift must be able to lead it: that many of its open places ask for a lead, open places first.
+      let leads = (shift.minLeads ?? 0) - placed.filter((p) => p.canLead).length;
+      if (leads > 0) {
+        const leadPool = staff.filter((s) => s.canLead && !dutyOn(s.id, day) && !staticReason(s, shift, day)).length;
+        for (const sl of [...slots].filter((x) => x.shift === shift).sort((a, b) => (a.cadreId ? 1 : 0) - (b.cadreId ? 1 : 0))) {
+          if (leads <= 0) break;
+          sl.lead = true;
+          sl.scarcity = Math.min(sl.scarcity, leadPool);
+          leads--;
+        }
+      }
     }
     if (needTotal > idle && !shortfalls.length) {
       // Enough people for each shift on its own, but not for all the shifts at once.
@@ -369,7 +393,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     }
     // Hardest first; then nights, which have the tightest rest limits; cadre slots before open ones; then shift order.
     // The facility's order for running short comes first: a shift it keeps full is filled before one that may run short.
-    slots.sort((a, b) => (b.shift.keepFull ?? 0) - (a.shift.keepFull ?? 0) || a.scarcity - b.scarcity || Number(b.shift.isOvernight) - Number(a.shift.isOvernight) || (a.cadreId ? 0 : 1) - (b.cadreId ? 0 : 1) || a.order - b.order);
+    slots.sort((a, b) => (b.shift.keepFull ?? 0) - (a.shift.keepFull ?? 0) || Number(b.lead ?? false) - Number(a.lead ?? false) || a.scarcity - b.scarcity || Number(b.shift.isOvernight) - Number(a.shift.isOvernight) || (a.cadreId ? 0 : 1) - (b.cadreId ? 0 : 1) || a.order - b.order);
     return { slots, shortfalls };
   };
 
@@ -460,6 +484,17 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (let d = day + 1; mine.has(d) && test(mine.get(d)!); d++) n++;
       return n;
     };
+    // The person's own limits for the month.
+    if (s.maxNightsPerMonth && shift.isOvernight) {
+      let n = 1;
+      for (const [d, sid] of mine) if (d >= period.startDay && d <= period.endDay && shiftById.get(sid)!.isOvernight) n++;
+      if (n > s.maxNightsPerMonth) return "nights this month";
+    }
+    if (s.maxHoursPerMonth) {
+      let h = hoursOf(shift);
+      for (const [d, sid] of mine) if (d >= period.startDay && d <= period.endDay) h += hoursOf(shiftById.get(sid)!);
+      if (h > s.maxHoursPerMonth) return "hours this month";
+    }
     if (c7 !== null && !(planned && warnOnly("C7")) && runLength(() => true) > c7) return "consecutive days";
     if (c8 !== null && !(planned && warnOnly("C8")) && shift.isOvernight && runLength((id) => shiftById.get(id)!.isOvernight) > c8) return "consecutive nights";
     return null;
@@ -868,9 +903,13 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           if (b.start < w.free) continue;
           const mine = by.get(s.id)!;
           const st0 = state.get(s.id)!;
-          if (b.picks.some(([d, x]) => onLeave(s, d) || st0.rest.get(d) === "BLOCK" || mine.has(d) || ineligibleReason(s, shiftById.get(x)!))) continue;
-          // Nights in whole blocks, as evenly as the month allows.
+          if (b.picks.some(([d, x]) => staticReason(s, shiftById.get(x)!, d) || st0.rest.get(d) === "BLOCK" || mine.has(d))) continue;
+          // The person's own limits for the month.
+          if (b.night && s.maxNightsPerMonth && w.nights + b.picks.length > s.maxNightsPerMonth) continue;
+          if (s.maxHoursPerMonth && (w.duties + loadOf(b)) * avgH > s.maxHoursPerMonth + 0.01) continue;
           let cost = 0;
+          // Days the person has asked to have off, still waiting for a decision.
+          cost += ASKED_OFF * b.picks.filter(([d]) => askedOff.has(`${s.id}:${d}`)).length;
           // Nights by count, against an even share, less whatever extra they did in the last three months.
           const nightShare = totalNight / Math.max(1, takers.length) - 0.5 * (nightsLast90(s.id) - meanLast90);
           if (b.night) {
@@ -958,7 +997,9 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             if (b.night ? !canNight(s) || u.nightBlocks >= u.nightTarget + 1 : !canDay(s)) continue;
             const mine = by.get(s.id)!;
             const st0 = state.get(s.id)!;
-            if (b.picks.some(([d, x]) => onLeave(s, d) || st0.rest.get(d) === "BLOCK" || mine.has(d) || ineligibleReason(s, shiftById.get(x)!))) continue;
+            if (b.picks.some(([d, x]) => staticReason(s, shiftById.get(x)!, d) || st0.rest.get(d) === "BLOCK" || mine.has(d) || askedOff.has(`${s.id}:${d}`))) continue;
+            if (b.night && s.maxNightsPerMonth && u.nights + b.picks.length > s.maxNightsPerMonth) continue;
+            if (s.maxHoursPerMonth && (u.duties + loadOf(b)) * avgH > s.maxHoursPerMonth + 0.01) continue;
             const gap = restOf(s);
             let clash = false;
             for (let d = first - gap - 1; d <= last + gap + 1 && !clash; d++) if (u.plan.has(d) || (d < period.startDay && mine.has(d) && d >= first - gap)) clash = true;
@@ -1002,7 +1043,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         if (check.hard) continue;
         const rot = rotationCheck(s, slot.shift, day);
         if (rot.hard) continue;
-        const sc = score(s, slot.shift, day) + check.soft + rot.soft + jitter();
+        // A place that needs a lead goes to someone who can lead, unless nobody can: then the shift is still staffed and the roster says it has no lead.
+        const sc = score(s, slot.shift, day) + check.soft + rot.soft + jitter() + (slot.lead && !s.canLead ? 1000 : 0) + (askedOff.has(`${s.id}:${day}`) ? ASKED_OFF : 0);
         if (!best || sc < best.score) best = { s, score: sc }; // staff are already in staff-number order, so ties keep the earlier number
       }
       if (best) {

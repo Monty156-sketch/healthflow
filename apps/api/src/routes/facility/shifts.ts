@@ -38,6 +38,8 @@ const shiftInput = z.object({
   holidayMinStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60.").nullish(),
   /** When there are not enough people: 1 keep this shift full first, 0 normal, -1 may run short first. */
   keepFull: z.number().int().min(-1).max(1).default(0),
+  /** At least this many people on the shift who can lead it. */
+  minLeads: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(10, "At most 10.").default(0),
   eligibleCadreIds: z.array(z.string()).default([]),
   colour: z.enum(colours, { errorMap: () => ({ message: "Choose one of the colours." }) }),
 });
@@ -66,6 +68,7 @@ function present(s: ShiftRow) {
     weekendMinStaff: s.weekendMinStaff,
     holidayMinStaff: s.holidayMinStaff,
     keepFull: s.keepFull,
+    minLeads: s.minLeads,
     eligibleCadreIds: s.eligibleCadreIds,
     colour: s.colour,
     countsAsDuty: s.countsAsDuty,
@@ -108,6 +111,7 @@ async function build(facilityId: string, body: unknown, res: import("express").R
   for (const id of [...input.eligibleCadreIds, ...Object.keys(input.minByCadre)]) {
     if (!cadreIds.has(id)) fields.eligibleCadreIds = "One of the cadres is not in your facility.";
   }
+  if (input.minLeads > input.minStaff) fields.minLeads = "Cannot be more than the shift's minimum staff.";
   for (const [, n] of Object.entries(input.minByCadre)) {
     if (n > input.minStaff) fields.minByCadre = "A cadre's minimum cannot be more than the shift's total minimum.";
   }
@@ -168,6 +172,7 @@ async function build(facilityId: string, body: unknown, res: import("express").R
           weekendMinStaff: input.weekendMinStaff ?? null,
           holidayMinStaff: input.holidayMinStaff ?? null,
           keepFull: input.keepFull,
+          minLeads: input.minLeads,
           eligibleCadreIds: input.eligibleCadreIds,
           colour: input.colour,
         },
@@ -233,7 +238,7 @@ shiftsRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
   if (changed.length) {
     const LABEL: Record<string, string> = {
       name: "name", code: "code", startTime: "start time", endTime: "end time", durationHours: "duration", isOvernight: "overnight setting",
-      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre", weekendMinStaff: "weekend minimum", holidayMinStaff: "public holiday minimum", keepFull: "which shift runs short first",
+      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre", weekendMinStaff: "weekend minimum", holidayMinStaff: "public holiday minimum", keepFull: "which shift runs short first", minLeads: "people who can lead it",
       eligibleCadreIds: "eligible cadres", colour: "colour", onCallAdviceNote: "on-call advice note",
     };
     const parts = changed.filter((k) => LABEL[k]).map((k) => LABEL[k]);

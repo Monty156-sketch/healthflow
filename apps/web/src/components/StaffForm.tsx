@@ -26,6 +26,9 @@ interface FormValues {
   willingForExtraDuties: boolean;
   exclusionReason: string;
   maxDutiesPerWeek: string;
+  canLead: boolean;
+  maxNightsPerMonth: string;
+  maxHoursPerMonth: string;
 }
 
 function initialValues(s?: Staff): FormValues {
@@ -48,6 +51,9 @@ function initialValues(s?: Staff): FormValues {
     willingForExtraDuties: s?.willingForExtraDuties ?? false,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
+    canLead: s?.canLead ?? false,
+    maxNightsPerMonth: String(s?.maxNightsPerMonth ?? 0),
+    maxHoursPerMonth: String(s?.maxHoursPerMonth ?? 0),
   };
 }
 
@@ -89,6 +95,8 @@ export function StaffForm({
         morningOnly: staff ? v.morningOnly : v.morningOnly || undefined,
         smsOptOut: staff ? v.smsOptOut : v.smsOptOut || undefined,
         maxDutiesPerWeek: v.maxDutiesPerWeek === "" ? 0 : Number(v.maxDutiesPerWeek),
+        maxNightsPerMonth: v.maxNightsPerMonth === "" ? 0 : Number(v.maxNightsPerMonth),
+        maxHoursPerMonth: v.maxHoursPerMonth === "" ? 0 : Number(v.maxHoursPerMonth),
         exclusionReason: v.excludedFromNights ? v.exclusionReason : "",
       };
       const res = staff
@@ -218,6 +226,10 @@ export function StaffForm({
           <p className="mt-1 text-sm text-[var(--muted)]">Works the morning shift every weekday, no nights or afternoons, and sits outside the duty cycles. Set automatically when the position says in-charge.</p>
         </div>
         <div className="sm:col-span-2">
+          <Checkbox label="Can lead a shift" checked={values.canLead} onChange={set("canLead")} />
+          <p className="mt-1 text-sm text-[var(--muted)]">Senior enough to take charge of a shift. Shifts that ask for a lead get one of these people first.</p>
+        </div>
+        <div className="sm:col-span-2">
           <Checkbox label="Willing to cover extra duties" checked={values.willingForExtraDuties} onChange={set("willingForExtraDuties")} />
           <p className="mt-1 text-sm text-[var(--muted)]">Used only to rank who is asked first when a colleague is absent. It never obliges anyone.</p>
         </div>
@@ -263,6 +275,12 @@ export function StaffForm({
               onChange={(e) => set("maxDutiesPerWeek")(e.target.value)}
             />
           )}
+        </Field>
+        <Field label="Most nights in a month" hint="0 means no limit." error={err.maxNightsPerMonth}>
+          {(a) => <Input {...a} className="figures" type="number" inputMode="numeric" min={0} max={31} value={values.maxNightsPerMonth} onChange={(e) => set("maxNightsPerMonth")(e.target.value)} />}
+        </Field>
+        <Field label="Most hours in a month" hint="0 means no limit. For part-time contracts, for example." error={err.maxHoursPerMonth}>
+          {(a) => <Input {...a} className="figures" type="number" inputMode="numeric" min={0} max={744} value={values.maxHoursPerMonth} onChange={(e) => set("maxHoursPerMonth")(e.target.value)} />}
         </Field>
       </Section>
 

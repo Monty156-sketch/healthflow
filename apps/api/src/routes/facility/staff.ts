@@ -60,6 +60,11 @@ const staffInput = z
       .min(0, "Maximum duties per week cannot be negative.")
       .max(7, "Maximum duties per week cannot be more than 7.")
       .default(0),
+    /** Can take charge of a shift. */
+    canLead: z.boolean().optional(),
+    /** 0 means no limit. */
+    maxNightsPerMonth: z.number({ invalid_type_error: "Most nights in a month must be a number." }).int("Most nights in a month must be a whole number.").min(0, "Most nights in a month cannot be negative.").max(31, "Most nights in a month is too high.").optional(),
+    maxHoursPerMonth: z.number({ invalid_type_error: "Most hours in a month must be a number." }).int("Most hours in a month must be a whole number.").min(0, "Most hours in a month cannot be negative.").max(744, "Most hours in a month is too high.").optional(),
   })
   .superRefine((v, ctx) => {
     if (v.excludedFromNights && !v.exclusionReason) {
@@ -143,6 +148,9 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     willingForExtraDuties: s.willingForExtraDuties,
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
+    canLead: s.canLead,
+    maxNightsPerMonth: s.maxNightsPerMonth,
+    maxHoursPerMonth: s.maxHoursPerMonth,
     account: s.userProfile
       ? {
           role: s.userProfile.role,
@@ -248,6 +256,9 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
+      canLead: input.canLead ?? false,
+      maxNightsPerMonth: input.maxNightsPerMonth ?? 0,
+      maxHoursPerMonth: input.maxHoursPerMonth ?? 0,
       eligibleForShifts: { connect: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
     },
     include: staffInclude,
@@ -285,6 +296,9 @@ const FIELD_LABEL: Record<string, string> = {
   willingForExtraDuties: "willingness to cover extra duties",
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
+  canLead: "who can lead a shift",
+  maxNightsPerMonth: "most nights in a month",
+  maxHoursPerMonth: "most hours in a month",
   eligibleShifts: "shifts they may work",
   cadre: "cadre",
   department: "department",
@@ -327,6 +341,9 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
+      ...(input.canLead !== undefined ? { canLead: input.canLead } : {}),
+      ...(input.maxNightsPerMonth !== undefined ? { maxNightsPerMonth: input.maxNightsPerMonth } : {}),
+      ...(input.maxHoursPerMonth !== undefined ? { maxHoursPerMonth: input.maxHoursPerMonth } : {}),
       eligibleForShifts: { set: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
     },
     include: staffInclude,
@@ -369,6 +386,11 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
     if (k === "smsOptOut") return b ? "stopped text messages to them" : "turned text messages to them back on";
     if (k === "morningOnly") return b ? "set them to weekday mornings only" : "returned them to the full duty cycle";
     if (k === "excludedFromNights") return b ? "excluded them from night duty" : "returned them to night duty";
+    if (k === "canLead") return b ? "marked them able to lead a shift" : "marked them as not leading shifts";
+    if (k === "maxNightsPerMonth" || k === "maxHoursPerMonth") {
+      const fmt = (v: unknown) => (v === 0 ? "no limit" : String(v));
+      return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;
+    }
     if (k === "maxDutiesPerWeek") {
       const fmt = (v: unknown) => (v === 0 ? "no limit" : String(v));
       return `${FIELD_LABEL[k]} from ${fmt(a)} to ${fmt(b)}`;

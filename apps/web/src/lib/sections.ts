@@ -35,6 +35,7 @@ export const SECTIONS: Section[] = [
     id: "leave",
     tabs: [
       { href: "/leave", label: "Leave requests", roles: EVERYONE },
+      { href: "/days-off", label: "Days off", roles: EVERYONE },
       { href: "/leave/calendar", label: "Leave calendar", roles: READ },
       { href: "/settings/leave-types", label: "Leave types", roles: ADMIN },
       { href: "/settings/entitlements", label: "Leave entitlements", roles: ADMIN },

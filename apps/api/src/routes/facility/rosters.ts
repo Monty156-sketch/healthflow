@@ -51,7 +51,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { departmentId: ward } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true } }, department: { select: { runsNights: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { departmentId: ward } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -83,13 +83,21 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   // Doctors and other cadres kept off the roster are left out. Nights are not given to cadres or departments that do not take them.
   const staff: EStaff[] = staffRows
     .filter((s) => s.cadre?.onRoster !== false)
-    .map((s) => ({
-      id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
-      excludedFromNights: s.excludedFromNights || s.cadre?.takesNights === false || s.department?.runsNights === false || s.morningOnly,
-      morningOnly: s.morningOnly && Boolean(morning),
-      maxDutiesPerWeek: s.maxDutiesPerWeek,
-      eligibleShiftIds: s.morningOnly && morning ? [morning.id] : eligibleByStaff.get(s.id) ?? [],
-    }));
+    .map((s) => {
+      // In-charges, and cadres on office hours, work the weekday morning only, outside the duty cycles.
+      const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true) && Boolean(morning);
+      return {
+        id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
+        excludedFromNights: s.excludedFromNights || s.cadre?.takesNights === false || s.department?.runsNights === false || weekdays,
+        morningOnly: weekdays,
+        maxDutiesPerWeek: s.maxDutiesPerWeek,
+        eligibleShiftIds: weekdays && morning ? [morning.id] : eligibleByStaff.get(s.id) ?? [],
+        canLead: s.canLead,
+        maxNightsPerMonth: s.maxNightsPerMonth,
+        maxHoursPerMonth: s.maxHoursPerMonth,
+        noNights: s.restrictions.map((x) => ({ startDay: dayFromDate(x.startDate), endDay: dayFromDate(x.endDate) })),
+      };
+    });
 
   const shifts: EShift[] = shiftRows.map((s) => ({
     id: s.id, code: s.code, name: s.name, startMin: toMin(s.startTime), durationMin: Math.round(s.durationHours * 60), isOvernight: s.isOvernight,
@@ -108,7 +116,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
         holidayMinByCadre: (src.holidayMinByCadre ?? null) as Record<string, number> | null,
       };
     })(),
-    eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder, keepFull: s.keepFull,
+    eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder, keepFull: s.keepFull, minLeads: s.active ? s.minLeads : 0,
   }));
 
   const rules = ruleRows.map((r) => ({
@@ -142,10 +150,18 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     for (const w of worked) holidayWorked[w.staffId] = w._count._all;
   }
 
+  // Days people asked to have off this month: approved ones are kept free, ones still waiting are avoided where possible.
+  const offRows = await prisma.dayOffRequest.findMany({
+    where: { facilityId, status: { in: ["REQUESTED", "APPROVED"] }, date: { gte: dateFromDay(period.startDay), lte: dateFromDay(period.endDay) }, staffId: { in: staff.map((x) => x.id) } },
+    select: { staffId: true, date: true, status: true },
+  });
+  const daysOff = offRows.map((o) => ({ staffId: o.staffId, day: dayFromDate(o.date), approved: o.status === "APPROVED" }));
+
   return {
     period,
     staff,
     holidayWorked,
+    daysOff,
     shifts,
     rules,
     cycles,
@@ -457,6 +473,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
     staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations, leave: data.leave, holidays: data.holidays,
     period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history, locked, cadreNames: data.cadreNames, settlement,
     holidayWorked: data.holidayWorked,
+    daysOff: data.daysOff,
   });
 
   if (!result.feasible) {

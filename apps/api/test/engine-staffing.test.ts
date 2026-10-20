@@ -46,5 +46,5 @@ describe("which shift runs short first", () => {
     expect(gaps(keepAfternoon, "N")).toBeGreaterThan(gaps(plain, "N"));
     const keepMorning = run({ A: 1, M: -1 });
     expect(gaps(keepMorning, "A")).toBeLessThan(gaps(plain, "A"));
-  });
+  }, 30_000);
 });

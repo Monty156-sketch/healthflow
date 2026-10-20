@@ -65,7 +65,7 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
         partial: true,
         staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations,
         leave: data.leave, holidays: data.holidays, period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks,
-        history: data.history, locked: keep, cadreNames: data.cadreNames, settlement, holidayWorked: data.holidayWorked,
+        history: data.history, locked: keep, cadreNames: data.cadreNames, settlement, holidayWorked: data.holidayWorked, daysOff: data.daysOff,
       });
       return { r, keep };
     };

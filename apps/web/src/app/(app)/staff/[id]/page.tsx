@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useCallback, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { StaffForm } from "@/components/StaffForm";
+import { NoNightsPanel } from "@/components/NoNightsPanel";
 import { ConsentPanel, InvitePanel, type PendingInvitation } from "@/components/StaffAccess";
 import { api, ApiError } from "@/lib/api";
 import { useResource, useSave } from "@/lib/useApi";
@@ -356,6 +357,7 @@ function StaffDetail() {
             <InvitePanel s={s} invitation={data.invitation} isAdmin={isAdmin} onChanged={reload} />
           )}
           {isAdmin && <ConsentPanel s={s} photo={s.photo} onPhotoChanged={reload} />}
+          <NoNightsPanel staffId={s.id} />
         </div>
       </div>
     </>

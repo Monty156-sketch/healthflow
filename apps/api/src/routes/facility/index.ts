@@ -22,6 +22,7 @@ import {
 } from "../../lib/labels.js";
 import { departmentsRouter } from "./departments.js";
 import { cadresRouter } from "./cadres.js";
+import { daysOffRouter, restrictionsRouter } from "./daysOff.js";
 import { staffRouter } from "./staff.js";
 import { auditRouter } from "./audit.js";
 import { privacyRouter } from "./privacy.js";
@@ -57,7 +58,9 @@ facilityRouter.use(requireAuth, requireFacilityUser);
 facilityRouter.use("/departments", departmentsRouter);
 facilityRouter.use("/cadres", cadresRouter);
 facilityRouter.use("/staff-import", staffImportRouter);
+facilityRouter.use("/staff", restrictionsRouter);
 facilityRouter.use("/staff", staffRouter);
+facilityRouter.use("/days-off", daysOffRouter);
 facilityRouter.use("/staff", staffInvitationRouter);
 facilityRouter.use("/invitations", invitationAdminRouter);
 facilityRouter.use("/privacy", privacyRouter);

@@ -17,6 +17,7 @@ import {
   PageHeader,
   Panel,
   SaveStatus,
+  Select,
   StatusBadge,
   TableScroll,
   TD,
@@ -102,8 +103,10 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
   const [name, setName] = useState(item.name);
   const [code, setCode] = useState(item.code ?? "");
   const [runsNights, setRunsNights] = useState((item as Department).runsNights !== false);
-  const [takesNights, setTakesNights] = useState((item as Cadre).takesNights !== false);
-  const [onRoster, setOnRoster] = useState((item as Cadre).onRoster !== false);
+  const c = item as Cadre;
+  const [works, setWorks] = useState<"shifts" | "days" | "office" | "off">(
+    c.onRoster === false ? "off" : c.weekdaysOnly ? "office" : c.takesNights === false ? "days" : "shifts"
+  );
   const update = useCallback(
     (body: { name: string; code: string }) => api.patch(`/api/facility/${kind.key}/${item.id}`, body),
     [kind.key, item.id]
@@ -112,7 +115,10 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    const flags = kind.key === "departments" ? { runsNights } : { takesNights: takesNights && onRoster, onRoster };
+    const flags =
+      kind.key === "departments"
+        ? { runsNights }
+        : { onRoster: works !== "off", takesNights: works === "shifts", weekdaysOnly: works === "office" };
     if (await save.run({ name, code, ...flags } as { name: string; code: string })) onDone(true);
   }
 
@@ -130,13 +136,19 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
             {kind.key === "departments" ? (
               <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} />
             ) : (
-              <>
-                <Checkbox label="On the duty roster" checked={onRoster} onChange={setOnRoster} />
-                {onRoster && <Checkbox label="Takes night duty" checked={takesNights} onChange={setTakesNights} />}
-              </>
+              <Field label="How this cadre works">
+                {(a) => (
+                  <Select {...a} value={works} onChange={(e) => setWorks(e.target.value as typeof works)}>
+                    <option value="shifts">Shifts, nights included</option>
+                    <option value="days">Shifts, day shifts only</option>
+                    <option value="office">Weekday office hours (mornings, Monday to Friday)</option>
+                    <option value="off">Not on the duty roster (on call or their own schedule)</option>
+                  </Select>
+                )}
+              </Field>
             )}
             <p className="text-sm text-[var(--muted)]">
-              {kind.key === "departments" ? "Switch off for a department that closes at night, such as the eye clinic. Nobody in it is given nights." : "Nights go to general nurses and midwives by default. Doctors are kept off the roster."}
+              {kind.key === "departments" ? "Switch off for a department that closes at night, such as the eye clinic. Nobody in it is given nights." : "Nurses and midwives usually work shifts with nights. Pharmacy, laboratory and records staff usually work weekday office hours. Doctors are usually kept off the roster."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:pt-6">
@@ -238,7 +250,8 @@ function GroupSection({ kind }: { kind: Kind }) {
                         {!item.active && <StatusBadge tone="neutral">Inactive</StatusBadge>}
                         {kind.key === "departments" && (item as Department).runsNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster === false && <StatusBadge tone="neutral">Not on roster</StatusBadge>}
-                        {kind.key === "cadres" && (item as Cadre).onRoster !== false && (item as Cadre).takesNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
+                        {kind.key === "cadres" && (item as Cadre).onRoster !== false && (item as Cadre).weekdaysOnly && <StatusBadge tone="neutral">Office hours</StatusBadge>}
+                        {kind.key === "cadres" && (item as Cadre).onRoster !== false && !(item as Cadre).weekdaysOnly && (item as Cadre).takesNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
                         {isAdmin && (
                           <>
                             {item.active && (

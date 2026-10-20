@@ -384,6 +384,8 @@ model Facility {
   rosters             Roster[]
   leaveTypes          LeaveType[]
   leaveEntitlements   LeaveEntitlement[]
+  staffRestrictions   StaffRestriction[]
+  dayOffRequests      DayOffRequest[]
   leaveRequests       LeaveRequest[]
   publicHolidays      PublicHoliday[]
   attendance          Attendance[]
@@ -471,6 +473,8 @@ model Cadre {
   takesNights Boolean  @default(true)
   /// False for cadres who do not work the duty roster, such as doctors.
   onRoster   Boolean   @default(true)
+  /// Office hours: weekday day shift only, outside the duty cycles (pharmacy, laboratory, records).
+  weekdaysOnly Boolean @default(false)
 
   staff             Staff[]
   establishmentPosts EstablishmentPost[]
@@ -513,6 +517,12 @@ model Staff {
   willingForExtraDuties Boolean         @default(false)
   exclusionReason      String?          // operational only — never a medical reason
   maxDutiesPerWeek     Int              @default(0) // 0 = no limit
+  /// Can take charge of a shift (senior, or named by the in-charge).
+  canLead              Boolean          @default(false)
+  maxNightsPerMonth    Int              @default(0) // 0 = no limit
+  maxHoursPerMonth     Int              @default(0) // 0 = no limit
+  restrictions         StaffRestriction[]
+  dayOffRequests       DayOffRequest[]
   archivedAt           DateTime?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
@@ -614,6 +624,8 @@ model Shift {
   holidayMinByCadre Json?
   /// When there are not enough people: 1 keep this shift full first, 0 normal, -1 may run short first.
   keepFull       Int      @default(0)
+  /// At least this many people on the shift who can lead it.
+  minLeads       Int      @default(0)
   colour         String?
   countsAsDuty   Boolean  @default(true)
   sortOrder      Int      @default(0)
@@ -1422,3 +1434,50 @@ model SmsMessage {
   @@index([facilityId, createdAt])
 }
 
+
+enum StaffRestrictionKind {
+  NO_NIGHTS
+}
+
+/// A stretch of time when a person must not be given a kind of duty: no nights while pregnant, breastfeeding or after illness.
+/// The reason stays with the in-charge; only the dates and the kind are used.
+model StaffRestriction {
+  id         String               @id @default(cuid())
+  facilityId String
+  facility   Facility             @relation(fields: [facilityId], references: [id])
+  staffId    String
+  staff      Staff                @relation(fields: [staffId], references: [id])
+  kind       StaffRestrictionKind @default(NO_NIGHTS)
+  startDate  DateTime             @db.Date
+  endDate    DateTime             @db.Date
+  note       String?
+  createdBy  String
+  createdAt  DateTime             @default(now())
+
+  @@index([facilityId, staffId])
+}
+
+enum DayOffStatus {
+  REQUESTED
+  APPROVED
+  DECLINED
+  WITHDRAWN
+}
+
+/// A day a person asks to be off, before the roster is generated. Approved ones are kept free; pending ones are avoided where possible.
+model DayOffRequest {
+  id         String       @id @default(cuid())
+  facilityId String
+  facility   Facility     @relation(fields: [facilityId], references: [id])
+  staffId    String
+  staff      Staff        @relation(fields: [staffId], references: [id])
+  date       DateTime     @db.Date
+  reason     String?
+  status     DayOffStatus @default(REQUESTED)
+  decidedBy  String?
+  decidedAt  DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@unique([staffId, date])
+  @@index([facilityId, date])
+}
