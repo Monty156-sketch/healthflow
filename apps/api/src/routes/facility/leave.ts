@@ -11,7 +11,8 @@ import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { overlaps, todayDay } from "../../lib/leaveWindow.js";
 import { holidayDays } from "../../lib/holidays.js";
 import { expectedBack, liveStatus, resumptionOf, syncReturns } from "../../lib/returns.js";
-import { LeaveCoverError, coverOnApproval, leaveCoverPlan, requestLeaveSwap } from "../../lib/leaveCover.js";
+import { mendRostersForLeave } from "../../lib/leaveRoster.js";
+import { LeaveCoverError, leaveCoverPlan, requestLeaveSwap } from "../../lib/leaveCover.js";
 import { ReinstateError, reinstate, reinstatementPlan } from "../../lib/reinstate.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -373,12 +374,27 @@ leaveRouter.post("/requests/:id/decide", allowRoles(...DECIDERS), async (req, re
     type: "leave_decided", title: `Your ${row.leaveType.name.toLowerCase()} leave was ${input.decision === "approve" ? "approved" : "not approved"}`,
     body: `${row.isOpenEnded ? `From ${sayDay(start)}, no end date.` : `${sayRange(start, end)}${resumeDay !== null && input.decision === "approve" ? `. Back on duty ${sayDay(resumeDay)}` : ""}.`}${input.note ? ` ${input.note}` : ""}`, linkUrl: "/leave", severity: "INFO",
   });
-  let cover: Awaited<ReturnType<typeof coverOnApproval>> = null;
-  if (input.decision === "approve" && conflicts) cover = await coverOnApproval(who.facilityId, row.id, { email: who.email, displayName: who.displayName }).catch(() => null);
+  // The roster mends itself: the leaver's duties are refilled by the best-fitting colleagues, and nothing else moves.
+  let rosters: Awaited<ReturnType<typeof mendRostersForLeave>> = [];
+  let mendFailed = false;
+  if (input.decision === "approve") {
+    try {
+      rosters = await mendRostersForLeave(who.facilityId, row.id, { email: who.email, displayName: who.displayName });
+    } catch (e) {
+      mendFailed = true;
+      console.error("leave roster mend failed", e);
+    }
+  }
+  const uncovered = rosters.reduce((n, r) => n + r.unfilled.length, 0);
   res.json({
-    cover,
+    cover: null,
+    rosters,
     request: present(updated),
-    warning: conflicts ? "This person has duties on an approved or published roster in these dates. Regenerate or edit that roster so they are not rostered while away." : null,
+    warning: mendFailed
+      ? "The leave is approved, but the roster could not be updated automatically. Open the roster and change this person's duties."
+      : uncovered > 0
+        ? `${uncovered} ${uncovered === 1 ? "duty" : "duties"} could not be covered without breaking a rule. Open the roster to see where.`
+        : null,
   });
 });
 

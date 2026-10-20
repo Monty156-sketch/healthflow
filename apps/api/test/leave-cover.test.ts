@@ -55,27 +55,29 @@ describe("planned absence", () => {
     expect(again.duties[0].openSwap).toBe(true);
   });
 
-  it("starts cover when a short absence is approved, and says the duty is worked back for permission", async () => {
+  it("takes the leaver off the published roster on approval and refills the duty with a colleague", async () => {
     const { api, people, type, duty } = await setup();
+    await prisma.shift.updateMany({ data: { minStaff: 1 } });
     const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("PERM"), startDate: iso(3), endDate: iso(3) });
-    const plan = (await api.get(`/api/facility/leave/requests/${made.body.request.id}/cover-plan`)).body;
-    expect(plan.owedBack).toBe(true);
     const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/decide`, { decision: "approve", reviewedImpact: true });
     expect(out.status).toBe(200);
-    expect(out.body.cover.asked).toHaveLength(1);
-    const moved = await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } });
-    expect(moved).toMatchObject({ isCover: true, coverForStaffId: people[0].id });
-    expect(moved.staffId).not.toBe(people[0].id);
-    const accepted = await prisma.coverProposal.findFirst({ where: { rosterAssignmentId: duty.id, status: "ACCEPTED" } });
-    expect((accepted?.reasons as { owedBack?: boolean }).owedBack).toBe(true);
+    expect(out.body.rosters).toHaveLength(1);
+    expect(out.body.rosters[0].removed).toBe(1);
+    expect(await prisma.rosterAssignment.findUnique({ where: { id: duty.id } })).toBeNull();
+    const refilled = await prisma.rosterAssignment.findFirst({ where: { dutyDate: day(3), shift: { countsAsDuty: true } } });
+    expect(refilled?.staffId).not.toBe(people[0].id);
+    expect(refilled?.source).toBe("COVER");
+    expect(await prisma.rosterVersionSnapshot.count()).toBe(1);
+    expect((await prisma.leaveRequest.findUniqueOrThrow({ where: { id: made.body.request.id } })).conflictsPublishedRoster).toBe(false);
   });
 
-  it("leaves a longer absence to the in-charge", async () => {
-    const { api, people, type, duty } = await setup();
+  it("covers a longer absence the same way, and leaves the leaver's other duties alone", async () => {
+    const { api, people, type, duty, theirs } = await setup();
     const made = await api.post("/api/facility/leave/requests", { staffId: people[0].id, leaveTypeId: type("L"), startDate: iso(3), endDate: iso(5) });
     const out = await api.post(`/api/facility/leave/requests/${made.body.request.id}/decide`, { decision: "approve", reviewedImpact: true });
     expect(out.body.cover).toBeNull();
-    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: duty.id } })).staffId).toBe(people[0].id);
+    expect(await prisma.rosterAssignment.findUnique({ where: { id: duty.id } })).toBeNull();
+    expect((await prisma.rosterAssignment.findUniqueOrThrow({ where: { id: theirs.id } })).staffId).toBe(people[1].id);
   });
 
   it("offers a swap with a duty in the next month, and moves one duty in each roster when approved", async () => {

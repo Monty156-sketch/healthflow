@@ -24,7 +24,10 @@ export default function RequestLeavePage() {
   const [staffId, setStaffId] = useState("");
   const [typeId, setTypeId] = useState("");
   const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [howMany, setHowMany] = useState("");
+  const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + (n - 1) * 86_400_000).toISOString().slice(0, 10);
+  const count = Math.max(0, Math.min(366, Math.floor(Number(howMany)) || 0));
+  const end = start && count ? addDays(start, count) : "";
   const [reason, setReason] = useState("");
   const [openEnded, setOpenEnded] = useState(false);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -100,11 +103,11 @@ export default function RequestLeavePage() {
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="First day" error={fields.startDate}>
-            {(a) => <Input {...a} type="date" value={start} onChange={(e) => { setStart(e.target.value); if (!end || end < e.target.value) setEnd(e.target.value); }} />}
+            {(a) => <Input {...a} type="date" value={start} onChange={(e) => setStart(e.target.value)} />}
           </Field>
           {!open && (
-            <Field label="Last day" error={fields.endDate}>
-              {(a) => <Input {...a} type="date" min={start || undefined} value={end} onChange={(e) => setEnd(e.target.value)} />}
+            <Field label="Days you are asking for" hint="Your in-charge sets the day you come back." error={fields.endDate}>
+              {(a) => <Input {...a} type="number" inputMode="numeric" min={1} max={366} value={howMany} onChange={(e) => setHowMany(e.target.value)} />}
             </Field>
           )}
         </div>
@@ -123,7 +126,7 @@ export default function RequestLeavePage() {
           <Panel title="What this takes">
             <p className="figures text-[15px]" aria-live="polite">
               {shown.days} {shown.days === 1 ? "day" : "days"}, {showDate(start)}
-              {start !== end ? ` to ${showDate(end)}` : ""}.
+              {start !== end ? ` to ${showDate(end)}` : ""}. Estimate only; your in-charge confirms when you are back.
               {shown.skippedHolidays ? ` ${shown.skippedHolidays} public ${shown.skippedHolidays === 1 ? "holiday is" : "holidays are"} not counted.` : ""}
             </p>
             {shown.note && <p className="mt-1 text-[15px] text-[var(--muted)]">{shown.note}</p>}

@@ -72,8 +72,9 @@ function Detail({ id, decider, myStaffId, onChanged, onClose }: { id: string; de
     setProblem(null);
     setNoteError(null);
     try {
-      const res = await api.post<{ warning?: string | null; cover?: { asked: string[]; unfilled: string[] } | null }>(`/api/facility/leave/requests/${id}/${path}`, body);
-      if (res.cover) setWarning([res.warning, res.cover.asked.length ? `Cover was asked for: ${res.cover.asked.join("; ")}.` : null, res.cover.unfilled.length ? `Nobody could lawfully cover: ${res.cover.unfilled.join("; ")}.` : null].filter(Boolean).join(" "));
+      const res = await api.post<{ warning?: string | null; cover?: { asked: string[]; unfilled: string[] } | null; rosters?: { month: string; removed: number; filled: unknown[]; unfilled: unknown[] }[] }>(`/api/facility/leave/requests/${id}/${path}`, body);
+      if (res.rosters?.length) setWarning([res.warning, res.rosters.map((r) => `${r.month} roster updated: ${r.filled.length} of ${r.removed} duties refilled by colleagues.`).join(" ")].filter(Boolean).join(" "));
+      else if (res.cover) setWarning([res.warning, res.cover.asked.length ? `Cover was asked for: ${res.cover.asked.join("; ")}.` : null, res.cover.unfilled.length ? `Nobody could lawfully cover: ${res.cover.unfilled.join("; ")}.` : null].filter(Boolean).join(" "));
       else if (res.warning) setWarning(res.warning);
       onChanged();
       reload();
