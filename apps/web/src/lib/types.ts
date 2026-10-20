@@ -160,6 +160,12 @@ export interface RosterView {
   findings: RosterFinding[];
 }
 
+export interface RosterInsights {
+  workload: { staffId: string; name: string; staffNo: string; cadreName: string; duties: number; nights: number; weekends: number; holidays: number; hours: number; leaveDays: number; restriction: string | null; against: "above" | "below" | "even" | null; note: string | null }[];
+  cadres: { cadreId: string | null; cadreName: string; people: number; averageDuties: number; averageHours: number }[];
+  advice: { cadreId: string; cadreName: string; shortDuties: number; daysAffected: number; firstDates: string[]; worstShift: { name: string; short: number } | null; people: number; moreStaff: number; headline: string; options: string[] }[];
+}
+
 export interface Shortfall {
   date: string;
   shift: string;

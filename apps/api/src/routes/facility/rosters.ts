@@ -23,6 +23,7 @@ import { ensureRules } from "./rules.js";
 import { ensureOffDuty } from "./shifts.js";
 import { generate, type Shortfall } from "../../engine/generate.js";
 import { evaluateCompliance } from "../../engine/evaluators.js";
+import { rosterInsights } from "../../engine/insights.js";
 import { dayOf, daysInMonth, isoOf, sayDay } from "../../engine/time.js";
 import type { EAssignment, ECycleRule, ERotation, EShift, EStaff, Finding } from "../../engine/types.js";
 
@@ -289,6 +290,20 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
       date: f.dutyDate ? f.dutyDate.toISOString().slice(0, 10) : null, status: f.status,
       overrideReason: f.overrideReason, overrideBy: f.overrideBy,
     })),
+  });
+});
+
+/** Who carries how much, and where a cadre is short and what would close it. Read from the roster as it stands now. */
+rostersRouter.get("/:id/insights", allowRoles(...READ_ROLES), async (req, res) => {
+  const { facilityId } = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const data = await loadEngineData(facilityId, roster.id, roster.year, roster.month);
+  const view = rosterInsights({ staff: data.staff, shifts: data.shifts, cycles: data.cycles, leave: data.leave, holidays: data.holidays, period: data.period, assignments: data.current, cadreNames: data.cadreNames });
+  const who = new Map(data.staff.map((s) => [s.id, s]));
+  res.json({
+    ...view,
+    workload: view.workload.map((w) => ({ ...w, name: who.get(w.staffId)?.name ?? "", staffNo: who.get(w.staffId)?.staffNo ?? "", cadreName: (who.get(w.staffId)?.cadreId && data.cadreNames[who.get(w.staffId)!.cadreId!]) || "No cadre set" })),
   });
 });
 

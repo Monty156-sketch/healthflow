@@ -642,6 +642,76 @@ export function generate(input: GenerateInput): GenerateResult {
   const lockedKeys = new Set(input.locked.map((l) => `${l.staffId}:${l.day}`));
   const random = mulberry32(period.startDay + (input.variation ?? 0) * 7919);
   let improvements = 0;
+
+  // ---- Step 4b: close gaps by moving duties along a short chain
+  // The greedy pass works forwards one day at a time, so it can bunch a cadre's
+  // hours into the same week and find nobody left on the day that needs them,
+  // while the same people are idle days later. For each gap, look for someone of
+  // the right cadre who would be free if one nearby duty of theirs moved to a
+  // colleague of the same cadre, who may in turn hand one on (at most two
+  // hand-overs). Nothing is accepted that makes anyone's rules worse than
+  // before. The search is cut off by a count of tries, not by the clock, so
+  // the same inputs still give the same roster.
+  let tries = 0;
+  const TRY_BUDGET = 12000;
+  const place = (c: EStaff, day: number, shift: EShift, depth: number, chain: Set<string>): boolean => {
+    if (tries++ > TRY_BUDGET) return false;
+    const mine = by.get(c.id)!;
+    if (c.morningOnly || mine.has(day) || staticReason(c, shift, day)) return false;
+    const vBefore = violations(c);
+    if (!hardReason(c, shift, day)) {
+      mine.set(day, shift.id);
+      if (violations(c) <= vBefore) return true;
+      mine.delete(day);
+    }
+    if (depth === 0) return false;
+    const near = generated
+      .filter((g) => g.staffId === c.id && g.day !== day && Math.abs(g.day - day) <= 6 && !lockedKeys.has(`${c.id}:${g.day}`))
+      .sort((x, y) => Math.abs(x.day - day) - Math.abs(y.day - day) || x.day - y.day);
+    for (const move of near) {
+      const moved = shiftById.get(move.shiftId)!;
+      mine.delete(move.day);
+      if (hardReason(c, shift, day)) {
+        mine.set(move.day, move.shiftId);
+        continue;
+      }
+      mine.set(day, shift.id);
+      if (violations(c) > vBefore) {
+        mine.delete(day);
+        mine.set(move.day, move.shiftId);
+        continue;
+      }
+      // c now holds its final state while the hand-over is looked for, and nobody already in the chain is asked again.
+      const takers = staff
+        .filter((r) => !chain.has(r.id) && r.id !== c.id && r.cadreId === c.cadreId && !r.morningOnly && !lockedKeys.has(`${r.id}:${move.day}`))
+        .sort((x, y) => dutyCount(x.id, period.startDay, period.endDay, () => true) - dutyCount(y.id, period.startDay, period.endDay, () => true) || x.staffNo.localeCompare(y.staffNo, undefined, { numeric: true }));
+      for (const r of takers) {
+        if (by.get(r.id)!.has(move.day)) continue;
+        if (place(r, move.day, moved, depth - 1, new Set([...chain, c.id]))) {
+          move.staffId = r.id;
+          return true;
+        }
+      }
+      mine.delete(day);
+      mine.set(move.day, move.shiftId);
+    }
+    return false;
+  };
+  for (let pass = 0; pass < 2 && unfilled.length; pass++) {
+    for (const gap of [...unfilled]) {
+      if (!gap.shiftId) continue;
+      const shift = shiftById.get(gap.shiftId)!;
+      const candidates = staff.filter((c) => !gap.cadreId || c.cadreId === gap.cadreId);
+      for (const c of candidates) {
+        if (place(c, gap.day, shift, 3, new Set())) {
+          generated.push({ staffId: c.id, shiftId: shift.id, day: gap.day, source: "GENERATED" });
+          unfilled.splice(unfilled.indexOf(gap), 1);
+          break;
+        }
+      }
+    }
+  }
+
   if (generated.length > 1) {
     for (let i = 0; i < 300; i++) {
       const a = generated[Math.floor(random() * generated.length)];
