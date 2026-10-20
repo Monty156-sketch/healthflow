@@ -11,7 +11,9 @@
 // - The grid scrolls inside its own box. The page never scrolls sideways,
 //   and at 360px it still scrolls rather than collapsing into cards.
 // - Cells are reachable by keyboard: Tab enters the grid once, then the
-//   arrow keys move, Home/End jump within a row, Enter or Space selects.
+//   arrow keys move, Home/End jump within a row, Enter or Space selects,
+//   and a caller can let other keys assign by typing (onCellKey).
+// - Cells are 44px square on a phone, the size of a finger.
 import { KeyboardEvent, ReactNode, useMemo, useRef, useState } from "react";
 
 export interface GridStaff {
@@ -74,12 +76,19 @@ interface Props<T> {
   /** A CSS colour for the cell's left-edge stripe, or null. */
   stripe?: (staffId: string, date: string, data: T | undefined) => string | null;
   onCellClick?: (staffId: string, date: string, data: T | undefined) => void;
+  /**
+   * A key pressed on a cell, for assigning by typing. Return true when the key was
+   * used, so the grid leaves it alone; arrow keys and Home/End still move.
+   */
+  onCellKey?: (key: string, staffId: string, date: string) => boolean;
+  /** The cell being edited, outlined so it is not lost behind a panel. */
+  selected?: { staffId: string; date: string } | null;
   caption: string;
 }
 
 type Row = { kind: "group"; label: string; key: string } | { kind: "staff"; staff: GridStaff; index: number };
 
-export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describeCell, stripe, onCellClick, caption }: Props<T>) {
+export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describeCell, stripe, onCellClick, onCellKey, selected, caption }: Props<T>) {
   const days = useMemo(() => daysOf(year, month), [year, month]);
 
   // Department, then cadre (by its order), then name.
@@ -116,7 +125,11 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
     cellRefs.current.get(`${rr}:${cc}`)?.focus();
   }
 
-  function onKey(e: KeyboardEvent, r: number, c: number) {
+  function onKey(e: KeyboardEvent, r: number, c: number, staffId: string, iso: string) {
+    if (onCellKey && !e.ctrlKey && !e.metaKey && !e.altKey && onCellKey(e.key, staffId, iso)) {
+      e.preventDefault();
+      return;
+    }
     const moves: Record<string, [number, number]> = {
       ArrowRight: [r, c + 1],
       ArrowLeft: [r, c - 1],
@@ -155,7 +168,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                 <th
                   key={d.iso}
                   scope="col"
-                  className="sticky top-0 z-20 min-w-9 border-b border-[var(--border)] px-0.5 py-1.5 text-center font-normal"
+                  className="sticky top-0 z-20 min-w-11 border-b sm:min-w-9 border-[var(--border)] px-0.5 py-1.5 text-center font-normal"
                   style={{ background: weekend ? "color-mix(in srgb, var(--border) 45%, var(--surface))" : "var(--surface)" }}
                 >
                   <abbr title={`${WEEKDAY_NAME[d.weekday]} ${d.day} ${MONTH_NAME[month - 1]}`} className="no-underline">
@@ -203,10 +216,12 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                   return (
                     <td
                       key={d.iso}
-                      className="h-10 border-b border-[var(--border)] p-0 text-center"
+                      className="h-11 border-b border-[var(--border)] p-0 text-center sm:h-10"
                       style={{
                         background: weekend ? "color-mix(in srgb, var(--border) 30%, var(--surface))" : undefined,
                         boxShadow: edge ? `inset 3px 0 0 ${edge}` : undefined,
+                        outline: selected && selected.staffId === row.staff.id && selected.date === d.iso ? "2px solid var(--foreground)" : undefined,
+                        outlineOffset: -2,
                       }}
                     >
                       {interactive ? (
@@ -220,14 +235,14 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                           tabIndex={isActive ? 0 : -1}
                           aria-label={label}
                           onFocus={() => setActive({ r: row.index, c })}
-                          onKeyDown={(e) => onKey(e, row.index, c)}
+                          onKeyDown={(e) => onKey(e, row.index, c, row.staff.id, d.iso)}
                           onClick={() => onCellClick?.(row.staff.id, d.iso, data)}
-                          className="flex h-10 w-full min-w-9 items-center justify-center hover:bg-[var(--accent-soft)]"
+                          className="flex h-11 w-full min-w-11 items-center justify-center hover:bg-[var(--accent-soft)] sm:h-10 sm:min-w-9"
                         >
                           {content}
                         </button>
                       ) : (
-                        <span className="flex h-10 items-center justify-center" aria-label={label}>
+                        <span className="flex h-11 items-center justify-center sm:h-10" aria-label={label}>
                           {content}
                         </span>
                       )}
