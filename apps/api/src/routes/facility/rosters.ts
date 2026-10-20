@@ -25,6 +25,7 @@ import { generate, type Shortfall } from "../../engine/generate.js";
 import { evaluateCompliance } from "../../engine/evaluators.js";
 import { rosterInsights } from "../../engine/insights.js";
 import { hasDemand } from "../../engine/demand.js";
+import { staffingCheck } from "../../engine/staffing.js";
 import { dayOf, daysInMonth, isoOf, sayDay } from "../../engine/time.js";
 import type { EAssignment, ECycleRule, ERotation, EShift, EStaff, Finding } from "../../engine/types.js";
 
@@ -107,7 +108,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
         holidayMinByCadre: (src.holidayMinByCadre ?? null) as Record<string, number> | null,
       };
     })(),
-    eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder,
+    eligibleCadreIds: s.eligibleCadreIds, sortOrder: s.sortOrder, keepFull: s.keepFull,
   }));
 
   const rules = ruleRows.map((r) => ({
@@ -322,6 +323,15 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
 });
 
 /** Who carries how much, and where a cadre is short and what would close it. Read from the roster as it stands now. */
+/** Before generating: can these people cover these minimums at all, and what would make it possible. */
+rostersRouter.get("/:id/staffing", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
+  res.json(staffingCheck({ staff: data.staff, shifts: data.shifts, cycles: data.cycles, rules: data.rules, leave: data.leave, holidays: data.holidays, period: data.period, cadreNames: data.cadreNames }));
+});
+
 rostersRouter.get("/:id/insights", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId } = caller(req);
   const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId } });

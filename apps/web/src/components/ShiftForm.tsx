@@ -5,7 +5,7 @@ import { SHIFT_COLOURS } from "@healthflow/shared";
 import { api } from "@/lib/api";
 import { useSave } from "@/lib/useApi";
 import type { Shift } from "@/lib/types";
-import { Button, Checkbox, Field, Input, Notice, SaveStatus } from "@/components/ui";
+import { Button, Checkbox, Field, Input, Notice, SaveStatus, Select } from "@/components/ui";
 
 const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3));
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -44,6 +44,7 @@ export function ShiftForm({
   const [minStaff, setMinStaff] = useState(String(shift?.minStaff ?? 0));
   const [weekendMin, setWeekendMin] = useState(shift?.weekendMinStaff == null ? "" : String(shift.weekendMinStaff));
   const [holidayMin, setHolidayMin] = useState(shift?.holidayMinStaff == null ? "" : String(shift.holidayMinStaff));
+  const [keepFull, setKeepFull] = useState(String(shift?.keepFull ?? 0));
   const [minBy, setMinBy] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(shift?.minByCadre ?? {}).map(([k, v]) => [k, String(v)]))
   );
@@ -67,12 +68,13 @@ export function ShiftForm({
       minStaff: Number(minStaff),
       weekendMinStaff: weekendMin.trim() === "" ? null : Number(weekendMin),
       holidayMinStaff: holidayMin.trim() === "" ? null : Number(holidayMin),
+      keepFull: Number(keepFull),
       minByCadre,
       eligibleCadreIds: eligible,
       colour,
     };
     return shift ? api.patch(`/api/facility/shifts/${shift.id}`, body) : api.post("/api/facility/shifts", body);
-  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, weekendMin, holidayMin, minBy, eligible, colour, shift]);
+  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, weekendMin, holidayMin, keepFull, minBy, eligible, colour, shift]);
 
   const save = useSave(submit);
   const e = save.fieldErrors;
@@ -147,6 +149,17 @@ export function ShiftForm({
               </Field>
               <Field label="Public holidays" optional hint="Blank: same as weekends" error={e.holidayMinStaff}>
                 {(a) => <Input {...a} inputMode="numeric" className="figures" value={holidayMin} onChange={(x) => setHolidayMin(x.target.value)} />}
+              </Field>
+            </div>
+            <div className="mt-3 max-w-md">
+              <Field label="If there are not enough people" hint="Where a gap may fall when the month cannot be covered in full." error={e.keepFull}>
+                {(a) => (
+                  <Select {...a} value={keepFull} onChange={(x) => setKeepFull(x.target.value)}>
+                    <option value="1">Keep this shift full first</option>
+                    <option value="0">No preference</option>
+                    <option value="-1">This shift may run short first</option>
+                  </Select>
+                )}
               </Field>
             </div>
             <p className="mt-2 text-sm text-[var(--muted)]">

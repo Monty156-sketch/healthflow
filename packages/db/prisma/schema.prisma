@@ -612,6 +612,8 @@ model Shift {
   /// Public holidays. Null means the weekend numbers, or the weekday numbers when there are none.
   holidayMinStaff   Int?
   holidayMinByCadre Json?
+  /// When there are not enough people: 1 keep this shift full first, 0 normal, -1 may run short first.
+  keepFull       Int      @default(0)
   colour         String?
   countsAsDuty   Boolean  @default(true)
   sortOrder      Int      @default(0)

@@ -14,6 +14,7 @@ import { GridChip, MonthGrid } from "@/components/MonthGrid";
 import { CellEditor, type CellConflict } from "@/components/CellEditor";
 import { VersionsPanel } from "@/components/VersionsPanel";
 import { RosterInsights } from "@/components/RosterInsights";
+import { StaffingCheck } from "@/components/StaffingCheck";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 
 interface Cell {
@@ -398,6 +399,11 @@ export default function RosterPage() {
       {roster.departmentId && canRoster && canGenerate && (
         <div className="no-print mb-4">
           <WardDemand departmentId={roster.departmentId} editable />
+        </div>
+      )}
+      {canRoster && canGenerate && (
+        <div className="no-print mb-4">
+          <StaffingCheck rosterId={roster.id} stamp={stamp} />
         </div>
       )}
       {applied && !problem && (

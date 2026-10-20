@@ -368,7 +368,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       shortfalls.push({ day, shiftId: null, cadreId: null, required: needTotal, available: idle });
     }
     // Hardest first; then nights, which have the tightest rest limits; cadre slots before open ones; then shift order.
-    slots.sort((a, b) => a.scarcity - b.scarcity || Number(b.shift.isOvernight) - Number(a.shift.isOvernight) || (a.cadreId ? 0 : 1) - (b.cadreId ? 0 : 1) || a.order - b.order);
+    // The facility's order for running short comes first: a shift it keeps full is filled before one that may run short.
+    slots.sort((a, b) => (b.shift.keepFull ?? 0) - (a.shift.keepFull ?? 0) || a.scarcity - b.scarcity || Number(b.shift.isOvernight) - Number(a.shift.isOvernight) || (a.cadreId ? 0 : 1) - (b.cadreId ? 0 : 1) || a.order - b.order);
     return { slots, shortfalls };
   };
 
@@ -533,6 +534,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
    * given so far divided by the days people were available; someone below
    * their share (allowing for their own leave) is chosen sooner.
    */
+  const dutyShiftsAll = input.shifts.filter((x) => x.countsAsDuty && !x.isOnCall && x.startMin !== null);
+  const avgDutyHours = dutyShiftsAll.length ? dutyShiftsAll.reduce((t, x) => t + hoursOf(x), 0) / dutyShiftsAll.length : 8;
   const deficitPull = (s: EStaff, day: number): number => {
     if (day === period.startDay) return 0;
     const peers = staff.filter((p) => p.cadreId === s.cadreId && !p.morningOnly);
@@ -543,14 +546,21 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (let d = period.startDay; d < day; d++) if (!onLeave(p, d)) n++;
       return n;
     };
+    // Counted in hours, so someone who has worked long nights is not also handed the most day duties.
+    const hoursSoFar = (id: string) => {
+      let h = 0;
+      for (const [d, sid] of by.get(id)!) if (d >= period.startDay && d < day) h += hoursOf(shiftById.get(sid)!);
+      return h;
+    };
     for (const p of peers) {
-      given += dutyCount(p.id, period.startDay, day - 1, () => true);
+      given += hoursSoFar(p.id);
       available += mineAvail(p);
     }
     if (available === 0) return 0;
     // Duties owed through the ledger, or carried from earlier months, move a person's share up or down.
-    const expected = (given / available) * mineAvail(s) + (input.settlement?.[s.id] ?? 0) + (carryTotal[s.id] ?? 0);
-    const behind = expected - dutyCount(s.id, period.startDay, day - 1, () => true);
+    const unit = avgDutyHours;
+    const expected = ((given / available) * mineAvail(s)) / unit + (input.settlement?.[s.id] ?? 0) + (carryTotal[s.id] ?? 0);
+    const behind = expected - hoursSoFar(s.id) / unit;
     return -DEFICIT_WEIGHT * Math.max(-4, Math.min(4, behind));
   };
 
@@ -712,7 +722,6 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     const groups = [...demand.keys()].sort((a, b) => (a === null ? 1 : 0) - (b === null ? 1 : 0));
     for (const cadreId of groups) {
       const need = demand.get(cadreId)!;
-      const needOn = (d: number, x: string) => need.get(`${d}:${x}`) ?? 0;
       const pool = staff.filter((s) => !s.morningOnly && !done.has(s.id) && (cadreId === null || s.cadreId === cadreId) && (ruleFor(s, true) || ruleFor(s, false)));
       if (!pool.length) continue;
       const nightShifts = duty.filter((x) => x.isOvernight);
@@ -721,6 +730,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       const canDay = (s: EStaff) => Boolean(ruleFor(s, false)) && dayShifts.some((x) => !ineligibleReason(s, x));
       const takers = pool.filter(canNight);
       const dayers = pool.filter(canDay);
+
+      const needOn = (d: number, x: string) => need.get(`${d}:${x}`) ?? 0;
 
       // ---- the lanes, cut into blocks
       interface Block { start: number; picks: [number, string][]; night: boolean }
@@ -818,12 +829,18 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       // Nights in whole blocks: the same number for everyone who takes them, the few extra to those with the fewest nights lately.
       const nLen = nightRule ? capOf(nightRule, true) : 1;
       const nightBlocksNeeded = takers.length ? blocks.filter((b) => b.night).length : 0;
-      void totalNight; void nLen;
+      void nLen;
       const each = takers.length ? Math.floor(nightBlocksNeeded / takers.length) : 0;
       const extraTo = new Set(
         [...takers].sort((x, y) => nightsLast90(x.id) - nightsLast90(y.id) || x.staffNo.localeCompare(y.staffNo, undefined, { numeric: true })).slice(0, nightBlocksNeeded - each * takers.length).map((x) => x.id)
       );
-      interface Who { s: EStaff; plan: Map<number, string>; target: number; nightBlocks: number; nightTarget: number; free: number; lastNight: boolean; lastShift: string | null; special: number; hols: number; duties: number }
+      // Fair by hours, not by duty count: a 12-hour night weighs twice a 6-hour morning. Loads are kept in "average duties"
+      // (hours divided by the average duty's hours), so the weights below read the same whatever the shift lengths.
+      const totalHours = blocks.reduce((t, b) => t + b.picks.reduce((h, [, x]) => h + hoursOf(shiftById.get(x)!), 0), 0);
+      const avgH = totalAll ? totalHours / totalAll : 1;
+      const loadOf = (b: Block) => b.picks.reduce((h, [, x]) => h + hoursOf(shiftById.get(x)!), 0) / avgH;
+      const meanLast90 = takers.length ? takers.reduce((t, x) => t + nightsLast90(x.id), 0) / takers.length : 0;
+      interface Who { s: EStaff; plan: Map<number, string>; target: number; nights: number; nightBlocks: number; nightTarget: number; free: number; lastNight: boolean; lastShift: string | null; special: number; hols: number; duties: number }
       const people: Who[] = pool.map((s) => {
         const mine = by.get(s.id)!;
         let last = -Infinity;
@@ -836,7 +853,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           s, plan: new Map(), target: (totalAll / pool.length) * 1.04 + adjust, nightBlocks: 0, nightTarget: canNight(s) ? each + (extraTo.has(s.id) ? 1 : 0) : 0,
           // A run that began last month may carry straight on; otherwise the rest it earned comes first.
           free: last > -Infinity ? (last === period.startDay - 1 ? period.startDay : last + 1 + (r?.offDaysRequired ?? 0)) : period.startDay,
-          lastNight, lastShift, special: 0, hols: 0, duties: 0,
+          lastNight, lastShift, special: 0, hols: 0, duties: 0, nights: 0,
         };
       });
       const meanSpecial = () => people.reduce((t, p) => t + p.special, 0) / people.length;
@@ -854,13 +871,24 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           if (b.picks.some(([d, x]) => onLeave(s, d) || st0.rest.get(d) === "BLOCK" || mine.has(d) || ineligibleReason(s, shiftById.get(x)!))) continue;
           // Nights in whole blocks, as evenly as the month allows.
           let cost = 0;
-          if (b.night) cost += w.nightBlocks >= w.nightTarget ? 40 * (w.nightBlocks - w.nightTarget + 1) : -10 * (w.nightTarget - w.nightBlocks);
-          else if (w.nightBlocks < w.nightTarget) cost += 4; // keep some room for their nights
+          // Nights by count, against an even share, less whatever extra they did in the last three months.
+          const nightShare = totalNight / Math.max(1, takers.length) - 0.5 * (nightsLast90(s.id) - meanLast90);
+          if (b.night) {
+            const over = w.nights + b.picks.length - nightShare;
+            cost += over > 0.5 ? 15 * over : -5 * Math.min(b.picks.length, -over + 0.5);
+          } else if (canNight(s)) {
+            // Someone who still owes nights is kept free for them; day blocks go first to those who do not take nights.
+            cost += 2 * Math.max(0, nightShare - w.nights);
+          }
           // A fair pace through the month.
           const end = b.picks[b.picks.length - 1][0];
           // Someone more than a block behind is pulled in hard, so nobody is left with a thin month.
-          const ahead = (w.duties + b.picks.length) - (w.target * (end - period.startDay + 1)) / days;
-          cost += 3 * ahead + (ahead < -3 ? 12 * (ahead + 3) : 0);
+          // Day blocks are paced against what is left of the person's share once their nights are counted, so whoever
+          // takes an extra night block later in the month is not also loaded with day duties early on.
+          {
+            const ahead = (w.duties + loadOf(b)) - (w.target * (end - period.startDay + 1)) / days;
+            cost += 3 * ahead + (ahead < -3 ? 12 * (ahead + 3) : 0);
+          }
           // The shift after a night rest, and the rotation order.
           if (w.lastNight && !b.night) {
             const back = ruleFor(s, true)?.nextShiftAfterRestId;
@@ -904,8 +932,8 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
         w.free = end + 1 + r.offDaysRequired;
         w.lastNight = b.night;
         w.lastShift = b.picks[b.picks.length - 1][1];
-        w.duties += b.picks.length;
-        if (b.night) w.nightBlocks++;
+        w.duties += loadOf(b);
+        if (b.night) { w.nightBlocks++; w.nights += b.picks.length; }
         w.special += b.picks.filter(([d]) => isSpecial(d)).length;
         w.hols += b.picks.filter(([d]) => holidays.has(d)).length;
         owners.push({ b, w });
@@ -914,16 +942,16 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       // Evening out: a block taken by someone well above their share moves, whole, to someone well below it who could have
       // worked it (rested either side, not on leave, the week's rest kept, not past their nights), latest blocks first.
       const restOf = (s: EStaff) => Math.max(ruleFor(s, true)?.offDaysRequired ?? 0, ruleFor(s, false)?.offDaysRequired ?? 0);
-      for (let pass = 0; pass < 3; pass++) {
+      for (let pass = 0; pass < 6; pass++) {
         let moved = false;
         for (const o of [...owners].sort((x, y) => y.b.start - x.b.start)) {
           const { b } = o;
           const over = o.w.duties - o.w.target;
-          if (over <= 2) continue;
+          if (over <= 1) continue;
           const first = b.picks[0][0];
           const last = b.picks[b.picks.length - 1][0];
           const under = people
-            .filter((u) => u !== o.w && o.w.duties - b.picks.length >= u.duties + b.picks.length - 1 && u.duties - u.target < -2)
+            .filter((u) => u !== o.w && o.w.duties - loadOf(b) >= u.duties + loadOf(b) - 1 && u.duties - u.target < -1)
             .sort((x, y) => x.duties - x.target - (y.duties - y.target));
           for (const u of under) {
             const s = u.s;
@@ -945,10 +973,10 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             for (const [d, x] of b.picks) u.plan.set(d, x);
             const sp = b.picks.filter(([d]) => isSpecial(d)).length;
             const hl = b.picks.filter(([d]) => holidays.has(d)).length;
-            o.w.duties -= b.picks.length; u.duties += b.picks.length;
+            o.w.duties -= loadOf(b); u.duties += loadOf(b);
             o.w.special -= sp; u.special += sp;
             o.w.hols -= hl; u.hols += hl;
-            if (b.night) { o.w.nightBlocks--; u.nightBlocks++; }
+            if (b.night) { o.w.nightBlocks--; u.nightBlocks++; o.w.nights -= b.picks.length; u.nights += b.picks.length; }
             o.w = u;
             moved = true;
             break;
@@ -1054,15 +1082,26 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     for (const code of HARD_CODES) {
       const r = rule.get(code);
       // A broken Block rule outweighs any number of warnings, so no move ever trades warnings for one.
-      if (r) n += RULE_EVALUATORS[code](r, ctx).length * (r.severity === "BLOCK" ? 1000 : 1);
+      if (r) n += RULE_EVALUATORS[code](r, ctx).length * (r.severity === "BLOCK" ? 1_000_000 : 1);
     }
     if (s.maxDutiesPerWeek > 0) {
       const perWeek = new Map<number, number>();
       for (const [d] of mine) if (d >= period.startDay && d <= period.endDay) perWeek.set(week(d), (perWeek.get(week(d)) ?? 0) + 1);
       for (const n of perWeek.values()) if (n > s.maxDutiesPerWeek) violationsCount++;
     }
+    // A run longer than the person's own duty cycle allows (five nights where the cycle says four), Prefer or not:
+    // a move made to tidy the roster may never create one.
+    let overruns = 0;
+    for (const cr of cycleRules.get(s.id)!) {
+      let run = 0;
+      for (let d = period.startDay - LOOKBACK; d <= period.endDay; d++) {
+        const sid = mine.get(d);
+        run = sid && cr.countingShiftIds.includes(sid) ? run + 1 : 0;
+        if (run > cr.consecutiveDuties && d >= period.startDay) overruns++;
+      }
+    }
     // Off blocks, the shift after a rest, and block orders that are set to Block.
-    return n + 1000 * (violationsCount + scan(s).hard);
+    return n + 1_000_000 * (violationsCount + scan(s).hard) + 1000 * overruns;
   };
 
   const lockedKeys = new Set(input.locked.map((l) => `${l.staffId}:${l.day}`));

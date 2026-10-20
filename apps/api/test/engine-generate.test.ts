@@ -226,10 +226,11 @@ describe("what follows a rest, and the order inside a block", () => {
   it("does not make the spread of duties worse", () => {
     const spread = (order: boolean) => {
       const r = generate(base({ cycles: withOrder("PREFER", order) }));
-      const duties = ids.map((id) => sequence(r, id).filter((x) => x !== "D/O" && x !== "?").length);
-      return Math.max(...duties) - Math.min(...duties);
+      const len: Record<string, number> = { A: 6, M: 6, N: 12 };
+      const hours = ids.map((id) => sequence(r, id).filter((x) => x !== "D/O" && x !== "?").reduce((t, x) => t + (len[x] ?? 0), 0));
+      return Math.max(...hours) - Math.min(...hours);
     };
-    expect(spread(true)).toBeLessThanOrEqual(spread(false) + 2);
+    expect(spread(true)).toBeLessThanOrEqual(spread(false) + 12); // hours: one night either way
   });
 
   it("leaves a slot unfilled rather than break a Block return shift", () => {

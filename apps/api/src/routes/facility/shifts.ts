@@ -36,6 +36,8 @@ const shiftInput = z.object({
   weekendMinStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60.").nullish(),
   /** Blank means the weekend number, or the weekday number when there is none. */
   holidayMinStaff: z.number({ invalid_type_error: "Enter a whole number." }).int("Enter a whole number.").min(0, "Cannot be negative.").max(60, "At most 60.").nullish(),
+  /** When there are not enough people: 1 keep this shift full first, 0 normal, -1 may run short first. */
+  keepFull: z.number().int().min(-1).max(1).default(0),
   eligibleCadreIds: z.array(z.string()).default([]),
   colour: z.enum(colours, { errorMap: () => ({ message: "Choose one of the colours." }) }),
 });
@@ -63,6 +65,7 @@ function present(s: ShiftRow) {
     minByCadre: s.minByCadre as Record<string, number>,
     weekendMinStaff: s.weekendMinStaff,
     holidayMinStaff: s.holidayMinStaff,
+    keepFull: s.keepFull,
     eligibleCadreIds: s.eligibleCadreIds,
     colour: s.colour,
     countsAsDuty: s.countsAsDuty,
@@ -164,6 +167,7 @@ async function build(facilityId: string, body: unknown, res: import("express").R
           minByCadre: input.minByCadre,
           weekendMinStaff: input.weekendMinStaff ?? null,
           holidayMinStaff: input.holidayMinStaff ?? null,
+          keepFull: input.keepFull,
           eligibleCadreIds: input.eligibleCadreIds,
           colour: input.colour,
         },
@@ -229,7 +233,7 @@ shiftsRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
   if (changed.length) {
     const LABEL: Record<string, string> = {
       name: "name", code: "code", startTime: "start time", endTime: "end time", durationHours: "duration", isOvernight: "overnight setting",
-      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre", weekendMinStaff: "weekend minimum", holidayMinStaff: "public holiday minimum",
+      isOnCall: "on-call setting", onCallHoursFactor: "on-call factor", minStaff: "minimum staff", minByCadre: "minimum by cadre", weekendMinStaff: "weekend minimum", holidayMinStaff: "public holiday minimum", keepFull: "which shift runs short first",
       eligibleCadreIds: "eligible cadres", colour: "colour", onCallAdviceNote: "on-call advice note",
     };
     const parts = changed.filter((k) => LABEL[k]).map((k) => LABEL[k]);

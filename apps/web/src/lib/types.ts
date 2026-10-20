@@ -74,6 +74,8 @@ export interface Shift {
   weekendMinStaff: number | null;
   /** Null means the weekend number, or the weekday number when there is none. */
   holidayMinStaff: number | null;
+  /** 1 keep full first, 0 no preference, -1 may run short first. */
+  keepFull: number;
   eligibleCadreIds: string[];
   colour: string | null;
   countsAsDuty: boolean;

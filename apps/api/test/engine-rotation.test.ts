@@ -38,15 +38,16 @@ describe("rotation order", () => {
     const spread = (input: GenerateInput) => {
       const r = generate(input);
       expect(r.feasible).toBe(true);
-      const counts = input.staff.map((s) => duties(r, s.id).length);
-      return Math.max(...counts) - Math.min(...counts);
+      // Fair by hours: a 12-hour night weighs twice a 6-hour day duty.
+      const hours = input.staff.map((s) => duties(r, s.id).reduce((t, c) => t + (input.shifts.find((x) => x.id === c.shiftId)!.durationMin / 60), 0));
+      return Math.max(...hours) - Math.min(...hours);
     };
     const withRotation = spread(base());
     const without = spread(base({ rotations: [] }));
     console.log(`spread with rotation ${withRotation}, without ${without}`);
-    expect(withRotation).toBeLessThanOrEqual(without + 1);
-    // 18 identical people on these two cycles end within a handful of duties of each other
-    expect(withRotation).toBeLessThanOrEqual(6);
+    expect(withRotation).toBeLessThanOrEqual(without + 12);
+    // 18 identical people on these two cycles end within one four-night block's hours of each other
+    expect(withRotation).toBeLessThanOrEqual(48);
   });
 
   it("returns from a rest in the facility's order more often than without a rotation", () => {
