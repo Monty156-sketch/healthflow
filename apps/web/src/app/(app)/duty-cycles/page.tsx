@@ -13,6 +13,7 @@ import { Button, ConfirmDialog, EmptyState, Loading, LoadError, Notice, PageHead
 
 interface Data {
   rules: CycleRule[];
+  checks?: string[];
   shifts: { id: string; code: string; name: string; colour: string | null; isOvernight: boolean }[];
   cadres: { id: string; name: string }[];
   departments: { id: string; name: string }[];
@@ -179,11 +180,20 @@ export default function DutyCyclesPage() {
       )}
       <div className="mb-6">
         <Notice>
-          A night rule counts overnight shifts and a day rule counts the rest. With both set, the roster blends them for each person: after a night block and
-          its days off the next block is a day block, and after a day block it goes back to nights, so nobody is given a whole month of either. Each facility
-          sets its own numbers. Change them here and the next roster uses them.
+          A night rule counts overnight shifts and a day rule counts the rest. When a roster is generated, each person&apos;s month is laid out in whole
+          blocks: a night block when it is their turn for nights, day blocks otherwise, each followed by the days off the rule gives. The blocks of the whole
+          team are placed so they overlap to cover every shift, keep each week&apos;s unbroken rest, and share weekends and nights evenly over the months.
+          If a month is too tight for clean blocks, the roster falls back to filling day by day so no shift is left short. Change the numbers here and the
+          next roster uses them.
         </Notice>
       </div>
+      {data.checks && data.checks.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {data.checks.map((c) => (
+            <Notice key={c} tone="warning">{c}</Notice>
+          ))}
+        </div>
+      )}
 
       {editing !== null && (
         <div className="mb-6">

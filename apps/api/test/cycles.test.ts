@@ -54,6 +54,19 @@ describe("duty cycle rules", () => {
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(2);
   });
 
+  it("says where a cycle asks for more than the facility's own rules allow", async () => {
+    const { api, midwife, facility } = await setup();
+    await shiftsNeedingMidwives(api, midwife.id);
+    await api.get("/api/facility/rules");
+    // Four 12-hour nights are 48 hours in a week, above the 40-hour limit.
+    let checks = (await api.get("/api/facility/cycles")).body.checks as string[];
+    expect(checks.some((c) => c.includes("48 hours in a week"))).toBe(true);
+    expect(checks.some((c) => c.includes("nights in a row"))).toBe(false);
+    await prisma.constraintRule.updateMany({ where: { facilityId: facility.id, code: "C8" }, data: { thresholdValue: 3 } });
+    checks = (await api.get("/api/facility/cycles")).body.checks as string[];
+    expect(checks.some((c) => c.includes("asks for 4 nights in a row, but Maximum consecutive night duties is 3"))).toBe(true);
+  });
+
   it("switching to Block needs confirmation; priorities must be unique", async () => {
     const { api, midwife, facility } = await setup();
     await shiftsNeedingMidwives(api, midwife.id);

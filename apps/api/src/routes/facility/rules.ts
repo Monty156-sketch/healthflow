@@ -43,7 +43,7 @@ export const RULE_SEEDS: Seed[] = [
     description: "Two shifts that overlap, such as a morning shift the day after a night shift that ends at 08:00 the same morning." },
   { code: "C7", name: "Maximum consecutive duty days", ruleType: "POLICY", thresholdValue: 6, unit: "days", behaviour: "WARN", overridable: true, min: 1, max: 31,
     description: "Flags more than this many duty days in a row." },
-  { code: "C8", name: "Maximum consecutive night duties", ruleType: "POLICY", thresholdValue: 3, unit: "shifts", behaviour: "WARN", overridable: true, min: 1, max: 31,
+  { code: "C8", name: "Maximum consecutive night duties", ruleType: "POLICY", thresholdValue: 4, unit: "shifts", behaviour: "WARN", overridable: true, min: 1, max: 31,
     description: "Flags more than this many night duties in a row." },
   { code: "C9", name: "Assignment during approved leave", ruleType: "LOGICAL", thresholdValue: null, unit: null, behaviour: "BLOCK", overridable: false,
     description: "Nobody can be rostered on a day of approved leave." },
