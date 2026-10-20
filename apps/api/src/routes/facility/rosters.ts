@@ -321,14 +321,14 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
   });
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
   // Leave and approved days off as codes in their cells, and public holidays: the same as the printed roster.
-  const sheet = (await buildSheet(facilityId, roster)).sheet;
+  const sheet = await marksFor(facilityId, roster, staff.map((s) => s.id));
 
   res.json({
     roster: presentRoster(roster),
     summary: await summaryOf(roster.id),
-    marks: Object.fromEntries(sheet.marks ?? []),
-    markLegend: sheet.markLegend ?? [],
-    holidays: (sheet.holidays ?? []).map((d) => `${roster.year}-${String(roster.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`),
+    marks: Object.fromEntries(sheet.marks),
+    markLegend: sheet.markLegend,
+    holidays: sheet.holidays.map((d) => `${roster.year}-${String(roster.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`),
     staff: staff.map((s) => ({
       id: s.id, name: s.fullName, staffNo: s.staffNo, cadreCode: s.cadre?.code ?? s.cadre?.name ?? null, cadreName: s.cadre?.name ?? null,
       cadreOrder: s.cadreId ? order.get(s.cadreId) ?? 999 : 999, departmentName: s.department?.name ?? null,
@@ -369,28 +369,17 @@ rostersRouter.get("/:id/insights", allowRoles(...READ_ROLES), async (req, res) =
 type RosterRow = NonNullable<Awaited<ReturnType<typeof prisma.roster.findFirst>>>;
 
 /** Everything the printed and Excel sheets show, read once. */
-async function buildSheet(facilityId: string, roster: RosterRow) {
-  const [facility, assignments, shifts, cadres, findings] = await Promise.all([
-    prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, include: { district: { select: { name: true } } } }),
-    prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true } }),
-    prisma.shift.findMany({ where: { facilityId }, orderBy: { sortOrder: "asc" } }),
-    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, sortOrder: true } }),
-    prisma.complianceFinding.findMany({ where: { rosterId: roster.id }, select: { severity: true, status: true } }),
-  ]);
-  const inRoster = new Set(assignments.map((a) => a.staffId));
-  const staffRows = await prisma.staff.findMany({
-    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }], ...(roster.departmentId ? { departmentId: roster.departmentId } : {}) },
-    include: { cadre: { select: { name: true } } },
-  });
+/** Leave and approved days off as codes per staffId|YYYY-MM-DD, and the public holidays (day of month), for screen and print. */
+async function marksFor(facilityId: string, roster: { year: number; month: number }, staffIds: string[]) {
   // Leave and approved days off show as codes in their cells; public holidays are marked in the header.
   const first = new Date(Date.UTC(roster.year, roster.month - 1, 1));
   const last = new Date(Date.UTC(roster.year, roster.month, 0));
   const [leaveRows, offRows, holidayRows] = await Promise.all([
     prisma.leaveRequest.findMany({
-      where: { facilityId, status: "APPROVED", staffId: { in: staffRows.map((x) => x.id) }, startDate: { lte: last }, OR: [{ endDate: { gte: first } }, { isOpenEnded: true, actualReturnDate: null }] },
+      where: { facilityId, status: "APPROVED", staffId: { in: staffIds }, startDate: { lte: last }, OR: [{ endDate: { gte: first } }, { isOpenEnded: true, actualReturnDate: null }] },
       select: { staffId: true, startDate: true, endDate: true, isOpenEnded: true, actualReturnDate: true, leaveType: { select: { code: true, name: true } } },
     }),
-    prisma.dayOffRequest.findMany({ where: { facilityId, status: "APPROVED", date: { gte: first, lte: last }, staffId: { in: staffRows.map((x) => x.id) } }, select: { staffId: true, date: true } }),
+    prisma.dayOffRequest.findMany({ where: { facilityId, status: "APPROVED", date: { gte: first, lte: last }, staffId: { in: staffIds } }, select: { staffId: true, date: true } }),
     prisma.publicHoliday.findMany({ where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: first, lte: last } }, select: { date: true } }),
   ]);
   const marks = new Map<string, string>();
@@ -408,6 +397,23 @@ async function buildSheet(facilityId: string, roster: RosterRow) {
       legend.set("RO", "day off asked for and approved");
     }
   }
+  return { marks, markLegend: [...legend].map(([code, label]) => ({ code, label })), holidays: holidayRows.map((h) => h.date.getUTCDate()) };
+}
+
+async function buildSheet(facilityId: string, roster: RosterRow) {
+  const [facility, assignments, shifts, cadres, findings] = await Promise.all([
+    prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, include: { district: { select: { name: true } } } }),
+    prisma.rosterAssignment.findMany({ where: { rosterId: roster.id }, select: { staffId: true, shiftId: true, dutyDate: true } }),
+    prisma.shift.findMany({ where: { facilityId }, orderBy: { sortOrder: "asc" } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { id: true, sortOrder: true } }),
+    prisma.complianceFinding.findMany({ where: { rosterId: roster.id }, select: { severity: true, status: true } }),
+  ]);
+  const inRoster = new Set(assignments.map((a) => a.staffId));
+  const staffRows = await prisma.staff.findMany({
+    where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }], ...(roster.departmentId ? { departmentId: roster.departmentId } : {}) },
+    include: { cadre: { select: { name: true } } },
+  });
+  const { marks, markLegend, holidays } = await marksFor(facilityId, roster, staffRows.map((x) => x.id));
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
   staffRows.sort((a, b) => (order.get(a.cadreId ?? "") ?? 999) - (order.get(b.cadreId ?? "") ?? 999) || a.staffNo.localeCompare(b.staffNo, undefined, { numeric: true }));
 
@@ -436,9 +442,9 @@ async function buildSheet(facilityId: string, roster: RosterRow) {
     warnings: findings.filter((f) => f.severity === "WARN").length,
     overrides: findings.filter((f) => f.status === "OVERRIDDEN").length,
     printedOn: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
-    holidays: holidayRows.map((h) => h.date.getUTCDate()),
+    holidays,
     marks,
-    markLegend: [...legend].map(([code, label]) => ({ code, label })),
+    markLegend,
     leads: new Set(staffRows.filter((x) => x.canLead).map((x) => x.id)),
   };
   return { sheet, status, facilityName: facility.name, hours: new Map(shifts.map((s) => [s.id, s.countsAsDuty ? s.durationHours * (s.isOnCall ? s.onCallHoursFactor : 1) : 0])) };

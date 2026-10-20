@@ -310,11 +310,17 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
 
   // ---- In-charges: the morning shift on every weekday they are not on leave, before anyone else is placed
   const fixed: GeneratedCell[] = [];
+  // Days off in the month (C14) on Block caps in-charges too: no morning that would leave fewer days off than it asks for.
+  const c14Rule = input.rules.find((r) => r.code === "C14");
+  const dutyCap = c14Rule?.severity === "BLOCK" ? period.endDay - period.startDay + 1 - (c14Rule.threshold ?? 8) : Infinity;
   for (const s of staff) {
     const morningId = s.morningOnly ? s.eligibleShiftIds[0] : undefined;
     if (!morningId) continue;
+    let worked = [...by.get(s.id)!].filter(([d, sid]) => d >= period.startDay && d <= period.endDay && shiftById.get(sid)!.countsAsDuty).length;
     for (let day = period.startDay; day <= period.endDay; day++) {
+      if (worked >= dutyCap) break;
       if (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day) || onLeave(s, day) || by.get(s.id)!.has(day)) continue;
+      worked++;
       by.get(s.id)!.set(day, morningId);
       fixed.push({ staffId: s.id, shiftId: morningId, day, source: "GENERATED" });
     }
@@ -420,7 +426,12 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   // Full weekends in the month: each Saturday whose Sunday is also in it.
   const saturdays: number[] = [];
   for (let d = period.startDay; d < period.endDay; d++) if (weekdayOf(d) === 6) saturdays.push(d);
-  const freeWeekends = (dutyOf: (d: number) => string | undefined) => saturdays.filter((sat) => !dutyOf(sat) && !dutyOf(sat + 1)).length;
+  // A night on the Friday runs into Saturday morning, so that weekend is not free either.
+  const weekendFree = (sat: number, dutyOf: (d: number) => string | undefined) => {
+    const fri = dutyOf(sat - 1);
+    return !dutyOf(sat) && !dutyOf(sat + 1) && !(fri && shiftById.get(fri)?.isOvernight);
+  };
+  const freeWeekends = (dutyOf: (d: number) => string | undefined) => saturdays.filter((sat) => weekendFree(sat, dutyOf)).length;
 
   const week = (day: number) => {
     const offset = (weekdayOf(day) - input.weekStartsOn + 7) % 7;
@@ -490,6 +501,12 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (let d = day + 1; mine.has(d) && test(mine.get(d)!); d++) n++;
       return n;
     };
+    // Full weekends off (C13) on Block: the duty that would take the last free weekend the person needs is not given.
+    if (c13 !== null && !warnOnly("C13")) {
+      const sat = weekdayOf(day) === 6 ? day : weekdayOf(day) === 0 ? day - 1 : weekdayOf(day) === 5 && shift.isOvernight ? day + 1 : null;
+      const dutyOfNow = (d: number) => mine.get(d);
+      if (sat !== null && saturdays.includes(sat) && weekendFree(sat, dutyOfNow) && freeWeekends(dutyOfNow) <= Math.min(c13, saturdays.length)) return "full weekend off";
+    }
     // Days off in the month (C14): the duty that would leave fewer than the facility asks for is not given.
     if (c14 !== null && !(planned && warnOnly("C14"))) {
       let n = 1;
@@ -679,10 +696,10 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
     // A full weekend off (C13): working a free weekend of someone who has no more to spare costs a lot.
     let weekendCost = 0;
-    if (c13 !== null && (weekdayOf(day) === 0 || weekdayOf(day) === 6)) {
-      const sat = weekdayOf(day) === 6 ? day : day - 1;
+    const weekendSat = weekdayOf(day) === 6 ? day : weekdayOf(day) === 0 ? day - 1 : weekdayOf(day) === 5 && shift.isOvernight ? day + 1 : null;
+    if (c13 !== null && weekendSat !== null) {
       const dutyOfNow = (d: number) => mine.get(d);
-      if (saturdays.includes(sat) && !mine.get(sat) && !mine.get(sat + 1) && freeWeekends(dutyOfNow) <= c13) weekendCost = 40;
+      if (saturdays.includes(weekendSat) && weekendFree(weekendSat, dutyOfNow) && freeWeekends(dutyOfNow) <= c13) weekendCost = 40;
     }
     // Shape: join a block that is already there, rather than stand alone or switch kind beside one.
     let shape = 0;
@@ -931,7 +948,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             if (n > days - c14) continue;
           }
           let cost = 0;
-          if (c13 !== null && b.picks.some(([d]) => weekdayOf(d) === 0 || weekdayOf(d) === 6)) {
+          if (c13 !== null && b.picks.some(([d, x]) => weekdayOf(d) === 0 || weekdayOf(d) === 6 || (weekdayOf(d) === 5 && shiftById.get(x)!.isOvernight))) {
             const before = freeWeekends(dutyOfPlan);
             const after = freeWeekends((d) => b.picks.find(([x]) => x === d)?.[1] ?? dutyOfPlan(d));
             if (after < before && after < Math.min(c13, saturdays.length)) {
