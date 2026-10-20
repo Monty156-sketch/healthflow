@@ -1,7 +1,7 @@
 "use client";
 
 import { WardDemand } from "@/components/WardDemand";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useFacility } from "@/components/AppShell";
@@ -11,7 +11,7 @@ import { MONTHS, showDate } from "@/lib/format";
 import type { RosterFinding, RosterView, Shortfall } from "@/lib/types";
 import { Button, Field, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge, Textarea } from "@/components/ui";
 import { GridChip, MonthGrid } from "@/components/MonthGrid";
-import { CellEditor } from "@/components/CellEditor";
+import { CellEditor, type CellConflict } from "@/components/CellEditor";
 import { VersionsPanel } from "@/components/VersionsPanel";
 import { RosterInsights } from "@/components/RosterInsights";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
@@ -129,7 +129,8 @@ export default function RosterPage() {
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [shortfalls, setShortfalls] = useState<{ list: Shortfall[]; more: number } | null>(null);
-  const [editing, setEditing] = useState<{ staffId: string; date: string } | null>(null);
+  const [editing, setEditing] = useState<{ staffId: string; date: string; preset?: { shiftId: string; conflict: CellConflict } } | null>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [flow, setFlow] = useState<string | null>(null);
   type Change = { staffId: string; date: string; from: string | null; to: string };
@@ -187,6 +188,47 @@ export default function RosterPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Typing a shift's letter, or Delete for Off Duty, on a cell. A refused change opens the panel with its reason. */
+  async function assign(staffId: string, date: string, shiftId: string) {
+    if (busy) return;
+    const from = data!.assignments.find((a) => a.staffId === staffId && a.date === date)?.shiftId ?? null;
+    if (from === shiftId) return;
+    setBusy(true);
+    setFlow(null);
+    try {
+      await api.put(`/api/facility/rosters/${id}/cell`, { staffId, date, shiftId });
+      setUndo((u) => [...u, { staffId, date, from, to: shiftId }]);
+      setRedo([]);
+      reload();
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { error?: string; message?: string; findings?: { ruleCode: string; message: string }[] }) : undefined;
+      if (body?.error === "blocks_rule") {
+        returnTo.current = document.activeElement as HTMLElement | null;
+        setEditing({ staffId, date, preset: { shiftId, conflict: { message: body.message ?? "This change breaks a rule.", findings: body.findings ?? [] } } });
+      } else {
+        setFlow(body?.message ?? "That did not work. Check your connection and try again.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const activeShifts = data.shifts.filter((x) => x.active);
+  const letterOwners = new Map<string, string[]>();
+  for (const sh of activeShifts) letterOwners.set(sh.code[0].toLowerCase(), [...(letterOwners.get(sh.code[0].toLowerCase()) ?? []), sh.id]);
+  const offShiftId = activeShifts.find((x) => !x.countsAsDuty)?.id ?? null;
+  function cellKey(key: string, staffId: string, date: string): boolean {
+    let target: string | null = null;
+    if (key === "Delete" || key === "Backspace") target = offShiftId;
+    else if (key.length === 1) {
+      const owners = letterOwners.get(key.toLowerCase());
+      if (owners?.length === 1) target = owners[0];
+    }
+    if (!target) return false;
+    void assign(staffId, date, target);
+    return true;
   }
 
   async function replay(list: Change[], setList: (c: Change[]) => void, other: Change[], setOther: (c: Change[]) => void, direction: "undo" | "redo") {
@@ -453,8 +495,10 @@ export default function RosterPage() {
               date={editing.date}
               currentShiftId={data.assignments.find((a) => a.staffId === editing.staffId && a.date === editing.date)?.shiftId ?? null}
               shifts={data.shifts.filter((x) => x.active || !x.countsAsDuty)}
+              preset={editing.preset}
               onDone={(saved, change) => {
                 setEditing(null);
+                returnTo.current?.focus();
                 if (saved) {
                   if (change) {
                     setUndo((u) => [...u, change]);
@@ -465,6 +509,19 @@ export default function RosterPage() {
               }}
             />
           )}
+          <div
+            onKeyDown={(e) => {
+              if (!canEdit || busy || !(e.ctrlKey || e.metaKey)) return;
+              const k = e.key.toLowerCase();
+              if (k === "z" && !e.shiftKey && undo.length && undo[undo.length - 1].from) {
+                e.preventDefault();
+                replay(undo, setUndo, redo, setRedo, "undo");
+              } else if ((k === "y" || (k === "z" && e.shiftKey)) && redo.length) {
+                e.preventDefault();
+                replay(redo, setRedo, undo, setUndo, "redo");
+              }
+            }}
+          >
           {canEdit && (undo.length > 0 || redo.length > 0) && (
             <div className="no-print mb-2 flex flex-wrap gap-2" role="group" aria-label="Undo and redo">
               <Button variant="secondary" disabled={busy || !undo.length || !undo[undo.length - 1].from} onClick={() => replay(undo, setUndo, redo, setRedo, "undo")}>
@@ -490,13 +547,23 @@ export default function RosterPage() {
                 <GridChip code={c.code} tone={c.off ? "off" : "neutral"} colour={c.colour ?? undefined} />
               )
             }
-            onCellClick={canEdit ? (staffId, date) => setEditing({ staffId, date }) : undefined}
+            onCellClick={canEdit ? (staffId, date) => { returnTo.current = document.activeElement as HTMLElement | null; setEditing({ staffId, date }); } : undefined}
+            onCellKey={canEdit ? cellKey : undefined}
+            selected={editing}
             describeCell={(c) => (c.afterRun ? `${c.name}, rest after a run of duties` : c.name)}
             stripe={(staffId, iso) => {
               const s = stripes.get(`${staffId}|${iso}`);
               return s === "BLOCK" ? "var(--status-block)" : s === "WARN" ? "var(--status-warning)" : null;
             }}
           />
+
+          </div>
+
+          {canEdit && (
+            <p className="no-print mt-2 text-sm text-[var(--muted)]">
+              Tap a cell to change it. With a keyboard, move with the arrow keys and type a shift's letter to assign it, Delete for Off Duty, Ctrl+Z to undo, Escape to close the panel.
+            </p>
+          )}
 
           <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm">
             {legend.map((s) => (
@@ -565,6 +632,7 @@ export default function RosterPage() {
               </section>
             )}
           </div>
+          {editing && <div aria-hidden="true" className="no-print h-[55vh]" />}
         </>
       )}
     </>
