@@ -45,6 +45,7 @@ export function ShiftForm({
   const [weekendMin, setWeekendMin] = useState(shift?.weekendMinStaff == null ? "" : String(shift.weekendMinStaff));
   const [holidayMin, setHolidayMin] = useState(shift?.holidayMinStaff == null ? "" : String(shift.holidayMinStaff));
   const [keepFull, setKeepFull] = useState(String(shift?.keepFull ?? 0));
+  const [minLeads, setMinLeads] = useState(String(shift?.minLeads ?? 0));
   const [minBy, setMinBy] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(shift?.minByCadre ?? {}).map(([k, v]) => [k, String(v)]))
   );
@@ -69,12 +70,13 @@ export function ShiftForm({
       weekendMinStaff: weekendMin.trim() === "" ? null : Number(weekendMin),
       holidayMinStaff: holidayMin.trim() === "" ? null : Number(holidayMin),
       keepFull: Number(keepFull),
+      minLeads: Number(minLeads) || 0,
       minByCadre,
       eligibleCadreIds: eligible,
       colour,
     };
     return shift ? api.patch(`/api/facility/shifts/${shift.id}`, body) : api.post("/api/facility/shifts", body);
-  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, weekendMin, holidayMin, keepFull, minBy, eligible, colour, shift]);
+  }, [name, code, start, end, overnight, onCall, factor, advice, minStaff, weekendMin, holidayMin, keepFull, minLeads, minBy, eligible, colour, shift]);
 
   const save = useSave(submit);
   const e = save.fieldErrors;
@@ -149,6 +151,11 @@ export function ShiftForm({
               </Field>
               <Field label="Public holidays" optional hint="Blank: same as weekends" error={e.holidayMinStaff}>
                 {(a) => <Input {...a} inputMode="numeric" className="figures" value={holidayMin} onChange={(x) => setHolidayMin(x.target.value)} />}
+              </Field>
+            </div>
+            <div className="mt-3 max-w-xs">
+              <Field label="Of those, able to lead the shift" hint="People marked Can lead a shift on their record. 0 for no requirement." error={e.minLeads}>
+                {(a) => <Input {...a} inputMode="numeric" className="figures" value={minLeads} onChange={(x) => setMinLeads(x.target.value)} />}
               </Field>
             </div>
             <div className="mt-3 max-w-md">

@@ -26,6 +26,9 @@ export interface Staff {
   willingForExtraDuties: boolean;
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
+  canLead?: boolean;
+  maxNightsPerMonth?: number;
+  maxHoursPerMonth?: number;
   eligibleShifts?: { id: string; name: string; code: string }[];
   account: {
     role: string;
@@ -54,6 +57,7 @@ export interface Department {
 export interface Cadre extends Department {
   sortOrder: number;
   takesNights?: boolean;
+  weekdaysOnly?: boolean;
   onRoster?: boolean;
 }
 
@@ -76,6 +80,7 @@ export interface Shift {
   holidayMinStaff: number | null;
   /** 1 keep full first, 0 no preference, -1 may run short first. */
   keepFull: number;
+  minLeads?: number;
   eligibleCadreIds: string[];
   colour: string | null;
   countsAsDuty: boolean;

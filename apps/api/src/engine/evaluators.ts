@@ -308,6 +308,13 @@ export const evaluateMinimumStaffing: Evaluator = (rule, ctx) => {
       if (present.length < shift.minStaff) {
         out.push(finding(rule, null, day, `${shift.name} on ${sayDay(day)} has ${present.length} of the ${shift.minStaff} people it needs.`, { shiftId: shift.id, required: shift.minStaff, assigned: present.length }));
       }
+      const leadsNeeded = base.minLeads ?? 0;
+      if (leadsNeeded > 0 && present.length > 0) {
+        const leads = present.filter((s) => s.canLead).length;
+        if (leads < leadsNeeded) {
+          out.push(finding(rule, null, day, `${shift.name} on ${sayDay(day)} has ${leads === 0 ? "nobody" : `only ${leads}`} who can lead it${leadsNeeded > 1 ? `; it needs ${leadsNeeded}` : ""}.`, { shiftId: shift.id, required: leadsNeeded, assigned: leads }));
+        }
+      }
       for (const [cadreId, need] of Object.entries(shift.minByCadre)) {
         const have = present.filter((s) => s.cadreId === cadreId).length;
         if (have < need) {

@@ -17,6 +17,8 @@ const cadreInput = z.object({
   sortOrder: z.number({ invalid_type_error: "Order must be a number." }).int().min(0).max(999).optional(),
   takesNights: z.boolean().optional(),
   onRoster: z.boolean().optional(),
+  /** Office hours: weekday day shift only, outside the duty cycles. */
+  weekdaysOnly: z.boolean().optional(),
 });
 
 async function nameTaken(facilityId: string, name: string, exceptId?: string) {
@@ -48,6 +50,7 @@ cadresRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       sortOrder: c.sortOrder,
       takesNights: c.takesNights,
       onRoster: c.onRoster,
+      weekdaysOnly: c.weekdaysOnly,
       active: c.active,
       staffCount: c._count.staff,
     })),
@@ -70,6 +73,7 @@ cadresRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       sortOrder: input.sortOrder ?? (last._max.sortOrder ?? 0) + 1,
       takesNights: input.takesNights ?? true,
       onRoster: input.onRoster ?? true,
+      weekdaysOnly: input.weekdaysOnly ?? false,
     },
   });
   await writeAuditLog({
@@ -101,6 +105,7 @@ cadresRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
       ...(input.takesNights !== undefined ? { takesNights: input.takesNights } : {}),
       ...(input.onRoster !== undefined ? { onRoster: input.onRoster } : {}),
+      ...(input.weekdaysOnly !== undefined ? { weekdaysOnly: input.weekdaysOnly } : {}),
     },
   });
   const changes: string[] = [];
@@ -109,6 +114,7 @@ cadresRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
   if (existing.sortOrder !== cadre.sortOrder) changes.push(`moved it to position ${cadre.sortOrder}`);
   if (existing.takesNights !== cadre.takesNights) changes.push(cadre.takesNights ? "put it on night duty" : "took it off night duty");
   if (existing.onRoster !== cadre.onRoster) changes.push(cadre.onRoster ? "put it on the duty roster" : "took it off the duty roster");
+  if (existing.weekdaysOnly !== cadre.weekdaysOnly) changes.push(cadre.weekdaysOnly ? "set it to weekday office hours" : "returned it to shifts");
   if (changes.length) {
     await writeAuditLog({
       facilityId: who.facilityId,
