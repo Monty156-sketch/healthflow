@@ -55,7 +55,7 @@ export default function ShiftsPage() {
     <>
       <PageHeader
         title="Shifts"
-        description="The shifts your facility works. Rosters, rest checks and staffing minimums are all built from these."
+        description="The shifts your facility works."
         actions={isAdmin && editing === null && <Button onClick={() => setEditing("new")}>Add shift</Button>}
       />
       {problem && (
@@ -91,7 +91,7 @@ export default function ShiftsPage() {
             )
           }
         >
-          Add your own, or start with Morning 08:00 to 14:00, Afternoon 14:00 to 20:00 and Night 20:00 to 08:00. You can change all of it afterwards.
+          Add your own, or start with Morning, Afternoon and Night.
         </EmptyState>
       )}
 
@@ -158,7 +158,7 @@ export default function ShiftsPage() {
         </table>
       </TableScroll>
       <p className="mt-3 max-w-[65ch] text-sm text-[var(--muted)]">
-        Shifts are never deleted. A shift that is turned off disappears from new rosters but stays on past ones.
+        A shift turned off stays on past rosters.
       </p>
     </>
   );

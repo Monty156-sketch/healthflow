@@ -88,7 +88,7 @@ function RuleRow({ r, isAdmin, onChanged }: { r: Rule; isAdmin: boolean; onChang
             {statutoryChange && (
               <div className="space-y-2">
                 <Notice tone="warning">
-                  This threshold comes from the Labour Act. Change it only on the advice of a qualified labour law practitioner.
+                  Set by the Labour Act. Change only on legal advice.
                 </Notice>
                 <Field label="The advice this is based on" error={fields.reason}>
                   {(a) => <Textarea {...a} rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />}
@@ -138,7 +138,7 @@ export default function RulesPage() {
       <PageHeader title="Compliance rules" description="The twelve checks every roster is held against." />
       <div className="mb-4">
         <Notice>
-          Statutory thresholds are drawn from Ghana&apos;s Labour Act 2003 (Act 651) and should be confirmed with a qualified labour law practitioner.
+          Statutory limits are from the Labour Act 2003 (Act 651).
         </Notice>
       </div>
       <TableScroll label="Compliance rules">
@@ -163,8 +163,7 @@ export default function RulesPage() {
         </table>
       </TableScroll>
       <p className="mt-3 max-w-[65ch] text-sm text-[var(--muted)]">
-        Statutory rules stay on and only their threshold can change. Fixed rules describe facts about time and leave, so they cannot be changed.
-        Rules are never deleted.
+        Statutory rules stay on. Fixed rules cannot change.
       </p>
     </>
   );

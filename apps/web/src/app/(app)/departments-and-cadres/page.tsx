@@ -41,7 +41,7 @@ const KINDS: Record<"departments" | "cadres", Kind> = {
     key: "departments",
     singular: "department",
     title: "Departments",
-    description: "Where staff work. The roster groups people by department first.",
+    description: "Where staff work.",
     namePlaceholder: "For example, Maternity",
     codeHint: "A short code, for example MAT.",
     empty: "Add the departments that appear on your roster, such as OPD, Maternity or Ward.",
@@ -50,7 +50,7 @@ const KINDS: Record<"departments" | "cadres", Kind> = {
     key: "cadres",
     singular: "cadre",
     title: "Cadres",
-    description: "Professional groups. Within a department the roster lists cadres in this order.",
+    description: "Professional groups, in roster order.",
     namePlaceholder: "For example, Midwife",
     codeHint: "A short code shown on the roster, for example RM.",
     empty: "Add the cadres at your facility, such as Nurse, Midwife or Community Health Nurse.",
@@ -142,13 +142,13 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
                     <option value="shifts">Shifts, nights included</option>
                     <option value="days">Shifts, day shifts only</option>
                     <option value="office">Weekday office hours (mornings, Monday to Friday)</option>
-                    <option value="off">Not on the duty roster (on call or their own schedule)</option>
+                    <option value="off">Not on the duty roster</option>
                   </Select>
                 )}
               </Field>
             )}
             <p className="text-sm text-[var(--muted)]">
-              {kind.key === "departments" ? "Switch off for a department that closes at night, such as the eye clinic. Nobody in it is given nights." : "Nurses and midwives usually work shifts with nights. Pharmacy, laboratory and records staff usually work weekday office hours. Doctors are usually kept off the roster."}
+              {kind.key === "departments" ? "Untick for a department closed at night." : "Usually: nurses and midwives on shifts, pharmacy and lab on office hours."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:pt-6">
@@ -287,7 +287,7 @@ export default function DepartmentsAndCadresPage() {
     <>
       <PageHeader
         title="Departments and cadres"
-        description="Nothing here is ever deleted. Deactivate an entry you no longer use; past rosters and records keep its name."
+        description="Deactivate what you no longer use. Nothing is deleted."
       />
       <div className="space-y-6">
         <GroupSection kind={KINDS.departments} />

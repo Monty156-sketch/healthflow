@@ -321,7 +321,7 @@ export default function InviteStaffPage() {
       </p>
       <PageHeader
         title="Invite staff"
-        description="Enter their name and email. They get a link to choose their own password and set up the access code they use to sign in."
+        description="They get a link to set their password."
       />
       <div className="space-y-6">
         {sent ? (

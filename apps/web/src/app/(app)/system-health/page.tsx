@@ -70,7 +70,7 @@ export default function SystemHealthPage() {
     <>
       <PageHeader
         title="System health"
-        description="Whether HealthFlow is running, and the problems people and browsers have reported."
+        description="Status and reported problems."
         actions={<Button variant="secondary" onClick={reload}>Check again</Button>}
       />
       <div className="grid gap-6 lg:grid-cols-2">

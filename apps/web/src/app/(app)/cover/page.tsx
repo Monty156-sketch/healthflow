@@ -11,9 +11,9 @@ export default function CoverPage() {
   if (!data) return <Loading label="Loading cover" />;
   return (
     <>
-      <PageHeader title="Cover" description="Duties handed to a colleague because someone was absent. A duty nobody has confirmed is not covered." />
+      <PageHeader title="Cover" description="Duties covered for an absent colleague." />
       {data.cover.length === 0 ? (
-        <EmptyState title="Nothing is waiting for an answer">Cover appears here after you ask someone from Daily attendance, until they confirm.</EmptyState>
+        <EmptyState title="Nothing is waiting for an answer">Ask for cover from Daily attendance.</EmptyState>
       ) : (
         <TableScroll label="Cover waiting for an answer, scrolls sideways on small screens">
           <table className="w-full min-w-[38rem] border-collapse text-left text-[15px]">

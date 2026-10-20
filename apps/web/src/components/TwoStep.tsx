@@ -46,7 +46,7 @@ export function AuthenticatorSetup({
           <div>
             <p className="font-medium">Open an authenticator app on your phone</p>
             <p className="text-sm text-[var(--muted)]">
-              Google Authenticator or Microsoft Authenticator both work. Install one from your app store if you need to.
+              Use Google or Microsoft Authenticator.
             </p>
           </div>
         </li>
@@ -129,8 +129,7 @@ export function RecoveryCodes({ codes, onDone, doneLabel = "Continue" }: { codes
   return (
     <div>
       <Notice tone="warning">
-        These codes are shown only once. Each one lets you sign in a single time if you lose your phone. Keep them somewhere
-        private, such as a notebook you keep safe. Do not share them.
+        Shown once. Each code signs you in once if you lose your phone. Keep them private.
       </Notice>
       <ul className="figures mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-[17px] sm:max-w-sm" aria-label="Recovery codes">
         {codes.map((c) => (

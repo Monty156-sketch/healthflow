@@ -174,7 +174,7 @@ function ResetLink({ s }: { s: Staff }) {
       {!link ? (
         <>
           <p className="text-sm text-[var(--muted)]">
-            Forgotten password and no email? Create a link they can open to choose a new one.
+            No email? Create a reset link.
           </p>
           <Button variant="secondary" className="mt-2" disabled={busy} onClick={create}>
             {busy ? "Creating…" : "Create password reset link"}
@@ -227,7 +227,7 @@ function WardLimit({ s }: { s: Staff & { account: NonNullable<Staff["account"]> 
   }
   return (
     <div className="mt-4">
-      <Field label="Rosters they work on" hint="Choose a ward to limit them to that ward's rosters, or leave it on every roster.">
+      <Field label="Rosters they work on" hint="Limit them to one ward's rosters.">
         {(a) => (
           <Select {...a} value={value} disabled={busy} onChange={(e) => save(e.target.value)}>
             <option value="">Every roster</option>

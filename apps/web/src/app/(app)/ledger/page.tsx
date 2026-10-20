@@ -118,11 +118,11 @@ export default function LedgerPage() {
   if (!data) return <Loading label="Loading the ledger" />;
   return (
     <>
-      <PageHeader title="Duty ledger" description="Who owes duties and who is owed them. Every entry has two sides, so the totals always balance. Entries lapse after the facility's expiry period." />
+      <PageHeader title="Duty ledger" description="Who owes duties and who is owed them." />
       <p className="figures mb-6 text-[15px] font-medium" aria-live="polite">{data.summary.line}</p>
 
       {data.people.length === 0 ? (
-        <EmptyState title="Nobody owes or is owed any duties">Entries appear when a duty is handed over without one coming back, or when cover is confirmed for time that is to be worked back.</EmptyState>
+        <EmptyState title="Nobody owes or is owed any duties">Nothing owed.</EmptyState>
       ) : (
         <TableScroll label="Open balances, scrolls sideways on small screens">
           <table className="w-full min-w-[30rem] border-collapse text-left text-[15px]">

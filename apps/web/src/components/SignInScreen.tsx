@@ -191,7 +191,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
           <>
             <h1 className="text-lg font-semibold">Set up two-step sign-in</h1>
             <p className="mt-1 mb-6 text-[var(--muted)]">
-              Your role needs a code from your phone each time you sign in. This takes about a minute and is done once.
+              Your role needs a phone code at sign-in. Set it up once.
             </p>
             <AuthenticatorSetup pending={pending} onConfirm={confirmEnrolment} error={error ?? undefined} busy={submitting} />
           </>

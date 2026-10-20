@@ -29,7 +29,7 @@ export default function CoveragePage() {
   if (error && !data) return <LoadError onRetry={reload} />;
   return (
     <>
-      <PageHeader title="Coverage" description="Staff on the roster against what each shift needs. Short of the minimum is red. Short only of a cadre minimum is amber, with the cadre named." />
+      <PageHeader title="Coverage" description="Red: short of the minimum. Amber: short of a cadre." />
       {!data ? (
         <Loading label="Working out coverage" />
       ) : (

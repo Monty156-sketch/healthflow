@@ -59,7 +59,7 @@ export default function EvidencePage() {
 
   return (
     <>
-      <PageHeader title="Evidence report" description="Six months up to the month chosen. Every figure is worked out from this facility's own records." />
+      <PageHeader title="Evidence report" description="Six months up to the chosen month." />
       <Notice>{data.note}</Notice>
       <div className="my-4 flex flex-wrap items-end gap-3">
         <div className="max-w-[12rem]">
@@ -98,7 +98,7 @@ export default function EvidencePage() {
         {last.nightSpread.length > 0 && (
           <>
             <h2 className="pt-2 text-lg font-semibold">Night duty spread, {last.month}</h2>
-            <p className="text-[var(--muted)]">The standard deviation of night duties among people in each cadre. A lower figure is a more even spread.</p>
+            <p className="text-[var(--muted)]">Lower means nights are spread more evenly.</p>
             <ul>{last.nightSpread.map((n) => <li key={n.cadre}>{n.cadre}: <span className="figures">{n.stdev}</span> across {n.staff} {n.staff === 1 ? "person" : "people"}</li>)}</ul>
           </>
         )}

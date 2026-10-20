@@ -24,7 +24,7 @@ export function StaffingCheck({ rosterId, stamp }: { rosterId: string; stamp: st
   if (!data) return <Loading label="Checking staffing" />;
   const tone = data.verdict === "SHORT" ? "block" : data.verdict === "TIGHT" ? "warning" : "success";
   return (
-    <Panel title="Staffing for this month" description="Worked out from your minimums, duty cycles, rest rules and approved leave, before anything is generated.">
+    <Panel title="Staffing for this month" description="Checked before you generate.">
       <Notice tone={tone}>{data.headline}</Notice>
       <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-[15px] sm:grid-cols-4">
         <div>
@@ -48,7 +48,7 @@ export function StaffingCheck({ rosterId, stamp }: { rosterId: string; stamp: st
       </dl>
       {data.suggestions.length > 0 && (
         <>
-          <p className="mt-4 text-sm font-medium text-[var(--muted)]">What would make it work</p>
+          <p className="mt-4 text-sm font-medium text-[var(--muted)]">To fix it</p>
           <ul className="mt-1 list-disc space-y-1 pl-5 text-[15px]">
             {data.suggestions.map((s) => (
               <li key={s}>{s}</li>

@@ -24,7 +24,7 @@ export default function MonthlyAttendancePage() {
 
   return (
     <>
-      <PageHeader title="Monthly attendance" description="P present, LT late, A absent, E excused, OL on leave, OD off duty, OA official assignment. A blank day was scheduled and not recorded yet." />
+      <PageHeader title="Monthly attendance" description="P present, LT late, A absent, E excused, OL leave, OD off, OA official. Blank: not recorded." />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="am-month" className="mb-1 block text-sm font-medium">Month</label>

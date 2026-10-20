@@ -32,7 +32,7 @@ export default function EstablishmentSettings() {
 
   return (
     <>
-      <PageHeader title="Approved posts" description="The number of posts approved for each cadre. The district compares these with the staff in post to show vacancies." />
+      <PageHeader title="Approved posts" description="Approved posts per cadre." />
       {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
       <TableScroll label="Approved posts by cadre">
         <table className="w-full min-w-[30rem] border-collapse text-[15px]">

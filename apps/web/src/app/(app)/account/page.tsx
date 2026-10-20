@@ -83,7 +83,7 @@ function PasswordPanel() {
         </Field>
         <Field
           label="New password"
-          hint="At least 12 characters. A few unrelated words work well and are easy to remember."
+          hint="At least 12 characters."
           error={save.fieldErrors.newPassword}
         >
           {(a) => <Input {...a} type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} />}
@@ -195,7 +195,7 @@ function TwoStepPanel({ account, onChanged }: { account: Account; onChanged: () 
   return (
     <Panel
       title="Two-step sign-in"
-      description="A code from your phone is needed each time you sign in, so a stolen password alone is not enough."
+      description="A phone code is needed at every sign-in."
     >
       {codes ? (
         <RecoveryCodes
@@ -385,7 +385,7 @@ function SessionsPanel() {
         onConfirm={everywhere}
         onCancel={() => setConfirmEverywhere(false)}
       >
-        <p>Every session ends, including this one. Use this if you think someone else has your password, then change it.</p>
+        <p>Ends every session, including this one.</p>
       </ConfirmDialog>
     </Panel>
   );
@@ -459,7 +459,7 @@ function TextsPanel() {
   }
 
   return (
-    <Panel title="Text messages" description="Your facility may text you when your roster is published or a duty changes.">
+    <Panel title="Text messages" description="Texts about your roster and duty changes.">
       {problem && (
         <div className="mb-3">
           <Notice tone="block">{problem}</Notice>

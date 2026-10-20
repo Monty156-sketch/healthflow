@@ -114,7 +114,7 @@ export default function RequestLeavePage() {
         {canOpen && (
           <div>
             <Checkbox label="I do not know when I will be back" checked={openEnded} onChange={setOpenEnded} />
-            <p className="mt-1 text-sm text-[var(--muted)]">You will stay off the roster until you or your in-charge confirm the day you are back.</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">You stay off the roster until your return is confirmed.</p>
             {fields.openEnded && <div className="mt-2"><Notice tone="block">{fields.openEnded}</Notice></div>}
           </div>
         )}
@@ -140,7 +140,7 @@ export default function RequestLeavePage() {
               ))}
             {shown.balance?.configured && shown.balance.after !== null && shown.balance.after < 0 && (
               <div className="mt-2">
-                <Notice tone="warning">This is more than the days left. Your in-charge will see that when they decide.</Notice>
+                <Notice tone="warning">More than the days you have left.</Notice>
               </div>
             )}
           </Panel>

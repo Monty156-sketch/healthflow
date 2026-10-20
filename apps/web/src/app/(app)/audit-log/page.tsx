@@ -46,7 +46,7 @@ function SupportHistory() {
   return (
     <section className="mb-6 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4" aria-labelledby="support-h">
       <h2 id="support-h" className="font-semibold">PS Tech support access</h2>
-      <p className="mb-2 text-sm text-[var(--muted)]">Every time PS Tech support has been inside this facility, with the reason given.</p>
+      <p className="mb-2 text-sm text-[var(--muted)]">PS Tech support visits, with the reason.</p>
       <ul className="divide-y divide-[var(--border)] text-[15px]">
         {data.sessions.map((s) => (
           <li key={s.id} className="py-2">
@@ -95,7 +95,7 @@ export default function AuditLogPage() {
     <>
       <PageHeader
         title="Audit log"
-        description="Every change to your facility's records, with who made it and when. Entries cannot be edited or deleted by anyone."
+        description="Every change, who made it and when. Entries cannot be edited."
       />
       <SupportHistory />
 

@@ -12,7 +12,7 @@ const REPORTS = [
 export default function ReportsPage() {
   return (
     <>
-      <PageHeader title="Reports" description="Every figure is worked out from the roster. The roster itself downloads as PDF or Excel from its own page." />
+      <PageHeader title="Reports" description="Worked out from the roster." />
       <ul className="grid max-w-3xl gap-4 sm:grid-cols-2">
         {REPORTS.map((r) => (
           <li key={r.href} className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] p-4">

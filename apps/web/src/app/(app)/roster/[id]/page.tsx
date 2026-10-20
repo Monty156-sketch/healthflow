@@ -398,7 +398,7 @@ export default function RosterPage() {
               </span>
             }
           >
-            Generating again replaces every duty that is not locked with a new roster, built from your current duty cycles, rotation order, duty ledger and the last three months. Each time gives a different lawful roster.
+            This replaces every duty that is not locked.
           </Notice>
         </div>
       )}
@@ -427,7 +427,7 @@ export default function RosterPage() {
         <div className="mb-4 space-y-3">
           <Notice tone="block">{problem}</Notice>
           {shortfalls && (
-            <Panel title="What is missing" description="The roster needs at least this many people on these days, and your staff list cannot supply them.">
+            <Panel title="What is missing" description="Not enough staff on these days.">
               <ul className="list-disc space-y-1 pl-5 text-[15px]">
                 {shortfalls.list.map((s, i) => (
                   <li key={i}>{s.sentence}</li>
@@ -574,7 +574,7 @@ export default function RosterPage() {
 
           {canEdit && (
             <p className="no-print mt-2 text-sm text-[var(--muted)]">
-              Tap a cell to change it. With a keyboard, move with the arrow keys and type the letter of a shift to assign it, Delete for Off Duty, Ctrl+Z to undo, Escape to close the panel.
+              Tap a cell to change it. Keyboard: arrows to move, a shift letter to assign, Delete for Off, Ctrl+Z to undo.
             </p>
           )}
 
@@ -616,7 +616,7 @@ export default function RosterPage() {
           <div className="no-print mt-6 space-y-5">
             <h2 className="text-lg font-semibold">Checked against the rules</h2>
             {!blocking.length && !warnings.length ? (
-              <Notice tone="success">No findings. Every rule that is switched on is met.</Notice>
+              <Notice tone="success">No findings. Every rule is met.</Notice>
             ) : (
               <>
                 <FindingList title="Blocking" items={blocking} nameOf={nameOf} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} />

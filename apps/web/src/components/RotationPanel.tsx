@@ -98,7 +98,7 @@ function RotationForm({ rotation, lookups, onSaved, onCancel }: { rotation: Rota
         <p className="text-sm font-medium" id="rot-order">
           Order of shifts
         </p>
-        <p className="text-sm text-[var(--muted)]">Add the shifts in the order your staff move through them. After the last one it starts again from the first.</p>
+        <p className="text-sm text-[var(--muted)]">Add shifts in order. It repeats.</p>
         {available.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Add a shift to the order">
             {available.map((s) => (
@@ -181,7 +181,7 @@ function RotationForm({ rotation, lookups, onSaved, onCancel }: { rotation: Rota
         </div>
         {switchingToBlock && (
           <div className="mt-3 space-y-2">
-            <Notice tone="warning">Choose Block only if your facility would rather have an uncovered shift than a break in the order.</Notice>
+            <Notice tone="warning">Block leaves a shift empty rather than break the order.</Notice>
             <Checkbox label="We would rather leave a shift unfilled than break the order" checked={confirmBlock} onChange={setConfirmBlock} />
           </div>
         )}
@@ -230,7 +230,7 @@ export function RotationPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-[65ch] text-[var(--muted)]">
-          The order shifts follow one another, for example Night, then Afternoon, then Morning. After a rest the roster brings people back in this order, so nobody goes from nights straight onto a morning.
+          For example Night, Afternoon, Morning. After a rest, staff come back in this order.
         </p>
         {isAdmin && editing === null && data.shifts.length > 1 && <Button onClick={() => setEditing("new")}>Add rotation</Button>}
       </div>
@@ -306,7 +306,7 @@ export function RotationPanel() {
         }}
         onCancel={() => setDeleting(null)}
       >
-        The roster will no longer follow this order, and it will not be set up again. Past rosters are not changed.
+        Past rosters are not changed.
       </ConfirmDialog>
     </div>
   );

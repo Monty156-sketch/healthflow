@@ -36,7 +36,7 @@ export default function DutyPatternsPage() {
 
   return (
     <>
-      <PageHeader title="Duty patterns" description="How your facility works, set up in one place. The roster is built from these, in this order." />
+      <PageHeader title="Duty patterns" description="Set these up in order. The roster is built from them." />
       <div role="tablist" aria-label="Duty patterns" className="mb-2 flex flex-wrap gap-2 border-b border-[var(--border)] pb-3">
         {TABS.map((t, i) => (
           <button

@@ -104,7 +104,7 @@ export function CycleForm({ rule, kind, lookups, onSaved, onCancel }: { rule: Cy
 
       <fieldset>
         <legend className="text-sm font-medium">Shifts that count toward the run</legend>
-        <p className="text-sm text-[var(--muted)]">A run is broken by a day off, leave, or a duty not on this list.</p>
+        <p className="text-sm text-[var(--muted)]">A day off or leave ends a run.</p>
         <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
           {lookups.shifts.map((s) => (
             <Checkbox key={s.id} label={`${s.name} (${s.code})`} checked={shiftIds.includes(s.id)} onChange={(on) => toggle(shiftIds, setShiftIds, s.id, on)} />
@@ -135,11 +135,11 @@ export function CycleForm({ rule, kind, lookups, onSaved, onCancel }: { rule: Cy
       <fieldset className="rounded-[var(--radius)] border border-[var(--border-strong)] p-4">
         <legend className="px-1 text-sm font-medium">Which shift comes when</legend>
         <p className="text-sm text-[var(--muted)]">
-          Both settings are optional. The roster engine reads them when it builds a roster. Leave them empty and it picks any counted shift.
+          Optional.
         </p>
 
         <div className="mt-4 max-w-sm">
-          <Field label="After the days off, the first duty back is" optional hint="For example, after 4 nights and 3 days off, staff come back on Afternoon, never straight onto Morning." error={e.nextShiftAfterRestId}>
+          <Field label="After the days off, the first duty back is" optional hint="For example: after nights, come back on Afternoon." error={e.nextShiftAfterRestId}>
             {(a) => (
               <Select {...a} value={afterRest} onChange={(x) => setAfterRest(x.target.value)}>
                 <option value="">Any shift</option>
@@ -158,10 +158,10 @@ export function CycleForm({ rule, kind, lookups, onSaved, onCancel }: { rule: Cy
             Order of shifts inside a block
           </p>
           <p className="text-sm text-[var(--muted)]">
-            Press a shift to add it as the next step. The order repeats until the block ends. For example Afternoon, Morning, Afternoon, Morning gives four duties, then the days off.
+            Press shifts in order. It repeats until the block ends.
           </p>
           {counting.length === 0 ? (
-            <p className="mt-2 text-sm text-[var(--muted)]">Tick the shifts that count toward the run above, then build the order here.</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">Tick the counted shifts first.</p>
           ) : (
             <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Add a shift to the order">
               {counting.map((s) => (
@@ -238,14 +238,14 @@ export function CycleForm({ rule, kind, lookups, onSaved, onCancel }: { rule: Cy
         </div>
         {switchingToBlock && (
           <div className="mt-3 space-y-2">
-            <Notice tone="warning">Choose Block only if your facility would rather have an uncovered shift than an irregular roster.</Notice>
-            <Checkbox label="We would rather leave a shift unfilled than break this pattern" checked={confirmBlock} onChange={setConfirmBlock} />
+            <Notice tone="warning">Block leaves a shift empty rather than break the rule.</Notice>
+            <Checkbox label="Never break this pattern" checked={confirmBlock} onChange={setConfirmBlock} />
           </div>
         )}
       </fieldset>
 
       <div className="max-w-52">
-        <Field label="Priority" optional hint="When two rules apply on the same duty, the lower number wins." error={e.priority}>
+        <Field label="Priority" optional hint="Lower number wins." error={e.priority}>
           {(a) => <Input {...a} inputMode="numeric" className="figures" value={priority} onChange={(x) => setPriority(x.target.value)} />}
         </Field>
       </div>

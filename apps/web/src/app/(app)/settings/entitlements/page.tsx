@@ -50,7 +50,7 @@ function Sheet({ data, reload }: { data: Data; reload: () => void }) {
   return (
     <div className="space-y-5">
       {unset > 0 && <Notice tone="warning">{unset} {unset === 1 ? "person has" : "people have"} no figure set. The figure comes from your conditions of service and can differ by grade, so nothing is filled in for you.</Notice>}
-      <Panel title="Set for all staff" description="For a figure that is the same for everyone. Anyone can still be changed below.">
+      <Panel title="Set for all staff" description="Same for everyone. Change anyone below.">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Days a year">{(a) => <Input {...a} className="figures w-28" inputMode="decimal" value={bulk} onChange={(e) => setBulk(e.target.value.replace(/[^\d.]/g, ""))} />}</Field>
           <label className="flex min-h-11 items-center gap-2 text-[15px]"><input type="checkbox" checked={onlyUnset} onChange={(e) => setOnlyUnset(e.target.checked)} /> Only people with no figure yet</label>
@@ -100,7 +100,7 @@ export default function EntitlementsPage() {
 
   return (
     <>
-      <PageHeader title="Leave entitlements" description="Days each person has for the year. Taken, pending and left are worked out from approved and waiting requests." />
+      <PageHeader title="Leave entitlements" description="Days each person has this year." />
       <div className="mb-4 flex flex-wrap gap-3">
         <div>
           <label htmlFor="en-year" className="mb-1 block text-sm font-medium">Year</label>

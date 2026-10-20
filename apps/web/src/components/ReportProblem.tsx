@@ -111,7 +111,7 @@ export function ReportProblem() {
       <ConfirmDialog open={open} title="Report a problem" confirmLabel="Send report" busy={busy} onConfirm={send} onCancel={() => setOpen(false)}>
         <Field
           label="What were you doing, and what went wrong?"
-          hint="The screen you are on and your device type are sent with this. Do not include patient details."
+          hint="Do not include patient details."
           error={error}
         >
           {(a) => <Textarea {...a} rows={5} value={text} onChange={(e) => setText(e.target.value)} />}

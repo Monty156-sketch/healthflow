@@ -86,7 +86,7 @@ export default function FairnessPage() {
           <p className="text-[15px] text-[var(--muted)]">
             {showDate(data.period.from)} to {showDate(data.period.to)}. {data.monthsCovered} of {data.monthsAsked} months have an approved roster.
           </p>
-          {data.mine === null && !manager && <Notice tone="warning">Your account is not linked to a staff record, so there are no figures to show. Ask your in-charge.</Notice>}
+          {data.mine === null && !manager && <Notice tone="warning">Your account is not linked to a staff record. Ask your in-charge.</Notice>}
           {data.mine && (
             <Panel title={`You, against ${data.mine.peers - 1 > 0 ? `the other ${data.mine.cadre.toLowerCase()} staff` : "your cadre"}`} description="The dark mark on each bar is the cadre average.">
               <div className="space-y-3">
@@ -104,7 +104,7 @@ export default function FairnessPage() {
                 <li>The rest rules: the minimum rest between duties, a weekly rest, and limits on duty days and nights in a row.</li>
                 <li>Then an even spread of nights, weekends and holidays across everyone left, counted over three months.</li>
               </ol>
-              <p className="mt-3 text-sm text-[var(--muted)]">If a figure above looks wrong to you, say so to your in-charge. It is a conversation about coverage, not a ranking of colleagues.</p>
+              <p className="mt-3 text-sm text-[var(--muted)]">If a figure looks wrong, tell your in-charge.</p>
             </Panel>
           )}
           {data.cadres?.map((c) => {

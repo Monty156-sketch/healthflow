@@ -19,7 +19,7 @@ export function RosterInsights({ rosterId, stamp }: { rosterId: string; stamp: s
   return (
     <div className="space-y-5">
       {data.advice.length > 0 && (
-        <Panel title="Where the roster is short" description="Shifts that ask for a cadre and could not be filled without breaking a rule. The figures come from this roster, not an estimate.">
+        <Panel title="Where the roster is short" description="Cadre places this roster could not fill.">
           <div className="space-y-4">
             {data.advice.map((a) => (
               <section key={a.cadreId} aria-label={`${a.cadreName} cover`}>
@@ -33,11 +33,10 @@ export function RosterInsights({ rosterId, stamp }: { rosterId: string; stamp: s
               </section>
             ))}
           </div>
-          <p className="mt-3 text-sm text-[var(--muted)]">The suggestions assume each person in the cadre keeps working at the pace they have on this roster. Rules stay as they are unless you choose to ease one.</p>
         </Panel>
       )}
 
-      <Panel title="Workload" description="Duties, nights, weekends and hours for each person this month. The bar shows hours; the line on it is the average for their cadre.">
+      <Panel title="Workload" description="Hours per person. The line marks the cadre average.">
         {data.workload.length === 0 ? (
           <Notice>No staff on this roster yet.</Notice>
         ) : (
@@ -91,7 +90,7 @@ export function RosterInsights({ rosterId, stamp }: { rosterId: string; stamp: s
             ))}
           </div>
         )}
-        <p className="mt-3 text-sm text-[var(--muted)]">A person is marked above or below when their hours are more than a fifth away from the average for their cadre. A person alone in a cadre has nothing to be compared with.</p>
+        <p className="mt-3 text-sm text-[var(--muted)]">Above or below means more than 20% from the cadre average.</p>
       </Panel>
     </div>
   );
