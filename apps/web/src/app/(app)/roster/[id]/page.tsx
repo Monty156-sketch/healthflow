@@ -13,6 +13,7 @@ import { Button, Field, Loading, LoadError, Notice, PageHeader, Panel, StatusBad
 import { GridChip, MonthGrid } from "@/components/MonthGrid";
 import { CellEditor } from "@/components/CellEditor";
 import { VersionsPanel } from "@/components/VersionsPanel";
+import { RosterInsights } from "@/components/RosterInsights";
 import { STATUS_WORD, statusTone } from "@/lib/rosterStatus";
 
 interface Cell {
@@ -162,6 +163,12 @@ export default function RosterPage() {
   if (!data) return <Loading label="Loading roster" />;
 
   const { roster, summary } = data;
+  // Changes whenever any cell, finding or version changes, so the readings below follow every edit.
+  const stamp = (() => {
+    let h = 5381;
+    for (const a of data.assignments) for (const ch of `${a.staffId}${a.shiftId}${a.date}`) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0;
+    return `${h.toString(36)}-${roster.version}-${summary.duties}-${summary.unfilled}`;
+  })();
   const generated = roster.status !== "DRAFT";
   const isAdmin = facility.me.role === "FACILITY_ADMIN";
   const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
@@ -521,6 +528,10 @@ export default function RosterPage() {
               <dd>Warning</dd>
             </div>
           </dl>
+
+          <div className="no-print mt-6">
+            <RosterInsights rosterId={roster.id} stamp={stamp} />
+          </div>
 
           <div className="no-print mt-6 space-y-5">
             <h2 className="text-lg font-semibold">Checked against the rules</h2>
