@@ -26,6 +26,8 @@ enum FacilityType {
   POLYCLINIC
   HOSPITAL
   PRIVATE_HOSPITAL
+  REGIONAL_HOSPITAL
+  TEACHING_HOSPITAL
 }
 
 enum FacilityStatus {
@@ -386,6 +388,7 @@ model Facility {
   leaveEntitlements   LeaveEntitlement[]
   staffRestrictions   StaffRestriction[]
   dayOffRequests      DayOffRequest[]
+  wardTransfers       WardTransfer[]
   leaveRequests       LeaveRequest[]
   publicHolidays      PublicHoliday[]
   attendance          Attendance[]
@@ -456,6 +459,8 @@ model Department {
   rosters Roster[]
   shiftDemand ShiftDemand[]
   managers UserProfile[]
+  transfersOut WardTransfer[] @relation("TransferFrom")
+  transfersIn  WardTransfer[] @relation("TransferTo")
 
   @@index([facilityId])
 }
@@ -494,6 +499,8 @@ model Staff {
   /// What they typed when the facility had no cadre or department list to choose from.
   requestedCadre       String?
   requestedDepartment  String?
+  /// Registered with the code as a ward in-charge. The facility administrator decides; until then they wait.
+  requestedInCharge    Boolean  @default(false)
   phoneVerified        Boolean  @default(false)
   smsOptOut            Boolean  @default(false)
   phone                String?
@@ -523,6 +530,7 @@ model Staff {
   maxHoursPerMonth     Int              @default(0) // 0 = no limit
   restrictions         StaffRestriction[]
   dayOffRequests       DayOffRequest[]
+  transfers            WardTransfer[]
   archivedAt           DateTime?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
@@ -1480,4 +1488,34 @@ model DayOffRequest {
 
   @@unique([staffId, date])
   @@index([facilityId, date])
+}
+
+enum TransferKind {
+  ROUTINE
+  EMERGENCY
+}
+
+/// A move from one ward to another inside the facility. The person keeps their record; only their ward changes, on the effective date.
+model WardTransfer {
+  id               String       @id @default(cuid())
+  facilityId       String
+  facility         Facility     @relation(fields: [facilityId], references: [id])
+  staffId          String
+  staff            Staff        @relation(fields: [staffId], references: [id])
+  fromDepartmentId String?
+  fromDepartment   Department?  @relation("TransferFrom", fields: [fromDepartmentId], references: [id])
+  toDepartmentId   String
+  toDepartment     Department   @relation("TransferTo", fields: [toDepartmentId], references: [id])
+  effectiveDate    DateTime     @db.Date
+  kind             TransferKind @default(ROUTINE)
+  /// They take charge of the new ward's rosters when they arrive.
+  inCharge         Boolean      @default(false)
+  reason           String?
+  createdBy        String
+  createdAt        DateTime     @default(now())
+  appliedAt        DateTime?
+  cancelledAt      DateTime?
+
+  @@index([facilityId, effectiveDate])
+  @@index([staffId])
 }

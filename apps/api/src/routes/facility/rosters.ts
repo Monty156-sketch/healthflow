@@ -48,10 +48,22 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   // A ward roster is for that department's people, with the ward's own minimums where it has set them.
   const ward = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true } }))?.departmentId ?? null;
   const demand = ward ? await prisma.shiftDemand.findMany({ where: { departmentId: ward } }) : [];
+  // Ward transfers this month: someone joining counts from their day, someone leaving until the day before.
+  const moves = ward
+    ? await prisma.wardTransfer.findMany({
+        where: { cancelledAt: null, effectiveDate: { lte: dateFromDay(period.endDay) }, OR: [{ toDepartmentId: ward, OR: [{ appliedAt: null }, { effectiveDate: { gt: dateFromDay(period.startDay) } }] }, { fromDepartmentId: ward, appliedAt: null }] },
+        select: { staffId: true, toDepartmentId: true, effectiveDate: true },
+      })
+    : [];
+  const joining = moves.filter((m) => m.toDepartmentId === ward);
+  const away = moves.map((m) => {
+    const eff = Math.max(dayFromDate(m.effectiveDate), period.startDay);
+    return m.toDepartmentId === ward ? { staffId: m.staffId, startDay: period.startDay, endDay: eff - 1 } : { staffId: m.staffId, startDay: eff, endDay: period.endDay };
+  }).filter((x) => x.endDay >= x.startDay);
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { departmentId: ward } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -132,7 +144,9 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   }));
   const leave = leaveRows
     .filter((l) => overlaps(l, period.startDay, period.endDay))
-    .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }));
+    .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }))
+    // Days in another ward are days this ward cannot use.
+    .concat(away);
   const toAssignment = (a: { staffId: string; shiftId: string; dutyDate: Date; locked?: boolean }): EAssignment => ({ staffId: a.staffId, shiftId: a.shiftId, day: dayFromDate(a.dutyDate), locked: a.locked });
 
   // Public-holiday duties each person worked over the last twelve months, so holidays are shared over the year.
@@ -270,7 +284,7 @@ const createInput = z.object({
 });
 
 /** Hospitals keep one roster per ward or department. Health centres, clinics and CHPS compounds keep one for the whole facility. */
-export const WARD_FACILITY_TYPES = ["HOSPITAL", "PRIVATE_HOSPITAL", "POLYCLINIC"];
+export const WARD_FACILITY_TYPES = ["HOSPITAL", "PRIVATE_HOSPITAL", "POLYCLINIC", "REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"];
 
 rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const who = caller(req);

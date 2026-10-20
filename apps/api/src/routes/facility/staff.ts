@@ -176,7 +176,7 @@ const listQuery = z.object({
 });
 
 staffRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
-  const { facilityId } = caller(req);
+  const { facilityId, departmentId: ward } = caller(req);
   const query = parseOr400(listQuery, req.query, res);
   if (!query) return;
 
@@ -185,7 +185,8 @@ staffRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
     ...(query.show === "current" ? { status: { in: CURRENT } } : {}),
     ...(query.show === "former" ? { status: { in: LEAVING } } : {}),
     ...(query.cadreId ? { cadreId: query.cadreId } : {}),
-    ...(query.departmentId ? { departmentId: query.departmentId } : {}),
+    // A ward in-charge sees their own ward's people.
+    ...(ward ? { departmentId: ward } : query.departmentId ? { departmentId: query.departmentId } : {}),
     ...(query.q
       ? {
           OR: [
@@ -209,9 +210,9 @@ staffRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
 // ---------------------------------------------------------------- one
 
 staffRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
-  const { facilityId } = caller(req);
+  const { facilityId, departmentId: ward } = caller(req);
   const s = await prisma.staff.findFirst({
-    where: { id: String(req.params.id), facilityId },
+    where: { id: String(req.params.id), facilityId, ...(ward ? { departmentId: ward } : {}) },
     include: staffInclude,
   });
   if (!s) return res.status(404).json({ error: "not_found" });

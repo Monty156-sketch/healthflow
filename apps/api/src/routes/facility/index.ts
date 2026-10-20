@@ -23,6 +23,7 @@ import {
 import { departmentsRouter } from "./departments.js";
 import { cadresRouter } from "./cadres.js";
 import { daysOffRouter, restrictionsRouter } from "./daysOff.js";
+import { transfersRouter } from "./transfers.js";
 import { staffRouter } from "./staff.js";
 import { auditRouter } from "./audit.js";
 import { privacyRouter } from "./privacy.js";
@@ -61,6 +62,7 @@ facilityRouter.use("/staff-import", staffImportRouter);
 facilityRouter.use("/staff", restrictionsRouter);
 facilityRouter.use("/staff", staffRouter);
 facilityRouter.use("/days-off", daysOffRouter);
+facilityRouter.use("/transfers", transfersRouter);
 facilityRouter.use("/staff", staffInvitationRouter);
 facilityRouter.use("/invitations", invitationAdminRouter);
 facilityRouter.use("/privacy", privacyRouter);
@@ -89,7 +91,7 @@ facilityRouter.use("/reports", reportsRouter);
 facilityRouter.use("/", leaveSettingsRouter);
 facilityRouter.use("/audit-log", auditRouter);
 
-const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;
+const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL", "REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"] as const;
 
 function presentFacility(f: Awaited<ReturnType<typeof prisma.facility.findUniqueOrThrow>>) {
   return {

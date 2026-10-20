@@ -13,9 +13,10 @@ import { writeAuditLog } from "../lib/audit.js";
 import { clientIp } from "../lib/clientIp.js";
 import { normalisePhone } from "../lib/sms.js";
 import { codeProblem, normaliseCode } from "../lib/accessCode.js";
-import { notifyDeciders } from "../lib/notify.js";
+import { notifyDeciders, notifyWard } from "../lib/notify.js";
 import { parseOr400, optionalText, requiredText } from "../lib/validate.js";
 import { currentNotice } from "./facility/privacy.js";
+import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
 
 export const joinRouter = Router();
 
@@ -32,7 +33,7 @@ joinRouter.use(limiter);
 const BAD_CODE = { error: "invalid_code", message: "That code is not valid. Check it with your in-charge." };
 
 async function openCode(raw: string) {
-  const code = await prisma.facilityAccessCode.findUnique({ where: { code: normaliseCode(raw) }, include: { facility: { select: { id: true, name: true, active: true, status: true } } } });
+  const code = await prisma.facilityAccessCode.findUnique({ where: { code: normaliseCode(raw) }, include: { facility: { select: { id: true, name: true, active: true, status: true, facilityType: true } } } });
   if (!code || !code.facility.active || code.facility.status === "SUSPENDED" || codeProblem(code)) return null;
   return code;
 }
@@ -45,7 +46,8 @@ joinRouter.get("/:code", async (req, res) => {
     prisma.cadre.findMany({ where: { facilityId: code.facilityId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
     prisma.department.findMany({ where: { facilityId: code.facilityId, active: true, archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
-  res.json({ facilityName: code.facility.name, cadres, departments });
+  // Hospitals roster by ward, so everyone names their ward and says whether they are its in-charge.
+  res.json({ facilityName: code.facility.name, cadres, departments, byWard: WARD_FACILITY_TYPES.includes(code.facility.facilityType) });
 });
 
 joinRouter.get("/:code/notice", async (req, res) => {
@@ -68,6 +70,7 @@ const registerInput = z.object({
   cadreText: optionalText(80, "Cadre"),
   departmentText: optionalText(80, "Department"),
   position: optionalText(80, "Position"),
+  asInCharge: z.boolean().default(false),
 });
 
 /** Step two, and the last: create the account. */
@@ -83,6 +86,9 @@ joinRouter.post("/register", async (req, res) => {
   if (input.phone && !phone) fields.phone = "Enter a Ghana mobile number, such as 024 123 4567, or leave it empty.";
   if (input.cadreId && !(await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId, active: true }, select: { id: true } }))) fields.cadreId = "Choose a cadre from the list.";
   if (input.departmentId && !(await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true } }))) fields.departmentId = "Choose a department from the list.";
+  const byWard = WARD_FACILITY_TYPES.includes(code.facility.facilityType);
+  if (byWard && !input.departmentId && !input.departmentText) fields.departmentId = "Choose your ward or department.";
+  const asInCharge = byWard && input.asInCharge;
   const problem = checkPassword(input.password, input.email);
   if (problem) fields.password = problem;
   if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields });
@@ -105,7 +111,8 @@ joinRouter.post("/register", async (req, res) => {
     staffNo = `S-${String(n).padStart(3, "0")}`;
   }
 
-  const waits = code.requiresApproval;
+  // An in-charge gets a ward's rosters, so the administrator always decides, whatever the code allows.
+  const waits = code.requiresApproval || asInCharge;
   const passwordHash = await hashPassword(input.password);
   const staff = await prisma.$transaction(async (tx) => {
     // The use is counted first, with the limit in the same statement, so two people cannot take the last place.
@@ -118,7 +125,7 @@ joinRouter.post("/register", async (req, res) => {
       data: {
         facilityId, staffNo: staffNo!, fullName: input.fullName, phone, email: input.email, cadreId: input.cadreId, departmentId: input.departmentId, position: input.position,
         requestedCadre: input.cadreId ? null : input.cadreText, requestedDepartment: input.departmentId ? null : input.departmentText,
-        status: waits ? "PENDING" : "ACTIVE", joinedVia: "CODE",
+        status: waits ? "PENDING" : "ACTIVE", joinedVia: "CODE", requestedInCharge: asInCharge,
       },
     });
     await tx.userProfile.create({
@@ -130,10 +137,13 @@ joinRouter.post("/register", async (req, res) => {
 
   await writeAuditLog({
     facilityId, actorEmail: input.email, action: "staff_joined_with_code", entityType: "Staff", entityId: staff.id,
-    summary: `${staff.fullName} registered with the facility access code and agreed to version ${notice.version} of the privacy notice. ${waits ? "They are waiting for approval." : "They can sign in now."}`,
+    summary: `${staff.fullName} registered with the facility access code${asInCharge ? " as a ward in-charge" : ""} and agreed to version ${notice.version} of the privacy notice. ${waits ? "They are waiting for approval." : "They can sign in now."}`,
   });
   if (waits) {
-    await notifyDeciders(facilityId, { type: "join_pending", title: `${staff.fullName} is waiting for approval`, body: `${staff.fullName} registered with the access code and waits for you to approve their account.`, linkUrl: "/staff/access", severity: "INFO" });
+    const note = { type: "join_pending", title: `${staff.fullName} is waiting for approval`, body: `${staff.fullName} registered with the access code${asInCharge ? " as a ward in-charge" : ""} and waits for approval.`, linkUrl: "/staff/access", severity: "INFO" as const };
+    // In a hospital the ward's own in-charge approves its staff; an in-charge is approved by the administrator.
+    if (byWard) await notifyWard(facilityId, asInCharge ? null : input.departmentId, note);
+    else await notifyDeciders(facilityId, note);
   }
   res.status(201).json({ status: waits ? "pending" : "active", facilityName: code.facility.name });
 });
