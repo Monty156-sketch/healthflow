@@ -561,7 +561,7 @@ export default function RosterPage() {
 
           {canEdit && (
             <p className="no-print mt-2 text-sm text-[var(--muted)]">
-              Tap a cell to change it. With a keyboard, move with the arrow keys and type a shift's letter to assign it, Delete for Off Duty, Ctrl+Z to undo, Escape to close the panel.
+              Tap a cell to change it. With a keyboard, move with the arrow keys and type the letter of a shift to assign it, Delete for Off Duty, Ctrl+Z to undo, Escape to close the panel.
             </p>
           )}
 
