@@ -74,6 +74,6 @@ describe("statutory-violations-v1", () => {
   });
 
   it("has an evaluator for every rule that reports findings", () => {
-    expect(Object.keys(RULE_EVALUATORS).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))).toEqual(["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11"]);
+    expect(Object.keys(RULE_EVALUATORS).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))).toEqual(["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C13", "C14"]);
   });
 });

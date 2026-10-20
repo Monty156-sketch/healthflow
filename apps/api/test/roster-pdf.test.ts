@@ -30,6 +30,16 @@ describe("roster pdf", () => {
     expect(pages(await rosterPdf(sample(0)))).toBe(1);
   });
 
+  it("shows leave and approved days off as codes, holidays in the header, leads, and daily counts on one page", async () => {
+    const r = sample(14);
+    r.holidays = [1];
+    r.marks = new Map([["s0|2026-10-05", "AL"], ["s0|2026-10-06", "AL"], ["s1|2026-10-09", "RO"]]);
+    r.markLegend = [{ code: "AL", label: "Annual leave" }, { code: "RO", label: "day off asked for and approved" }];
+    r.leads = new Set(["s2"]);
+    const b = await rosterPdf(r);
+    expect(pages(b)).toBe(1);
+  });
+
   it("maps letters the built-in font lacks", () => {
     expect(plain("Ɛsi Ɔpoku")).toBe("Esi Opoku");
   });

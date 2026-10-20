@@ -163,6 +163,10 @@ export interface RosterFinding {
 }
 
 export interface RosterView {
+  /** staffId|YYYY-MM-DD -> leave or day-off code */
+  marks?: Record<string, string>;
+  markLegend?: { code: string; label: string }[];
+  holidays?: string[];
   roster: Omit<RosterSummary, "duties" | "blocks" | "warnings" | "unfilled">;
   summary: { duties: number; blocks: number; warnings: number; unfilled: number };
   staff: { id: string; name: string; staffNo: string; cadreCode: string | null; cadreName: string | null; cadreOrder: number; departmentName: string | null }[];

@@ -83,12 +83,15 @@ interface Props<T> {
   onCellKey?: (key: string, staffId: string, date: string) => boolean;
   /** The cell being edited, outlined so it is not lost behind a panel. */
   selected?: { staffId: string; date: string } | null;
+  /** Public holidays (YYYY-MM-DD): shaded like weekends and marked PH. */
+  holidays?: string[];
   caption: string;
 }
 
 type Row = { kind: "group"; label: string; key: string } | { kind: "staff"; staff: GridStaff; index: number };
 
-export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describeCell, stripe, onCellClick, onCellKey, selected, caption }: Props<T>) {
+export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describeCell, stripe, onCellClick, onCellKey, selected, caption, holidays }: Props<T>) {
+  const holidaySet = useMemo(() => new Set(holidays ?? []), [holidays]);
   const days = useMemo(() => daysOf(year, month), [year, month]);
 
   // Department, then cadre (by its order), then name.
@@ -163,7 +166,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
               Staff
             </th>
             {days.map((d) => {
-              const weekend = d.weekday === 0 || d.weekday === 6;
+              const weekend = d.weekday === 0 || d.weekday === 6 || holidaySet.has(d.iso);
               return (
                 <th
                   key={d.iso}
@@ -171,9 +174,9 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                   className="sticky top-0 z-20 min-w-11 border-b sm:min-w-9 border-[var(--border)] px-0.5 py-1.5 text-center font-normal"
                   style={{ background: weekend ? "color-mix(in srgb, var(--border) 45%, var(--surface))" : "var(--surface)" }}
                 >
-                  <abbr title={`${WEEKDAY_NAME[d.weekday]} ${d.day} ${MONTH_NAME[month - 1]}`} className="no-underline">
+                  <abbr title={`${WEEKDAY_NAME[d.weekday]} ${d.day} ${MONTH_NAME[month - 1]}${holidaySet.has(d.iso) ? ", public holiday" : ""}`} className="no-underline">
                     <span className="figures block text-[13px] font-semibold">{d.day}</span>
-                    <span className="block text-[11px] text-[var(--muted)]">{WEEKDAY_LETTER[d.weekday]}</span>
+                    <span className={`block text-[11px] ${holidaySet.has(d.iso) ? "font-semibold text-[var(--foreground)]" : "text-[var(--muted)]"}`}>{holidaySet.has(d.iso) ? "PH" : WEEKDAY_LETTER[d.weekday]}</span>
                   </abbr>
                 </th>
               );
@@ -207,7 +210,7 @@ export function MonthGrid<T>({ year, month, staff, cellData, renderCell, describ
                 {days.map((d, c) => {
                   const data = cellData?.(row.staff.id, d.iso);
                   const edge = stripe?.(row.staff.id, d.iso, data) ?? null;
-                  const weekend = d.weekday === 0 || d.weekday === 6;
+                  const weekend = d.weekday === 0 || d.weekday === 6 || holidaySet.has(d.iso);
                   const content = data !== undefined && renderCell ? renderCell(data) : null;
                   const label = `${row.staff.name}, ${WEEKDAY_NAME[d.weekday]} ${d.day} ${MONTH_NAME[month - 1]}: ${
                     data !== undefined && describeCell ? describeCell(data) : "nothing assigned"

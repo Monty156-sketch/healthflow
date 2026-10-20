@@ -33,9 +33,10 @@ export async function rosterWorkbook(r: PdfRoster, hoursByShift: Map<string, num
     head.getCell(i + 1).value = h;
     ws.mergeCells(4, i + 1, 5, i + 1);
   });
+  const holidays = new Set(r.holidays ?? []);
   for (let d = 1; d <= days; d++) {
     head.getCell(firstDay + d - 1).value = d;
-    sub.getCell(firstDay + d - 1).value = WEEKDAY[dow(d)];
+    sub.getCell(firstDay + d - 1).value = holidays.has(d) ? "PH" : WEEKDAY[dow(d)];
   }
   head.getCell(totalCol).value = "Duties";
   head.getCell(lastCol).value = "Hours";
@@ -50,21 +51,26 @@ export async function rosterWorkbook(r: PdfRoster, hoursByShift: Map<string, num
     });
   }
   for (let d = 1; d <= days; d++) {
-    if (dow(d) === 0 || dow(d) === 6) for (const row of [head, sub]) row.getCell(firstDay + d - 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9D9D9" } };
+    if (dow(d) === 0 || dow(d) === 6 || holidays.has(d)) for (const row of [head, sub]) row.getCell(firstDay + d - 1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: holidays.has(d) ? "FFBFBFBF" : "FFD9D9D9" } };
   }
 
   const dutyShift = new Set(r.shifts.filter((s) => s.countsAsDuty).map((s) => s.id));
   r.staff.forEach((p, i) => {
     const row = ws.getRow(6 + i);
     row.getCell(1).value = p.staffNo;
-    row.getCell(2).value = p.name;
+    row.getCell(2).value = p.name + (r.leads?.has(p.id) ? " *" : "");
     row.getCell(3).value = p.cadre ?? "";
     let hours = 0;
     for (let d = 1; d <= days; d++) {
       const sid = r.cells.get(`${p.id}|${iso(d)}`);
       const s = sid ? shiftBy.get(sid) : undefined;
       const cell = row.getCell(firstDay + d - 1);
-      if (s) {
+      const mark = r.marks?.get(`${p.id}|${iso(d)}`);
+      if (mark && (!s || !dutyShift.has(s.id))) {
+        cell.value = mark;
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEDE6CC" } };
+        cell.font = { bold: true, size: 9 };
+      } else if (s) {
         cell.value = s.code;
         const fill = argb(s.colour);
         if (fill && dutyShift.has(s.id)) {
@@ -86,6 +92,29 @@ export async function rosterWorkbook(r: PdfRoster, hoursByShift: Map<string, num
     row.getCell(2).font = { size: 10 };
   });
 
+  // Daily counts under the grid, as live formulas: people on each shift, and people off.
+  const firstRow = 6;
+  const lastRow = 6 + r.staff.length - 1;
+  const duty = r.shifts.filter((s) => s.countsAsDuty);
+  if (r.staff.length) {
+    const rows = [...duty.map((s) => ({ label: s.name, code: s.code })), { label: "Off", code: null as string | null }];
+    rows.forEach((x, k) => {
+      const row = ws.getRow(lastRow + 2 + k);
+      row.getCell(2).value = x.label;
+      row.getCell(2).font = { bold: true, size: 9 };
+      for (let d = 1; d <= days; d++) {
+        const col = ws.getColumn(firstDay + d - 1).letter;
+        const range = `${col}${firstRow}:${col}${lastRow}`;
+        const cell = row.getCell(firstDay + d - 1);
+        if (x.code) cell.value = { formula: `COUNTIF(${range},"${x.code.replace(/"/g, '""')}")` };
+        else cell.value = { formula: `${r.staff.length}-${duty.map((s) => `COUNTIF(${range},"${s.code.replace(/"/g, '""')}")`).join("-")}-${[...new Set(r.marks?.values() ?? [])].map((m) => `COUNTIF(${range},"${m}")`).join("-") || "0"}` };
+        cell.alignment = { horizontal: "center" };
+        cell.font = { size: 9 };
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F3F3" } };
+      }
+    });
+  }
+
   ws.getColumn(1).width = 8;
   ws.getColumn(2).width = 28;
   ws.getColumn(3).width = 16;
@@ -96,6 +125,9 @@ export async function rosterWorkbook(r: PdfRoster, hoursByShift: Map<string, num
   const key = wb.addWorksheet("Key");
   key.addRow(["Code", "Shift", "Time", "Counts as duty"]).font = { bold: true };
   for (const s of r.shifts) key.addRow([s.code, s.name, s.time ?? "", s.countsAsDuty ? "Yes" : "No"]);
+  for (const m of r.markLegend ?? []) key.addRow([m.code, m.label, "", "No"]);
+  if (holidays.size) key.addRow(["PH", "Public holiday", "", ""]);
+  if (r.leads?.size) key.addRow(["*", "Can lead a shift", "", ""]);
   key.addRow([]);
   key.addRow([`Prepared by: ${r.preparedBy ?? ""}`]);
   key.addRow([`Approved by: ${r.approvedBy ?? ""}`]);
