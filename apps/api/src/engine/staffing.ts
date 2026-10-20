@@ -53,8 +53,11 @@ export function staffingCheck(input: StaffingInput): StaffingCheck {
       return counted.length > 0 && counted.every((x) => x.isOvernight === night);
     });
   const density = (rs: ECycleRule[]) => (rs.length ? Math.min(...rs.map((r) => r.consecutiveDuties / (r.consecutiveDuties + r.offDaysRequired))) : 1);
-  const dayDensity = Math.min(weekShare, density(kinded(false)));
-  const nightDensity = Math.min(weekShare, density(kinded(true)));
+  // Days off in the month (C14) cap everyone's share too.
+  const c14 = rule("C14");
+  const offShare = c14 ? Math.max(0, days - (c14.threshold ?? 8)) / days : 1;
+  const dayDensity = Math.min(weekShare, offShare, density(kinded(false)));
+  const nightDensity = Math.min(weekShare, offShare, density(kinded(true)));
 
   // In-charges work their weekday mornings whatever happens; they come off the morning demand first.
   const inCharge = input.staff.filter((s) => s.morningOnly);

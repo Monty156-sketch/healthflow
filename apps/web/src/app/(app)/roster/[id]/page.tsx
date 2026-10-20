@@ -147,6 +147,12 @@ export default function RosterPage() {
       if (!s) continue;
       m.set(`${a.staffId}|${a.date}`, { code: s.code, colour: s.colour, name: s.name, off: !s.countsAsDuty, afterRun: a.source === "REST_BLOCK" });
     }
+    // Leave and approved days off show as their code where there is no duty, never as words across the row.
+    const label = new Map((data?.markLegend ?? []).map((l) => [l.code, l.label]));
+    for (const [k, code] of Object.entries(data?.marks ?? {})) {
+      const c = m.get(k);
+      if (!c || c.off) m.set(k, { code, colour: null, name: label.get(code) ?? code, off: true, afterRun: false });
+    }
     return m;
   }, [data, shiftById]);
   const stripes = useMemo(() => {
@@ -556,6 +562,7 @@ export default function RosterPage() {
             onCellClick={canEdit ? (staffId, date) => { returnTo.current = document.activeElement as HTMLElement | null; setEditing({ staffId, date }); } : undefined}
             onCellKey={canEdit ? cellKey : undefined}
             selected={editing}
+            holidays={data.holidays}
             describeCell={(c) => (c.afterRun ? `${c.name}, rest after a run of duties` : c.name)}
             stripe={(staffId, iso) => {
               const s = stripes.get(`${staffId}|${iso}`);

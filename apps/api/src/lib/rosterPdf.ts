@@ -22,6 +22,13 @@ export interface PdfRoster {
   warnings: number;
   overrides: number;
   printedOn: string;
+  /** Days of the month that are public holidays. */
+  holidays?: number[];
+  /** staffId|YYYY-MM-DD -> a code for a day with no duty: leave type, or an approved day off. */
+  marks?: Map<string, string>;
+  markLegend?: { code: string; label: string }[];
+  /** People who can lead a shift, marked beside their name. */
+  leads?: Set<string>;
 }
 
 const W = 841.89;
@@ -63,7 +70,10 @@ export function rosterPdf(r: PdfRoster): Promise<Buffer> {
     const dayW = (W - 2 * M - noW - nameW - cadreW - totalW) / days;
     const rowH = 15;
     const headH = 26;
-    const footerReserve = 112; // legend and signatures on the last page
+    const dutyShifts = r.shifts.filter((s) => s.countsAsDuty);
+    const countRows = dutyShifts.length + 1; // one per duty shift, and Off
+    const footerReserve = 112 + countRows * rowH; // daily counts, legend and signatures on the last page
+    const holidays = new Set(r.holidays ?? []);
     const left = M;
 
     const header = () => {
@@ -85,9 +95,10 @@ export function rosterPdf(r: PdfRoster): Promise<Buffer> {
       for (let d = 1; d <= days; d++) {
         const x = left + noW + nameW + cadreW + (d - 1) * dayW;
         const weekend = dow(d) === 0 || dow(d) === 6;
-        if (weekend) doc.rect(x, y, dayW, headH).fillAndStroke("#cfcfcf", "#000");
+        if (holidays.has(d)) doc.rect(x, y, dayW, headH).fillAndStroke("#b8b8b8", "#000");
+        else if (weekend) doc.rect(x, y, dayW, headH).fillAndStroke("#cfcfcf", "#000");
         doc.fillColor("#000").font("Helvetica-Bold").fontSize(7).text(String(d), x, y + 4, { width: dayW, align: "center" });
-        doc.font("Helvetica").fontSize(6).text(WEEKDAY[dow(d)], x, y + 15, { width: dayW, align: "center" });
+        doc.font(holidays.has(d) ? "Helvetica-Bold" : "Helvetica").fontSize(6).text(holidays.has(d) ? "PH" : WEEKDAY[dow(d)], x, y + 15, { width: dayW, align: "center" });
       }
       doc.font("Helvetica-Bold").fontSize(7.5).text("Duties", left + W - 2 * M - totalW, y + 9, { width: totalW, align: "center" });
       return y + headH;
@@ -103,14 +114,19 @@ export function rosterPdf(r: PdfRoster): Promise<Buffer> {
       doc.rect(left, y, W - 2 * M, rowH).stroke();
       doc.fillColor("#000").font("Helvetica").fontSize(7.5);
       doc.text(String(i + 1), left + 2, y + 4.5, { width: noW - 4, lineBreak: false });
-      doc.font("Helvetica-Bold").text(plain(p.name), left + noW + 3, y + 4.5, { width: nameW - 6, lineBreak: false, ellipsis: true });
+      doc.font("Helvetica-Bold").text(plain(p.name) + (r.leads?.has(p.id) ? " *" : ""), left + noW + 3, y + 4.5, { width: nameW - 6, lineBreak: false, ellipsis: true });
       doc.font("Helvetica").fontSize(7).text(plain(p.cadre ?? ""), left + noW + nameW + 3, y + 4.5, { width: cadreW - 6, lineBreak: false, ellipsis: true });
       let duties = 0;
       for (let d = 1; d <= days; d++) {
         const x = left + noW + nameW + cadreW + (d - 1) * dayW;
-        const wk = dow(d) === 0 || dow(d) === 6;
+        const wk = dow(d) === 0 || dow(d) === 6 || holidays.has(d);
         const s = shiftBy.get(r.cells.get(`${p.id}|${iso(d)}`) ?? "");
-        if (s) {
+        const mark = r.marks?.get(`${p.id}|${iso(d)}`);
+        if (mark && (!s || !s.countsAsDuty)) {
+          // Leave or an approved day off: shown as a code, never as words across the row.
+          doc.save().rect(x, y, dayW, rowH).fillOpacity(0.35).fill("#e8e1c8").restore();
+          doc.fillColor("#000").font("Helvetica-Bold").fontSize(mark.length > 2 ? 5.5 : 7).text(plain(mark), x, y + 4.5, { width: dayW, align: "center", lineBreak: false });
+        } else if (s) {
           const rgb = hexToRgb(s.colour);
           if (s.countsAsDuty && rgb) doc.save().rect(x, y, dayW, rowH).fillOpacity(0.18).fill(rgb).restore();
           else if (wk) doc.save().rect(x, y, dayW, rowH).fillOpacity(0.5).fill("#dddddd").restore();
@@ -126,6 +142,26 @@ export function rosterPdf(r: PdfRoster): Promise<Buffer> {
       y += rowH;
     });
     if (r.staff.length === 0) doc.fillColor("#555").font("Helvetica").fontSize(10).text("No staff on this roster yet.", left, y + 10);
+
+    // How many are on each shift each day, and how many are off: the check every in-charge does by hand.
+    if (r.staff.length) {
+      const rows: { label: string; count: (d: number) => number }[] = [
+        ...dutyShifts.map((s) => ({ label: plain(s.name), count: (d: number) => r.staff.filter((p) => r.cells.get(`${p.id}|${iso(d)}`) === s.id).length })),
+        { label: "Off", count: (d: number) => r.staff.filter((p) => !dutyShifts.some((s) => r.cells.get(`${p.id}|${iso(d)}`) === s.id) && !r.marks?.has(`${p.id}|${iso(d)}`)).length },
+      ];
+      for (const row of rows) {
+        doc.lineWidth(0.4).strokeColor("#444");
+        doc.save().rect(left, y, W - 2 * M, rowH).fill("#f3f3f3").restore();
+        doc.rect(left, y, W - 2 * M, rowH).stroke();
+        doc.fillColor("#000").font("Helvetica-Bold").fontSize(7.5).text(row.label, left + noW + 3, y + 4.5, { width: nameW + cadreW - 6, lineBreak: false });
+        for (let d = 1; d <= days; d++) {
+          const x = left + noW + nameW + cadreW + (d - 1) * dayW;
+          doc.fillColor("#000").font("Helvetica").fontSize(7).text(String(row.count(d)), x, y + 4.5, { width: dayW, align: "center", lineBreak: false });
+          doc.lineWidth(0.25).strokeColor("#999").moveTo(x, y).lineTo(x, y + rowH).stroke();
+        }
+        y += rowH;
+      }
+    }
 
     // Legend, then the signatures, always together on the last page.
     y += 12;
@@ -148,6 +184,20 @@ export function rosterPdf(r: PdfRoster): Promise<Buffer> {
       lx += w + 8;
     }
 
+    const extras = [...(r.markLegend ?? []).map((m) => `${plain(m.code)} = ${plain(m.label)}`), ...(holidays.size ? ["PH = public holiday"] : []), ...(r.leads?.size ? ["* can lead a shift"] : [])];
+    if (extras.length) {
+      ly += 11;
+      lx = left;
+      for (const label of extras) {
+        const w = doc.widthOfString(label) + 18;
+        if (lx + w > W - M) {
+          lx = left;
+          ly += 11;
+        }
+        doc.fillColor("#000").font("Helvetica").fontSize(7.5).text(label, lx, ly, { lineBreak: false });
+        lx += w + 8;
+      }
+    }
     const sy = Math.min(ly + 30, H - M - 52);
     const sigW = 230;
     const sig = (x: number, label: string, name: string | null) => {

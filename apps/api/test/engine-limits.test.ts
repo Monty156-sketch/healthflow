@@ -68,3 +68,19 @@ describe("days people ask to have off", () => {
     expect(r.unfilled).toEqual([]);
   });
 });
+
+describe("weekends and days off in the month", () => {
+  const withRules = (c13: number, c14: number) => [...rules, { code: "C13", threshold: c13, severity: "WARN" as const }, { code: "C14", threshold: c14, severity: "WARN" as const }];
+  it("gives everyone at least one full weekend off and at least the days off asked for", () => {
+    const r = generate(base({ rules: withRules(1, 9) }));
+    expect(r.unfilled).toEqual([]);
+    expect(r.findings.filter((f) => f.ruleCode === "C14")).toEqual([]);
+    expect(r.findings.filter((f) => f.ruleCode === "C13").length).toBeLessThanOrEqual(1);
+    for (const s of base().staff) expect(30 - mine(r, s.id).length).toBeGreaterThanOrEqual(9);
+  });
+
+  it("reports anyone left without a weekend off", () => {
+    const r = generate(base({ rules: withRules(5, 0) }));
+    expect(r.findings.some((f) => f.ruleCode === "C13" && f.message.includes("the facility asks for at least 5"))).toBe(true);
+  });
+});

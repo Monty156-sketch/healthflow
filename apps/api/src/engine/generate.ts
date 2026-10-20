@@ -131,7 +131,7 @@ const ISOLATED_DUTY = 16;
 const ISOLATED_NIGHT = 32;
 /** Moving between a night and a day duty with no rest day between. */
 const FLIP = 10;
-const HARD_CODES = ["C2", "C3", "C5", "C6", "C7", "C8"];
+const HARD_CODES = ["C2", "C3", "C5", "C6", "C7", "C8", "C13", "C14"];
 
 function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -415,6 +415,12 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   const c5 = rule.has("C5") ? limit("C5") ?? 11 : null;
   const c7 = rule.has("C7") ? limit("C7") ?? 6 : null;
   const c8 = rule.has("C8") ? limit("C8") ?? 3 : null;
+  const c13 = rule.has("C13") ? limit("C13") ?? 1 : null;
+  const c14 = rule.has("C14") ? limit("C14") ?? 8 : null;
+  // Full weekends in the month: each Saturday whose Sunday is also in it.
+  const saturdays: number[] = [];
+  for (let d = period.startDay; d < period.endDay; d++) if (weekdayOf(d) === 6) saturdays.push(d);
+  const freeWeekends = (dutyOf: (d: number) => string | undefined) => saturdays.filter((sat) => !dutyOf(sat) && !dutyOf(sat + 1)).length;
 
   const week = (day: number) => {
     const offset = (weekdayOf(day) - input.weekStartsOn + 7) % 7;
@@ -484,6 +490,12 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       for (let d = day + 1; mine.has(d) && test(mine.get(d)!); d++) n++;
       return n;
     };
+    // Days off in the month (C14): the duty that would leave fewer than the facility asks for is not given.
+    if (c14 !== null && !(planned && warnOnly("C14"))) {
+      let n = 1;
+      for (const [d, sid] of mine) if (d >= period.startDay && d <= period.endDay && shiftById.get(sid)!.countsAsDuty) n++;
+      if (n > period.endDay - period.startDay + 1 - c14) return "days off this month";
+    }
     // The person's own limits for the month.
     if (s.maxNightsPerMonth && shift.isOvernight) {
       let n = 1;
@@ -662,6 +674,13 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     const st = state.get(s.id)!;
     let run = 0;
     for (const r of cycleRules.get(s.id)!) if (r.countingShiftIds.includes(shift.id)) run = Math.max(run, st.runs.get(r.id) ?? 0);
+    // A full weekend off (C13): working a free weekend of someone who has no more to spare costs a lot.
+    let weekendCost = 0;
+    if (c13 !== null && (weekdayOf(day) === 0 || weekdayOf(day) === 6)) {
+      const sat = weekdayOf(day) === 6 ? day : day - 1;
+      const dutyOfNow = (d: number) => mine.get(d);
+      if (saturdays.includes(sat) && !mine.get(sat) && !mine.get(sat + 1) && freeWeekends(dutyOfNow) <= c13) weekendCost = 40;
+    }
     // Shape: join a block that is already there, rather than stand alone or switch kind beside one.
     let shape = 0;
     const before = planBlocks ? mine.get(day - 1) : "";
@@ -674,7 +693,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
       if (other.isOvernight !== shift.isOvernight) shape += FLIP;
       else if (other.id === shift.id) shape -= 4;
     }
-    return shape + nightWeight * (nights / elapsed) + nightBalance(s, shift) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day) + carryPull(s) + deficitPull(s, day) + holidayPull(s, day) + planPull(s, shift, day);
+    return weekendCost + shape + nightWeight * (nights / elapsed) + nightBalance(s, shift) + 6 * streak + 4 * special + 2 * (hours / 40) - BLOCK_REWARD * run + ledgerPull(s, day) + carryPull(s) + deficitPull(s, day) + holidayPull(s, day) + planPull(s, shift, day);
   };
 
   /**
@@ -907,7 +926,22 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           // The person's own limits for the month.
           if (b.night && s.maxNightsPerMonth && w.nights + b.picks.length > s.maxNightsPerMonth) continue;
           if (s.maxHoursPerMonth && (w.duties + loadOf(b)) * avgH > s.maxHoursPerMonth + 0.01) continue;
+          // Days off in the month (C14), and full weekends off (C13).
+          const dutyOfPlan = (d: number) => w.plan.get(d) ?? mine.get(d);
+          if (c14 !== null) {
+            let n = b.picks.length;
+            for (let d = period.startDay; d <= period.endDay; d++) if (dutyOfPlan(d)) n++;
+            if (n > days - c14) continue;
+          }
           let cost = 0;
+          if (c13 !== null && b.picks.some(([d]) => weekdayOf(d) === 0 || weekdayOf(d) === 6)) {
+            const before = freeWeekends(dutyOfPlan);
+            const after = freeWeekends((d) => b.picks.find(([x]) => x === d)?.[1] ?? dutyOfPlan(d));
+            if (after < before && after < Math.min(c13, saturdays.length)) {
+              if (rule.get("C13")!.severity === "BLOCK") continue;
+              cost += 40;
+            }
+          }
           // Days the person has asked to have off, still waiting for a decision.
           cost += ASKED_OFF * b.picks.filter(([d]) => askedOff.has(`${s.id}:${d}`)).length;
           // Nights by count, against an even share, less whatever extra they did in the last three months.

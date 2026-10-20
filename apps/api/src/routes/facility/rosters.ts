@@ -320,10 +320,15 @@ rostersRouter.get("/:id", allowRoles(...READ_ROLES), async (req, res) => {
     orderBy: { staffNo: "asc" },
   });
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
+  // Leave and approved days off as codes in their cells, and public holidays: the same as the printed roster.
+  const sheet = (await buildSheet(facilityId, roster)).sheet;
 
   res.json({
     roster: presentRoster(roster),
     summary: await summaryOf(roster.id),
+    marks: Object.fromEntries(sheet.marks ?? []),
+    markLegend: sheet.markLegend ?? [],
+    holidays: (sheet.holidays ?? []).map((d) => `${roster.year}-${String(roster.month).padStart(2, "0")}-${String(d).padStart(2, "0")}`),
     staff: staff.map((s) => ({
       id: s.id, name: s.fullName, staffNo: s.staffNo, cadreCode: s.cadre?.code ?? s.cadre?.name ?? null, cadreName: s.cadre?.name ?? null,
       cadreOrder: s.cadreId ? order.get(s.cadreId) ?? 999 : 999, departmentName: s.department?.name ?? null,
@@ -377,6 +382,32 @@ async function buildSheet(facilityId: string, roster: RosterRow) {
     where: { facilityId, OR: [{ status: "ACTIVE" }, { id: { in: [...inRoster] } }], ...(roster.departmentId ? { departmentId: roster.departmentId } : {}) },
     include: { cadre: { select: { name: true } } },
   });
+  // Leave and approved days off show as codes in their cells; public holidays are marked in the header.
+  const first = new Date(Date.UTC(roster.year, roster.month - 1, 1));
+  const last = new Date(Date.UTC(roster.year, roster.month, 0));
+  const [leaveRows, offRows, holidayRows] = await Promise.all([
+    prisma.leaveRequest.findMany({
+      where: { facilityId, status: "APPROVED", staffId: { in: staffRows.map((x) => x.id) }, startDate: { lte: last }, OR: [{ endDate: { gte: first } }, { isOpenEnded: true, actualReturnDate: null }] },
+      select: { staffId: true, startDate: true, endDate: true, isOpenEnded: true, actualReturnDate: true, leaveType: { select: { code: true, name: true } } },
+    }),
+    prisma.dayOffRequest.findMany({ where: { facilityId, status: "APPROVED", date: { gte: first, lte: last }, staffId: { in: staffRows.map((x) => x.id) } }, select: { staffId: true, date: true } }),
+    prisma.publicHoliday.findMany({ where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: first, lte: last } }, select: { date: true } }),
+  ]);
+  const marks = new Map<string, string>();
+  const legend = new Map<string, string>();
+  for (const l of leaveRows) {
+    const code = (l.leaveType.code || "L").slice(0, 3).toUpperCase();
+    legend.set(code, `${l.leaveType.name} leave`);
+    const until = l.isOpenEnded ? (l.actualReturnDate ? new Date(l.actualReturnDate.getTime() - 86_400_000) : last) : l.endDate;
+    for (let d = Math.max(dayFromDate(l.startDate), dayFromDate(first)); d <= Math.min(dayFromDate(until), dayFromDate(last)); d++) marks.set(`${l.staffId}|${isoOf(d)}`, code);
+  }
+  for (const o of offRows) {
+    const key = `${o.staffId}|${o.date.toISOString().slice(0, 10)}`;
+    if (!marks.has(key)) {
+      marks.set(key, "RO");
+      legend.set("RO", "day off asked for and approved");
+    }
+  }
   const order = new Map(cadres.map((c) => [c.id, c.sortOrder]));
   staffRows.sort((a, b) => (order.get(a.cadreId ?? "") ?? 999) - (order.get(b.cadreId ?? "") ?? 999) || a.staffNo.localeCompare(b.staffNo, undefined, { numeric: true }));
 
@@ -405,6 +436,10 @@ async function buildSheet(facilityId: string, roster: RosterRow) {
     warnings: findings.filter((f) => f.severity === "WARN").length,
     overrides: findings.filter((f) => f.status === "OVERRIDDEN").length,
     printedOn: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
+    holidays: holidayRows.map((h) => h.date.getUTCDate()),
+    marks,
+    markLegend: [...legend].map(([code, label]) => ({ code, label })),
+    leads: new Set(staffRows.filter((x) => x.canLead).map((x) => x.id)),
   };
   return { sheet, status, facilityName: facility.name, hours: new Map(shifts.map((s) => [s.id, s.countsAsDuty ? s.durationHours * (s.isOnCall ? s.onCallHoursFactor : 1) : 0])) };
 }

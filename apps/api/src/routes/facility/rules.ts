@@ -53,6 +53,10 @@ export const RULE_SEEDS: Seed[] = [
     description: "A shift has fewer people than its minimum, or fewer of a cadre than that cadre's minimum." },
   { code: "C12", name: "Night duty distribution", ruleType: "FAIRNESS", thresholdValue: 1, unit: "standard deviations", behaviour: "OPTIMISE", overridable: false, min: 0.1, max: 5,
     description: "Spreads night duties evenly. Used when generating a roster, not reported as a finding." },
+  { code: "C13", name: "Full weekends off per month", ruleType: "POLICY", thresholdValue: 1, unit: "weekends", behaviour: "WARN", overridable: true, min: 0, max: 5,
+    description: "Everyone on the roster gets at least this many weekends with both Saturday and Sunday free." },
+  { code: "C14", name: "Days off per month", ruleType: "POLICY", thresholdValue: 8, unit: "days", behaviour: "WARN", overridable: true, min: 0, max: 20,
+    description: "Everyone on the roster gets at least this many days without a duty in the month. Leave days count as days off." },
 ];
 
 const SEED_BY_CODE = new Map(RULE_SEEDS.map((s) => [s.code, s]));

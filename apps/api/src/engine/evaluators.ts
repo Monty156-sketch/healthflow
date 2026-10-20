@@ -329,6 +329,42 @@ export const evaluateMinimumStaffing: Evaluator = (rule, ctx) => {
 
 // ---------------------------------------------------------------- the registry
 
+/** C13: at least this many full weekends (Saturday and Sunday both free) in the month. */
+export const evaluateWeekendsOff: Evaluator = (rule, ctx) => {
+  const ix = indexOf(ctx);
+  const want = rule.threshold ?? 1;
+  const out: Finding[] = [];
+  const weekends: number[] = [];
+  for (let d = ctx.period.startDay; d < ctx.period.endDay; d++) if (weekdayOf(d) === 6) weekends.push(d);
+  if (!weekends.length) return out;
+  for (const s of ctx.staff) {
+    const mine = ix.duties.get(s.id);
+    if (!mine || ![...mine.keys()].some((d) => inPeriod(ctx, d))) continue;
+    const free = weekends.filter((sat) => !mine.has(sat) && !mine.has(sat + 1)).length;
+    if (free < Math.min(want, weekends.length)) {
+      out.push(finding(rule, s, null, `${s.name} has ${free === 0 ? "no" : free} full ${free === 1 ? "weekend" : "weekends"} off this month; the facility asks for at least ${want}.`, { free, required: want }));
+    }
+  }
+  return out;
+};
+
+/** C14: at least this many days off in the month (leave days count as off). */
+export const evaluateDaysOff: Evaluator = (rule, ctx) => {
+  const ix = indexOf(ctx);
+  const want = rule.threshold ?? 8;
+  const days = ctx.period.endDay - ctx.period.startDay + 1;
+  const out: Finding[] = [];
+  for (const s of ctx.staff) {
+    const mine = ix.duties.get(s.id);
+    if (!mine) continue;
+    const worked = [...mine.keys()].filter((d) => inPeriod(ctx, d)).length;
+    if (!worked) continue;
+    const off = days - worked;
+    if (off < want) out.push(finding(rule, s, null, `${s.name} has ${off} ${off === 1 ? "day" : "days"} off this month; the facility asks for at least ${want}.`, { off, required: want }));
+  }
+  return out;
+};
+
 export const RULE_EVALUATORS: Record<string, Evaluator> = {
   C1: evaluateDailyHours,
   C2: evaluateWeeklyHours,
@@ -341,6 +377,8 @@ export const RULE_EVALUATORS: Record<string, Evaluator> = {
   C9: evaluateLeaveCollision,
   C10: evaluateEligibility,
   C11: evaluateMinimumStaffing,
+  C13: evaluateWeekendsOff,
+  C14: evaluateDaysOff,
   // C12 spreads night duties while the roster is generated. It is not a finding.
 };
 
