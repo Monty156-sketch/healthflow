@@ -11,7 +11,7 @@ import { showDate } from "@/lib/format";
 import type { Department, Staff } from "@/lib/types";
 import { Button, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TableScroll, TD, TH } from "@/components/ui";
 
-interface Transfer { id: string; name: string; staffNo: string; from: string | null; to: string; effectiveDate: string; kind: "ROUTINE" | "EMERGENCY"; inCharge: boolean; reason: string | null; status: "SCHEDULED" | "DONE" | "CANCELLED" }
+interface Transfer { id: string; fromDepartmentId: string | null; name: string; staffNo: string; from: string | null; to: string; effectiveDate: string; kind: "ROUTINE" | "EMERGENCY"; inCharge: boolean; reason: string | null; status: "SCHEDULED" | "DONE" | "CANCELLED" }
 
 const STATUS = {
   SCHEDULED: { word: "Scheduled", tone: "warning" },
@@ -22,7 +22,7 @@ const STATUS = {
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const say = (e: unknown, fallback: string) => (e instanceof ApiError ? (e.body as { message?: string; fields?: Record<string, string> } | undefined) : undefined) ?? { message: fallback };
 
-function NewTransfer({ onDone }: { onDone: () => void }) {
+function NewTransfer({ onDone, ward }: { onDone: () => void; ward: boolean }) {
   const staff = useResource<{ staff: Staff[] }>("/api/facility/staff");
   const wards = useResource<{ departments: Department[] }>("/api/facility/departments");
   const blank = { staffId: "", toDepartmentId: "", effectiveDate: todayIso(), kind: "ROUTINE", reason: "", inCharge: false };
@@ -63,7 +63,7 @@ function NewTransfer({ onDone }: { onDone: () => void }) {
             </Select>
           )}
         </Field>
-        <Field label="To ward" error={fields.toDepartmentId}>
+        <Field label="Move to" error={fields.toDepartmentId}>
           {(a) => (
             <Select {...a} value={form.toDepartmentId} onChange={(e) => setForm({ ...form, toDepartmentId: e.target.value })}>
               <option value="">Choose</option>
@@ -85,7 +85,7 @@ function NewTransfer({ onDone }: { onDone: () => void }) {
         <div className="sm:col-span-2">
           <Field label="Reason" optional error={fields.reason}>{(a) => <Input {...a} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} />}</Field>
         </div>
-        <div className="sm:col-span-2"><Checkbox label="In charge of the new ward" checked={form.inCharge} onChange={(on) => setForm({ ...form, inCharge: on })} /></div>
+        {!ward && <div className="sm:col-span-2"><Checkbox label="In charge of the new ward" checked={form.inCharge} onChange={(on) => setForm({ ...form, inCharge: on })} /></div>}
       </div>
       {problem && <div className="mt-3"><Notice tone="warning">{problem}</Notice></div>}
       <div className="mt-4"><Button disabled={busy || !form.staffId || !form.toDepartmentId} onClick={save}>{busy ? "Saving…" : "Transfer"}</Button></div>
@@ -94,7 +94,10 @@ function NewTransfer({ onDone }: { onDone: () => void }) {
 }
 
 export default function TransfersPage() {
-  const { isAdmin } = useFacility();
+  const { isAdmin, me } = useFacility();
+  // The administrator moves anyone; a ward in-charge moves people out of their own ward.
+  const ward = !isAdmin ? me.departmentId ?? null : null;
+  const canMove = isAdmin || Boolean(ward);
   const list = useResource<{ transfers: Transfer[] }>("/api/facility/transfers");
   const [problem, setProblem] = useState<string | null>(null);
   if (list.error && !list.data) return <LoadError onRetry={list.reload} />;
@@ -113,9 +116,9 @@ export default function TransfersPage() {
 
   return (
     <>
-      <PageHeader title="Ward transfers" description="Move staff between wards. No new registration needed." />
+      <PageHeader title="Ward transfers" description={ward ? "Move someone from your ward to another. No new registration needed." : "Move staff between wards. No new registration needed."} />
       <div className="space-y-6">
-        {isAdmin && <NewTransfer onDone={list.reload} />}
+        {canMove && <NewTransfer ward={Boolean(ward)} onDone={list.reload} />}
         <Panel title="Transfers">
           {problem && <div className="mb-3"><Notice tone="warning">{problem}</Notice></div>}
           {rows.length === 0 ? (
@@ -123,7 +126,7 @@ export default function TransfersPage() {
           ) : (
             <TableScroll label="Ward transfers">
               <table className="w-full min-w-[44rem] border-collapse text-sm">
-                <thead><tr><th className={TH}>Name</th><th className={TH}>From</th><th className={TH}>To</th><th className={TH}>Date</th><th className={TH}>Type</th><th className={TH}>Status</th>{isAdmin && <th className={TH}><span className="sr-only">Actions</span></th>}</tr></thead>
+                <thead><tr><th className={TH}>Name</th><th className={TH}>From</th><th className={TH}>To</th><th className={TH}>Date</th><th className={TH}>Type</th><th className={TH}>Status</th>{canMove && <th className={TH}><span className="sr-only">Actions</span></th>}</tr></thead>
                 <tbody>
                   {rows.map((t) => (
                     <tr key={t.id}>
@@ -133,7 +136,7 @@ export default function TransfersPage() {
                       <td className={`${TD} figures`}>{showDate(t.effectiveDate)}</td>
                       <td className={TD}>{t.kind === "EMERGENCY" ? "Emergency" : "Routine"}</td>
                       <td className={TD}><StatusBadge tone={STATUS[t.status].tone}>{STATUS[t.status].word}</StatusBadge></td>
-                      {isAdmin && <td className={TD}>{t.status === "SCHEDULED" && <Button variant="secondary" onClick={() => cancel(t.id)}>Cancel</Button>}</td>}
+                      {canMove && <td className={TD}>{t.status === "SCHEDULED" && (!ward || t.fromDepartmentId === ward) && <Button variant="secondary" onClick={() => cancel(t.id)}>Cancel</Button>}</td>}
                     </tr>
                   ))}
                 </tbody>

@@ -14,7 +14,7 @@ const WRITE_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER"] as const;
 async function ward(req: Parameters<typeof caller>[0], id: string) {
   const who = caller(req);
   if (who.departmentId && who.departmentId !== id) return null;
-  return prisma.department.findFirst({ where: { id, facilityId: who.facilityId }, select: { id: true, name: true } });
+  return prisma.department.findFirst({ where: { id, facilityId: who.facilityId }, select: { id: true, name: true, kind: true } });
 }
 
 wardDemandRouter.get("/:departmentId", allowRoles(...READ_ROLES), async (req, res) => {
@@ -29,7 +29,8 @@ wardDemandRouter.get("/:departmentId", allowRoles(...READ_ROLES), async (req, re
     department: dept,
     shifts: shifts.map((s) => {
       const own = rows.find((r) => r.shiftId === s.id);
-      const src = own ?? s;
+      // A support unit (security, drivers, cleaners) starts from nobody, not from the wards' numbers.
+      const src = own ?? (dept.kind === "SUPPORT" ? { minStaff: 0, weekendMinStaff: null, holidayMinStaff: null } : s);
       return {
         shiftId: s.id, code: s.code, name: s.name, minStaff: src.minStaff, weekendMinStaff: src.weekendMinStaff, holidayMinStaff: src.holidayMinStaff,
         custom: Boolean(own), facilityMinStaff: s.minStaff, facilityWeekendMinStaff: s.weekendMinStaff, facilityHolidayMinStaff: s.holidayMinStaff,

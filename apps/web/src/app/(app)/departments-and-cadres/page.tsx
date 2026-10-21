@@ -103,6 +103,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
   const [name, setName] = useState(item.name);
   const [code, setCode] = useState(item.code ?? "");
   const [runsNights, setRunsNights] = useState((item as Department).runsNights !== false);
+  const [unit, setUnit] = useState((item as Department).kind ?? "WARD");
   const c = item as Cadre;
   const [works, setWorks] = useState<"shifts" | "days" | "office" | "off">(
     c.onRoster === false ? "off" : c.weekdaysOnly ? "office" : c.takesNights === false ? "days" : "shifts"
@@ -117,7 +118,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
     e.preventDefault();
     const flags =
       kind.key === "departments"
-        ? { runsNights }
+        ? { runsNights, kind: unit }
         : { onRoster: works !== "off", takesNights: works === "shifts", weekdaysOnly: works === "office" };
     if (await save.run({ name, code, ...flags } as { name: string; code: string })) onDone(true);
   }
@@ -134,7 +135,18 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
           </Field>
           <div className="space-y-1 sm:col-span-3">
             {kind.key === "departments" ? (
-              <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} />
+              <>
+                <Field label="Type">
+                  {(a) => (
+                    <Select {...a} value={unit} onChange={(e) => setUnit(e.target.value as typeof unit)}>
+                      <option value="WARD">Ward: its in-charge makes the roster</option>
+                      <option value="SUPPORT">Support unit: the administrator makes the roster</option>
+                      <option value="OFFICE">Office: no roster</option>
+                    </Select>
+                  )}
+                </Field>
+                <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} />
+              </>
             ) : (
               <Field label="How this cadre works">
                 {(a) => (
@@ -248,7 +260,9 @@ function GroupSection({ kind }: { kind: Kind }) {
                     <td className={TD}>
                       <div className="flex flex-wrap items-center gap-2">
                         {!item.active && <StatusBadge tone="neutral">Inactive</StatusBadge>}
-                        {kind.key === "departments" && (item as Department).runsNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
+                        {kind.key === "departments" && (item as Department).kind === "SUPPORT" && <StatusBadge tone="neutral">Support unit</StatusBadge>}
+                        {kind.key === "departments" && (item as Department).kind === "OFFICE" && <StatusBadge tone="neutral">No roster</StatusBadge>}
+                        {kind.key === "departments" && (item as Department).kind !== "OFFICE" && (item as Department).runsNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster === false && <StatusBadge tone="neutral">Not on roster</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster !== false && (item as Cadre).weekdaysOnly && <StatusBadge tone="neutral">Office hours</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster !== false && !(item as Cadre).weekdaysOnly && (item as Cadre).takesNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}

@@ -14,7 +14,7 @@ import { Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Sele
 function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
   const facility = useFacility();
   const choose = Boolean(facility.facility.rosterByWard) && !facility.me.departmentId;
-  const wards = useResource<{ departments: { id: string; name: string; active: boolean }[] }>(choose ? "/api/facility/departments" : null);
+  const wards = useResource<{ departments: { id: string; name: string; active: boolean; kind?: "WARD" | "SUPPORT" | "OFFICE" }[] }>(choose ? "/api/facility/departments" : null);
   const [departmentId, setDepartmentId] = useState("");
   const now = new Date();
   const next = new Date(Date.UTC(now.getFullYear(), now.getMonth() + 1, 1));
@@ -45,15 +45,23 @@ function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
       {choose && (
         <div>
           <label htmlFor="new-ward" className="mb-1 block text-sm font-medium">
-            Ward or department
+            Roster for
           </label>
           <Select id="new-ward" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
             <option value="">Choose one</option>
-            {(wards.data?.departments ?? []).filter((d) => d.active).map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
+            {(["SUPPORT", "WARD"] as const).map((kind) => {
+              // Accounts and administration have no roster.
+              const list = (wards.data?.departments ?? []).filter((d) => d.active && (d.kind ?? "WARD") === kind);
+              return list.length ? (
+                <optgroup key={kind} label={kind === "SUPPORT" ? "Support staff" : "Wards"}>
+                  {list.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {kind === "SUPPORT" ? `${d.name} roster` : d.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null;
+            })}
           </Select>
         </div>
       )}
@@ -104,10 +112,10 @@ export default function RosterListPage() {
 
   return (
     <>
-      <PageHeader title="Roster" description={facility.facility.rosterByWard ? "One roster for each ward or department each month. Start one, generate it, and check it against the rules." : "One roster for each month. Start a month, generate it, and check it against the rules."} />
+      <PageHeader title="Roster" description={facility.facility.rosterByWard ? (facility.me.departmentId ? "Your ward's roster, one each month." : "One roster per ward or support unit each month.") : "One roster each month."} />
       {canRoster && (
         <div className="mb-6">
-          <Panel title={facility.facility.rosterByWard ? "Start a ward roster" : "Start a month"}>
+          <Panel title="Start a roster">
             <StartRoster onCreated={go} />
           </Panel>
         </div>

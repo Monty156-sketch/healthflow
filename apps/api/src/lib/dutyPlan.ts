@@ -14,3 +14,11 @@ export const defaultOnRoster = (cadre: string) => !(/(medical officer|specialist
 /** Departments that close at night. */
 export const defaultRunsNights = (department: string) =>
   !/(^eye|ophthal|optom|dental|physio|dermat|^ent$|ear,? nose|outpatient|^opd|records|administration|accounts|stores|transport|public health|child welfare)/i.test(department);
+
+/** Security, drivers and cleaners are rostered by the administrator; accounts and administration have no roster. */
+export const defaultKind = (department: string): "WARD" | "SUPPORT" | "OFFICE" =>
+  /(secur|driver|transport|clean|orderl|porter|laundry|kitchen|catering|mortuar)/i.test(department)
+    ? "SUPPORT"
+    : /(account|administration|^admin|finance|records|stores|procure|human resource|^hr$|audit)/i.test(department)
+      ? "OFFICE"
+      : "WARD";

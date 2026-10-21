@@ -46,7 +46,10 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
   // A ward roster is for that department's people, with the ward's own minimums where it has set them.
-  const ward = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true } }))?.departmentId ?? null;
+  const unit = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true, department: { select: { kind: true } } } })) ?? null;
+  const ward = unit?.departmentId ?? null;
+  // Security, drivers and cleaners set their own numbers; the wards' numbers never apply to them.
+  const ownNumbersOnly = unit?.department?.kind === "SUPPORT";
   const demand = ward ? await prisma.shiftDemand.findMany({ where: { departmentId: ward } }) : [];
   // Ward transfers this month: someone joining counts from their day, someone leaving until the day before.
   const moves = ward
@@ -63,7 +66,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true, kind: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -94,7 +97,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     .sort((a, b) => (toMin(a.startTime) ?? 0) - (toMin(b.startTime) ?? 0))[0];
   // Doctors and other cadres kept off the roster are left out. Nights are not given to cadres or departments that do not take them.
   const staff: EStaff[] = staffRows
-    .filter((s) => s.cadre?.onRoster !== false)
+    .filter((s) => s.cadre?.onRoster !== false && s.department?.kind !== "OFFICE")
     .map((s) => {
       // In-charges, and cadres on office hours, work the weekday morning only, outside the duty cycles.
       const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true) && Boolean(morning);
@@ -118,7 +121,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
     ...(() => {
       const own = demand.find((d) => d.shiftId === s.id);
       const src = own ?? s;
-      if (!s.active) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+      if (!s.active || (ownNumbersOnly && !own)) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
       return {
         minStaff: src.minStaff,
         minByCadre: (src.minByCadre ?? {}) as Record<string, number>,
@@ -295,8 +298,9 @@ rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const departmentId = who.departmentId ?? input.departmentId;
   if (byWard && !departmentId) return res.status(400).json({ error: "invalid_input", fields: { departmentId: "Choose the ward or department this roster is for." }, message: "Choose the ward or department this roster is for." });
   if (!byWard && departmentId) return res.status(400).json({ error: "invalid_input", message: "This facility keeps one roster for the whole facility." });
-  const dept = departmentId ? await prisma.department.findFirst({ where: { id: departmentId, facilityId: who.facilityId }, select: { id: true, name: true } }) : null;
+  const dept = departmentId ? await prisma.department.findFirst({ where: { id: departmentId, facilityId: who.facilityId }, select: { id: true, name: true, kind: true } }) : null;
   if (departmentId && !dept) return res.status(400).json({ error: "invalid_input", message: "That department was not found." });
+  if (dept?.kind === "OFFICE") return res.status(400).json({ error: "invalid_input", fields: { departmentId: `${dept.name} has no roster.` }, message: `${dept.name} has no roster.` });
   const exists = await prisma.roster.findFirst({ where: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null } });
   if (exists) return res.status(409).json({ error: "roster_exists", message: `There is already a roster for ${monthName(input)}${dept ? ` in ${dept.name}` : ""}.`, id: exists.id });
   const roster = await prisma.roster.create({ data: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null, preparedBy: who.email }, include: { department: { select: { name: true } } } });
@@ -513,7 +517,7 @@ rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res
   const data = await loadEngineData(who.facilityId, roster.id, roster.year, roster.month);
   if (!data.staff.length) return res.status(409).json({ error: "no_staff", message: "There are no active staff to roster. Add staff first." });
   if (!data.shifts.some((s) => s.countsAsDuty && !s.isOnCall && hasDemand(s))) {
-    return res.status(409).json({ error: "no_demand", message: "No shift asks for any staff yet. Set a minimum number of people on at least one shift, under Shifts." });
+    return res.status(409).json({ error: "no_demand", message: roster.departmentId ? "No shift asks for anyone here yet. Set how many people each shift needs, on this roster page." : "No shift asks for any staff yet. Set a minimum number of people on at least one shift, under Shifts." });
   }
 
   const settlement = await settlementFor(who.facilityId);
