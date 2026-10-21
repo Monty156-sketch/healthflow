@@ -27,6 +27,7 @@ interface FormValues {
   exclusionReason: string;
   maxDutiesPerWeek: string;
   canLead: boolean;
+  leaveGrade: string;
   maxNightsPerMonth: string;
   maxHoursPerMonth: string;
 }
@@ -52,6 +53,7 @@ function initialValues(s?: Staff): FormValues {
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
     canLead: s?.canLead ?? false,
+    leaveGrade: s?.leaveGrade ?? "",
     maxNightsPerMonth: String(s?.maxNightsPerMonth ?? 0),
     maxHoursPerMonth: String(s?.maxHoursPerMonth ?? 0),
   };
@@ -98,6 +100,7 @@ export function StaffForm({
         maxNightsPerMonth: v.maxNightsPerMonth === "" ? 0 : Number(v.maxNightsPerMonth),
         maxHoursPerMonth: v.maxHoursPerMonth === "" ? 0 : Number(v.maxHoursPerMonth),
         exclusionReason: v.excludedFromNights ? v.exclusionReason : "",
+        leaveGrade: v.leaveGrade || null,
       };
       const res = staff
         ? await api.patch<{ staff: Staff }>(`/api/facility/staff/${staff.id}`, body)
@@ -224,6 +227,17 @@ export function StaffForm({
         <div className="sm:col-span-2">
           <Checkbox label="In-charge: weekday mornings only" checked={values.morningOnly} onChange={set("morningOnly")} />
           <p className="mt-1 text-sm text-[var(--muted)]">Weekday mornings only, outside the duty cycles.</p>
+        </div>
+        <div className="sm:col-span-2 max-w-sm">
+          <Field label="Leave grade" optional hint="Gives the yearly leave days when none are set by hand.">
+            {(a) => (
+              <Select {...a} value={values.leaveGrade} onChange={(e) => set("leaveGrade")(e.target.value)}>
+                <option value="">Not set</option>
+                <option value="SENIOR">Senior staff: 36 working days</option>
+                <option value="JUNIOR">Junior staff: 28 working days</option>
+              </Select>
+            )}
+          </Field>
         </div>
         <div className="sm:col-span-2">
           <Checkbox label="Can lead a shift" checked={values.canLead} onChange={set("canLead")} />

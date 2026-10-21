@@ -2,6 +2,7 @@
 // Approving a request tells the approver what it does to cover, in plain
 // words, before they decide. Approved leave is read by the roster engine, so
 // a person on leave is not rostered.
+import { defaultAnnualDays } from "../../lib/leaveDefaults.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma } from "@healthflow/db";
@@ -160,8 +161,10 @@ async function balanceOf(facilityId: string, staffId: string, leaveTypeId: strin
     where: { facilityId, staffId, leaveTypeId, status: "SUBMITTED", startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
     _sum: { daysDeducted: true },
   });
-  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : null;
-  return { configured: Boolean(ent), entitled, taken: taken._sum.daysDeducted ?? 0, pending: pending._sum.daysDeducted ?? 0, remaining: entitled === null ? null : entitled - (taken._sum.daysDeducted ?? 0) };
+  // With no figure set for the year, the person's grade gives the days (senior 36, junior 28).
+  const grade = ent ? null : (await prisma.staff.findFirst({ where: { id: staffId, facilityId }, select: { leaveGrade: true } }))?.leaveGrade;
+  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : defaultAnnualDays(grade);
+  return { configured: entitled !== null, entitled, taken: taken._sum.daysDeducted ?? 0, pending: pending._sum.daysDeducted ?? 0, remaining: entitled === null ? null : entitled - (taken._sum.daysDeducted ?? 0) };
 }
 
 // ------------------------------------------------------------- requests
