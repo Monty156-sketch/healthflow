@@ -10,6 +10,7 @@ import { caller } from "../../middleware/facilityAccess.js";
 import { notifyDeciders } from "../../lib/notify.js";
 import { exportMyData, exportToCsv } from "../../lib/exportMyData.js";
 import { sayDay } from "../../engine/time.js";
+import { insideArea, metresBetween } from "../../lib/geofence.js";
 import { ALWAYS_SENT, NOTE_CATEGORIES, mutedFrom } from "../../lib/notificationPrefs.js";
 
 export const meRouter = Router();
@@ -232,4 +233,64 @@ meRouter.put("/notification-preferences", async (req, res) => {
       : `${who.displayName} switched on all optional notifications.`,
   });
   res.json(presentPrefs({ muted }));
+});
+
+// ------------------------------------------------------------- clock in and out
+
+const clockState = async (facilityId: string, staffId: string) => {
+  const last = await prisma.clockEvent.findFirst({ where: { facilityId, staffId }, orderBy: { at: "desc" } });
+  return { state: last?.kind === "IN" ? ("IN" as const) : ("OUT" as const), lastAt: last?.at ?? null };
+};
+
+meRouter.get("/clock", async (req, res) => {
+  const who = needStaff(req);
+  if (!who) return res.json({ linked: false });
+  const f = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { geoLat: true, geoLng: true, geoRadiusM: true } });
+  const enabled = f.geoLat !== null && f.geoLng !== null && f.geoRadiusM !== null;
+  res.json({ linked: true, enabled, ...(enabled ? await clockState(who.facilityId, who.staffId) : {}) });
+});
+
+const clockInput = z.object({
+  kind: z.enum(["IN", "OUT"]),
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  accuracy: z.number().min(0).max(100_000).nullish(),
+});
+
+meRouter.post("/clock", async (req, res) => {
+  const who = needStaff(req);
+  if (!who) return res.status(403).json({ error: "not_linked", message: "Your login is not linked to a staff record." });
+  const body = parseOr400(clockInput, req.body, res);
+  if (!body) return;
+  const f = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { geoLat: true, geoLng: true, geoRadiusM: true } });
+  if (f.geoLat === null || f.geoLng === null || f.geoRadiusM === null) return res.status(409).json({ error: "geofence_off", message: "Your facility has not turned on clocking in and out." });
+  const now = await clockState(who.facilityId, who.staffId);
+  if (body.kind === "IN" && now.state === "IN") return res.status(409).json({ error: "already_in", message: "You are already clocked in." });
+  if (body.kind === "OUT" && now.state === "OUT") return res.status(409).json({ error: "already_out", message: "You are not clocked in." });
+  const distance = Math.round(metresBetween(f.geoLat, f.geoLng, body.lat, body.lng));
+  if (!insideArea(distance, f.geoRadiusM, body.accuracy)) {
+    return res.status(403).json({ error: "outside_area", message: `You are not at the facility. Move closer and try again.` });
+  }
+  await prisma.clockEvent.create({ data: { facilityId: who.facilityId, staffId: who.staffId, kind: body.kind, distanceM: distance } });
+
+  // Clocking in on a day with a published duty marks the person present, or late, unless a record already exists.
+  if (body.kind === "IN") {
+    const today = new Date(Math.floor(Date.now() / DAY) * DAY);
+    const duty = await prisma.rosterAssignment.findFirst({
+      where: { staffId: who.staffId, facilityId: who.facilityId, dutyDate: today, roster: { status: "PUBLISHED" }, shift: { countsAsDuty: true } },
+      include: { shift: { select: { startTime: true } } },
+    });
+    if (duty && !(await prisma.attendance.findFirst({ where: { staffId: who.staffId, rosterAssignmentId: duty.id }, select: { id: true } }))) {
+      const start = duty.shift.startTime ? clock(duty.shift.startTime) : null;
+      const nowMin = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
+      const late = start !== null ? Math.max(0, nowMin - start) : 0;
+      await prisma.attendance.create({
+        data: {
+          facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: today, shiftId: duty.shiftId,
+          status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
+        },
+      });
+    }
+  }
+  res.status(201).json({ ...(await clockState(who.facilityId, who.staffId)) });
 });

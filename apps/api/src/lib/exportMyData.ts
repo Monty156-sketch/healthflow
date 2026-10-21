@@ -11,7 +11,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     where: { id: staffId, facilityId },
     include: { cadre: { select: { name: true } }, department: { select: { name: true } } },
   });
-  const [assignments, leave, attendance, swaps, consents, requests, ledger, profile] = await Promise.all([
+  const [assignments, leave, attendance, swaps, consents, requests, ledger, profile, clocks] = await Promise.all([
     prisma.rosterAssignment.findMany({ where: { staffId, facilityId }, include: { shift: { select: { name: true, startTime: true, endTime: true } }, roster: { select: { year: true, month: true, status: true } } }, orderBy: { dutyDate: "asc" } }),
     prisma.leaveRequest.findMany({ where: { staffId, facilityId }, include: { leaveType: { select: { name: true } } }, orderBy: { startDate: "asc" } }),
     prisma.attendance.findMany({ where: { staffId, facilityId }, orderBy: { dutyDate: "asc" } }),
@@ -20,6 +20,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     prisma.dataSubjectRequest.findMany({ where: { staffId, facilityId }, orderBy: { receivedAt: "asc" } }),
     prisma.dutyLedgerEntry.findMany({ where: { staffId, facilityId }, orderBy: { id: "asc" } }),
     prisma.userProfile.findUnique({ where: { staffId }, select: { userEmail: true, role: true, lastSignInAt: true, privacyNoticeVersionAccepted: true, mfaEnabled: true } }),
+    prisma.clockEvent.findMany({ where: { staffId, facilityId }, orderBy: { at: "asc" } }),
   ]);
   const ids = [staffId, ...leave.map((l) => l.id), ...assignments.map((a) => a.id), ...swaps.map((s) => s.id), ...requests.map((r) => r.id)];
   const audit = await prisma.auditLog.findMany({ where: { facilityId, entityId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { createdAt: true, action: true, entityType: true, summary: true } });
@@ -37,6 +38,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     duties: assignments.map((a) => ({ date: day(a.dutyDate), shift: a.shift.name, start: a.shift.startTime, end: a.shift.endTime, rosterMonth: `${a.roster.year}-${String(a.roster.month).padStart(2, "0")}`, rosterStatus: a.roster.status, cover: a.isCover })),
     leave: leave.map((l) => ({ type: l.leaveType.name, from: day(l.startDate), to: day(l.endDate), days: l.daysDeducted, status: l.status, reason: l.reason, submittedAt: l.submittedAt, decidedAt: l.decidedAt, decisionNote: l.decisionNote })),
     attendance: attendance.map((a) => ({ date: day(a.dutyDate), status: a.status, minutesLate: a.minutesLate, note: a.note, recordedAt: a.recordedAt, originalStatus: a.originalStatus, correctedAt: a.correctedAt, correctionReason: a.correctionReason })),
+    clockedAtTheFacility: clocks.map((c) => ({ when: c.at, kind: c.kind === "IN" ? "clocked in" : "clocked out", metresFromCentre: c.distanceM })),
     swaps: swaps.map((s) => ({ type: s.swapType, yourRole: s.requesterStaffId === staffId ? "asked" : "asked of you", status: s.status, reason: s.reason, response: s.responseNote, decidedAt: s.decidedAt, decisionNote: s.decisionNote })),
     dutyBalance: ledger.map((e) => ({ type: e.entryType, duties: e.duties, settled: e.dutiesSettled, status: e.status, reason: e.reason, description: e.description })),
     consents: consents.map((c) => ({ purpose: c.consentType, granted: c.granted, grantedAt: c.grantedAt, withdrawnAt: c.withdrawnAt })),

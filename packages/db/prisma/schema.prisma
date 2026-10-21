@@ -346,6 +346,10 @@ model Facility {
   weekStartsOn                Int           @default(1) // 1 = Monday
   referencePeriodWeeks        Int           @default(4)
   leaveYearStartMonth         Int           @default(1)
+  /// Where the facility is, for clock in and out. Empty means clocking is off.
+  geoLat                      Float?
+  geoLng                      Float?
+  geoRadiusM                  Int?
   allowNegativeLeaveBalance   Boolean       @default(false)
   attendanceCutoffDays        Int           @default(7)
   swapCutoffHours              Int          @default(24)
@@ -1528,4 +1532,17 @@ model WardTransfer {
 
   @@index([facilityId, effectiveDate])
   @@index([staffId])
+}
+
+/// A member of staff clocking in or out at the facility. Only whether they were inside the set area is kept, never where they were.
+model ClockEvent {
+  id         String   @id @default(cuid())
+  facilityId String
+  staffId    String
+  kind       String   // IN or OUT
+  at         DateTime @default(now())
+  distanceM  Int
+
+  @@index([facilityId, at])
+  @@index([staffId, at])
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { ClockCard } from "@/components/ClockCard";
 import Link from "next/link";
 import { useFacility, useOptionalFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
@@ -357,6 +358,7 @@ function FacilityDashboard() {
         title="Dashboard"
         description={`${facility.name}. ${FACILITY_TYPE[facility.facilityType] ?? "Facility"}${place ? `, ${place}` : ""}`}
       />
+      <ClockCard />
       <Dashboard />
       {isAdmin && (
         <div className="mt-6">

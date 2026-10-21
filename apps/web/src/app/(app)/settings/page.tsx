@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useSave } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS } from "@/lib/format";
 import { SmsPanel } from "@/components/SmsPanel";
+import { GeofenceSettings } from "@/components/GeofenceSettings";
 import { Button, Checkbox, Field, Input, Notice, PageHeader, Panel, SaveStatus, Select } from "@/components/ui";
 
 type Values = Omit<Facility, "id" | "status">;
@@ -161,7 +162,8 @@ export default function FacilitySettingsPage() {
         </div>
       </form>
       {isAdmin && (
-        <div className="mt-6">
+        <div className="mt-6 space-y-6">
+          <GeofenceSettings />
           <SmsPanel />
         </div>
       )}
