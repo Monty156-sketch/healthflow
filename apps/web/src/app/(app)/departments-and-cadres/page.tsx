@@ -145,12 +145,12 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
                     </Select>
                   )}
                 </Field>
-                <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} />
+                <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} disabled={item.locked} />
               </>
             ) : (
               <Field label="How this cadre works">
                 {(a) => (
-                  <Select {...a} value={works} onChange={(e) => setWorks(e.target.value as typeof works)}>
+                  <Select {...a} value={works} disabled={item.locked} onChange={(e) => setWorks(e.target.value as typeof works)}>
                     <option value="shifts">Shifts, nights included</option>
                     <option value="days">Shifts, day shifts only</option>
                     <option value="office">Weekday office hours (mornings, Monday to Friday)</option>
@@ -160,7 +160,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
               </Field>
             )}
             <p className="text-sm text-[var(--muted)]">
-              {kind.key === "departments" ? "Untick for a department closed at night." : "Usually: nurses and midwives on shifts, pharmacy and lab on office hours."}
+              {item.locked ? "Fixed for this standard one, as Ghana Health Service facilities run it." : kind.key === "departments" ? "Untick for a department closed at night." : "Nurses and midwives on shifts; office-hours cadres on weekday mornings."}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 sm:pt-6">

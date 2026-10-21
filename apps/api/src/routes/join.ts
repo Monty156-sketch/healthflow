@@ -16,6 +16,7 @@ import { codeProblem, normaliseCode } from "../lib/accessCode.js";
 import { notifyDeciders, notifyWard } from "../lib/notify.js";
 import { parseOr400, optionalText, requiredText } from "../lib/validate.js";
 import { currentNotice } from "./facility/privacy.js";
+import { unitForCadre } from "../lib/dutyPlan.js";
 import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
 import { ensureSupportUnits } from "../lib/supportUnits.js";
 
@@ -93,6 +94,17 @@ joinRouter.post("/register", async (req, res) => {
   const byWard = WARD_FACILITY_TYPES.includes(code.facility.facilityType);
   if (byWard && !input.departmentId && !input.departmentText) fields.departmentId = "Choose your ward or department.";
   // Only a ward has an in-charge; security, drivers and offices are run by the administrator.
+  // A health centre rosters by unit: a nurse goes to Clinical Nurses, a midwife to Midwives, public health staff to Public Health.
+  if (!byWard && input.cadreId) {
+    const cadre = await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId }, select: { name: true } });
+    const unit = unitForCadre(cadre?.name);
+    if (unit) {
+      const have = await prisma.department.findFirst({ where: { facilityId, name: { equals: unit.name, mode: "insensitive" }, active: true }, select: { id: true } });
+      const target = have ?? (await prisma.department.create({ data: { facilityId, name: unit.name, runsNights: unit.runsNights }, select: { id: true } }));
+      input.departmentId = target.id;
+      input.departmentText = null;
+    }
+  }
   const asInCharge = byWard && input.asInCharge && dept?.kind === "WARD";
   const problem = checkPassword(input.password, input.email);
   if (problem) fields.password = problem;

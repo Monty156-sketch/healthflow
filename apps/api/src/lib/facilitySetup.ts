@@ -4,7 +4,9 @@
 // or written by the platform; staff are imported by the facility itself.
 import type { FacilityType } from "@healthflow/db";
 import { prisma } from "./prisma.js";
-import { cadreDefaults, defaultRunsNights } from "./dutyPlan.js";
+import { cadreDefaults, defaultKind, defaultRunsNights, STANDARD_CADRES, STANDARD_DEPARTMENTS } from "./dutyPlan.js";
+
+export { STANDARD_CADRES, STANDARD_DEPARTMENTS };
 import { ensureRules } from "../routes/facility/rules.js";
 import { noticeTemplate } from "../routes/facility/privacy.js";
 import { randomToken, sha256 } from "./crypto.js";
@@ -12,14 +14,12 @@ import { appUrl, sendEmail } from "./email.js";
 import { INVITATION_DAYS } from "../routes/invitations.js";
 
 /** Every cadre and department a health facility in Ghana is likely to have. Added to each facility, so staff imports are not turned away for a missing one. */
-export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
-export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Accounts", "Stores", "Transport", "Mortuary", "Support Services"];
 
 const SMALL_FACILITIES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"];
 const CHPS_CADRES = ["Community Health Officer", "Community Health Nurse", "Midwife", "Health Assistant", "Cleaner"];
-const CHPS_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Public Health", "Administration"];
+const CHPS_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare"];
 const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
-const CENTRE_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Laboratory", "Pharmacy", "Public Health", "Records", "Administration", "Accounts", "Support Services"];
+const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Accounts", "Administration", "Support Services"];
 
 /**
  * The cadres and departments a facility of this type is offered at registration.
@@ -43,7 +43,7 @@ export async function seedGroups(facilityId: string, type?: FacilityType) {
   const haveCad = new Set(cads.map((c) => c.name.toLowerCase()));
   const newDeps = portfolio.departments.filter((n) => !haveDep.has(n.toLowerCase()));
   const newCads = portfolio.cadres.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
-  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
+  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), kind: defaultKind(name) })) });
   if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, ...cadreDefaults(c.name) })) });
   return { departments: newDeps.length, cadres: newCads.length };
 }
@@ -52,7 +52,7 @@ export async function seedGroups(facilityId: string, type?: FacilityType) {
 export async function seedChosen(facilityId: string, departments: string[], cadres: string[]) {
   const deps = [...new Map(departments.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
   const cads = [...new Map(cadres.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
-  if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
+  if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), kind: defaultKind(name) })) });
   if (cads.length) await prisma.cadre.createMany({ data: cads.map((name, i) => ({ facilityId, name, sortOrder: i, ...cadreDefaults(name) })) });
   return { departments: deps.length, cadres: cads.length };
 }

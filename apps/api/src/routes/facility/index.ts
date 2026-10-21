@@ -32,6 +32,7 @@ import { rulesRouter } from "./rules.js";
 import { cyclesRouter } from "./cycles.js";
 import { rotationsRouter } from "./rotations.js";
 import { rostersRouter, WARD_FACILITY_TYPES } from "./rosters.js";
+import { rostersByUnit } from "../../lib/unitDemand.js";
 import { wardDemandRouter } from "./wardDemand.js";
 import { leaveRouter } from "./leave.js";
 import { attendanceRouter } from "./attendance.js";
@@ -122,7 +123,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
   // Staff get the facility's name and settings so their own screens work, and none of the set-up counts.
   if (role === "STAFF") {
     const facility = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId } });
-    return res.json({ facility: presentFacility(facility), setup: { departments: 0, cadres: 0, staff: 0 }, me: { role, displayName }, flags: await flagsFor(facilityId) });
+    return res.json({ facility: { ...presentFacility(facility), rosterByWard: await rostersByUnit(facilityId, facility.facilityType, WARD_FACILITY_TYPES) }, setup: { departments: 0, cadres: 0, staff: 0 }, me: { role, displayName }, flags: await flagsFor(facilityId) });
   }
   const [facility, departments, cadres, staff] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId } }),
@@ -131,7 +132,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
     prisma.staff.count({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE", "PENDING"] } } }),
   ]);
   res.json({
-    facility: presentFacility(facility),
+    facility: { ...presentFacility(facility), rosterByWard: await rostersByUnit(facilityId, facility.facilityType, WARD_FACILITY_TYPES) },
     setup: { departments, cadres, staff },
     me: { role, displayName, departmentId: departmentId ?? null },
     flags: await flagsFor(facilityId),

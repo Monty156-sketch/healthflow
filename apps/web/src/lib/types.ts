@@ -54,6 +54,8 @@ export interface Department {
   runsNights?: boolean;
   /** Departments only. WARD: in-charge runs the roster. SUPPORT: administrator does. OFFICE: no roster. */
   kind?: "WARD" | "SUPPORT" | "OFFICE";
+  /** A standard department or cadre: its night and office-hour settings are fixed. */
+  locked?: boolean;
 }
 
 export interface Cadre extends Department {
