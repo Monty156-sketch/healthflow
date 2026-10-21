@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400, requiredText, optionalText } from "../../lib/validate.js";
+import { cadreDefaults } from "../../lib/dutyPlan.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
 
 export const cadresRouter = Router();
@@ -71,9 +72,10 @@ cadresRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       name: input.name,
       code: input.code,
       sortOrder: input.sortOrder ?? (last._max.sortOrder ?? 0) + 1,
-      takesNights: input.takesNights ?? true,
-      onRoster: input.onRoster ?? true,
-      weekdaysOnly: input.weekdaysOnly ?? false,
+      // Starts from how Ghana Health Service facilities usually work this cadre, unless the form said otherwise.
+      takesNights: input.takesNights ?? cadreDefaults(input.name).takesNights,
+      onRoster: input.onRoster ?? cadreDefaults(input.name).onRoster,
+      weekdaysOnly: input.weekdaysOnly ?? cadreDefaults(input.name).weekdaysOnly,
     },
   });
   await writeAuditLog({

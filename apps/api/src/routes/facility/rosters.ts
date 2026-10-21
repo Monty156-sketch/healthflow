@@ -259,13 +259,24 @@ export async function storeFindings(tx: Prisma.TransactionClient, rosterId: stri
 // ------------------------------------------------------------- list, create, read
 
 async function summaryOf(rosterId: string) {
-  const [duties, blocks, warnings, unfilled] = await Promise.all([
-    prisma.rosterAssignment.count({ where: { rosterId, shift: { countsAsDuty: true } } }),
-    prisma.complianceFinding.count({ where: { rosterId, severity: "BLOCK", status: "OPEN" } }),
-    prisma.complianceFinding.count({ where: { rosterId, severity: "WARN", status: "OPEN" } }),
-    prisma.complianceFinding.count({ where: { rosterId, ruleCode: "C11", status: "OPEN" } }),
+  return (await summariesOf([rosterId])).get(rosterId)!;
+}
+
+/** The counts for many rosters in three queries, not four for each. */
+async function summariesOf(ids: string[]) {
+  const [duties, findings] = await Promise.all([
+    prisma.rosterAssignment.groupBy({ by: ["rosterId"], where: { rosterId: { in: ids }, shift: { countsAsDuty: true } }, _count: { _all: true } }),
+    prisma.complianceFinding.groupBy({ by: ["rosterId", "severity", "ruleCode"], where: { rosterId: { in: ids }, status: "OPEN" }, _count: { _all: true } }),
   ]);
-  return { duties, blocks, warnings, unfilled };
+  const out = new Map(ids.map((id) => [id, { duties: 0, blocks: 0, warnings: 0, unfilled: 0 }]));
+  for (const d of duties) out.get(d.rosterId)!.duties = d._count._all;
+  for (const f of findings) {
+    const o = out.get(f.rosterId)!;
+    if (f.severity === "BLOCK") o.blocks += f._count._all;
+    else o.warnings += f._count._all;
+    if (f.ruleCode === "C11") o.unfilled += f._count._all;
+  }
+  return out;
 }
 
 const presentRoster = (r: Awaited<ReturnType<typeof prisma.roster.findFirstOrThrow>> & { department?: { name: string } | null }) => ({
@@ -276,7 +287,8 @@ const presentRoster = (r: Awaited<ReturnType<typeof prisma.roster.findFirstOrThr
 rostersRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId, departmentId } = caller(req);
   const rows = await prisma.roster.findMany({ where: { facilityId, ...(departmentId ? { departmentId } : {}) }, include: { department: { select: { name: true } } }, orderBy: [{ year: "desc" }, { month: "desc" }, { createdAt: "asc" }], take: 60 });
-  const rosters = await Promise.all(rows.map(async (r) => ({ ...presentRoster(r), ...(await summaryOf(r.id)) })));
+  const sums = await summariesOf(rows.map((r) => r.id));
+  const rosters = rows.map((r) => ({ ...presentRoster(r), ...sums.get(r.id)! }));
   res.json({ rosters });
 });
 

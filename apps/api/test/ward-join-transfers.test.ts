@@ -165,3 +165,18 @@ describe("support units and the staff record", () => {
     expect(await prisma.rosterAssignment.count({ where: { id: a.id } })).toBe(0);
   });
 });
+
+describe("Ghana defaults on a new facility's cadres and staff", () => {
+  it("adds a cadre the way Ghana Health Service facilities work it, and marks senior grades as leads", async () => {
+    const { api } = await hospital();
+    const pharm = (await api.post("/api/facility/cadres", { name: "Pharmacist" })).body.cadre;
+    expect(pharm).toMatchObject({ weekdaysOnly: true, takesNights: false, onRoster: true });
+    const nurse = (await api.post("/api/facility/cadres", { name: "Staff Nurse" })).body.cadre;
+    expect(nurse).toMatchObject({ weekdaysOnly: false, takesNights: true });
+    const base = { employmentStatus: "PERMANENT", excludedFromNights: false, willingForExtraDuties: false, maxDutiesPerWeek: 0, eligibleShiftIds: [] };
+    const senior = await api.post("/api/facility/staff", { ...base, staffNo: "N1", fullName: "Ama", cadreId: nurse.id, position: "Senior Staff Nurse" });
+    const junior = await api.post("/api/facility/staff", { ...base, staffNo: "N2", fullName: "Efua", cadreId: nurse.id, position: "Staff Nurse" });
+    expect(senior.body.staff.canLead).toBe(true);
+    expect(junior.body.staff.canLead).toBe(false);
+  });
+});

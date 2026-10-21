@@ -2,7 +2,7 @@
 // (Inactive, Transferred, Resigned, Retired), which keeps their history and
 // immediately ends their access (Part 3, 0.3: "the most commonly missed
 // control in systems of this kind").
-import { isInCharge } from "../../lib/dutyPlan.js";
+import { isInCharge, leadsByGrade } from "../../lib/dutyPlan.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Prisma, StaffStatus } from "@healthflow/db";
@@ -258,7 +258,7 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       willingForExtraDuties: input.willingForExtraDuties,
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
-      canLead: input.canLead ?? false,
+      canLead: input.canLead ?? leadsByGrade(input.position),
       maxNightsPerMonth: input.maxNightsPerMonth ?? 0,
       maxHoursPerMonth: input.maxHoursPerMonth ?? 0,
       eligibleForShifts: { connect: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
