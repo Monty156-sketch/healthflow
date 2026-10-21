@@ -8,6 +8,8 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     globalSetup: ["./test/globalGuard.ts"],
     fileParallelism: false,
+    // In CI, failures also show as annotations on the check run.
+    reporters: process.env.GITHUB_ACTIONS ? ["default", "github-actions"] : ["default"],
     testTimeout: 20000,
     hookTimeout: 30000,
     env: {
