@@ -11,7 +11,7 @@ import { Button, Checkbox, ErrorText, Field, Input, Loading, Notice, Select } fr
 interface Facility {
   facilityName: string;
   cadres: { id: string; name: string }[];
-  departments: { id: string; name: string }[];
+  departments: { id: string; name: string; kind?: "WARD" | "SUPPORT" | "OFFICE" }[];
   /** Hospitals roster by ward: everyone names their ward, and says if they are its in-charge. */
   byWard?: boolean;
 }
@@ -76,6 +76,11 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
       .finally(() => setChecking(false));
   }, [initialCode]);
 
+  // In a hospital, "I am registering as" picks ward staff, a ward in-charge, or a unit such as Security or Drivers.
+  const unitId = form.as.startsWith("unit:") ? form.as.slice(5) : null;
+  const wardList = facility?.byWard ? facility.departments.filter((d) => (d.kind ?? "WARD") === "WARD") : facility?.departments ?? [];
+  const units = facility?.byWard ? facility.departments.filter((d) => d.kind && d.kind !== "WARD") : [];
+
   async function finish(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -93,10 +98,10 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
         acceptedNoticeVersion: notice.version,
         staffNo: form.staffNo || null,
         phone: form.phone || null,
-        cadreId: form.cadre && form.cadre !== OTHER ? form.cadre : null,
-        cadreText: form.cadre === OTHER ? form.cadreText : null,
-        departmentId: form.department && form.department !== OTHER ? form.department : null,
-        departmentText: form.department === OTHER ? form.departmentText : null,
+        cadreId: !unitId && form.cadre && form.cadre !== OTHER ? form.cadre : null,
+        cadreText: !unitId && form.cadre === OTHER ? form.cadreText : null,
+        departmentId: unitId ?? (form.department && form.department !== OTHER ? form.department : null),
+        departmentText: !unitId && form.department === OTHER ? form.departmentText : null,
         asInCharge: Boolean(facility?.byWard) && form.as === "incharge",
       });
       setResult(res);
@@ -134,8 +139,9 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
             <Field label="I am registering as" hint={form.as === "incharge" ? "The administrator approves in-charges." : undefined}>
               {(a) => (
                 <Select {...a} value={form.as} onChange={(e) => set("as", e.target.value)}>
-                  <option value="staff">Staff</option>
+                  <option value="staff">Ward staff</option>
                   <option value="incharge">Ward in-charge</option>
+                  {units.map((d) => <option key={d.id} value={`unit:${d.id}`}>{d.name.replace(/(er)s$/i, "$1")}</option>)}
                 </Select>
               )}
             </Field>
@@ -148,6 +154,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
           <Field label="Mobile phone number" optional error={fields.phone} hint="For text messages about your duties, if your facility uses them.">
             {(a) => <Input {...a} type="tel" autoComplete="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />}
           </Field>
+          {!unitId && (<>
           <Field label="Cadre" optional error={fields.cadreId}>
             {(a) => (
               <Select {...a} value={form.cadre} onChange={(e) => set("cadre", e.target.value)}>
@@ -158,16 +165,17 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
             )}
           </Field>
           {form.cadre === OTHER && <Field label="Your cadre">{(a) => <Input {...a} value={form.cadreText} onChange={(e) => set("cadreText", e.target.value)} />}</Field>}
-          <Field label={facility.byWard ? "Ward or department" : "Department or ward"} optional={!facility.byWard} error={fields.departmentId}>
+          <Field label={facility.byWard ? "Ward" : "Department or ward"} optional={!facility.byWard} error={fields.departmentId}>
             {(a) => (
               <Select {...a} value={form.department} onChange={(e) => set("department", e.target.value)}>
                 <option value="">Choose</option>
-                {facility.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                {(!facility.byWard || facility.departments.length === 0) && <option value={OTHER}>Not in the list</option>}
+                {wardList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                {(!facility.byWard || wardList.length === 0) && <option value={OTHER}>Not in the list</option>}
               </Select>
             )}
           </Field>
           {form.department === OTHER && <Field label="Your department or ward">{(a) => <Input {...a} value={form.departmentText} onChange={(e) => set("departmentText", e.target.value)} />}</Field>}
+          </>)}
           <div>
             <h2 className="text-base font-semibold">Privacy notice</h2>
             {notice ? (
@@ -193,7 +201,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
           <p className="mt-4"><Link href="/login" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">Go to sign in</Link></p>
         </>
       ) : (
-        <p className="text-[var(--muted)]">{form.as === "incharge" && facility?.byWard ? "The administrator has been told and will approve you as in-charge." : "Your in-charge has been told and will approve your account."} Once they do, sign in with {form.email} and the password you chose.</p>
+        <p className="text-[var(--muted)]">{facility?.byWard && form.as !== "staff" ? (form.as === "incharge" ? "The administrator has been told and will approve you as in-charge." : "The administrator has been told and will approve your account.") : "Your in-charge has been told and will approve your account."} Once they do, sign in with {form.email} and the password you chose.</p>
       )}
     </PublicCard>
   );

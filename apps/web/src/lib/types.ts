@@ -52,6 +52,8 @@ export interface Department {
   staffCount: number;
   /** Departments only. False for one that closes at night. */
   runsNights?: boolean;
+  /** Departments only. WARD: in-charge runs the roster. SUPPORT: administrator does. OFFICE: no roster. */
+  kind?: "WARD" | "SUPPORT" | "OFFICE";
 }
 
 export interface Cadre extends Department {

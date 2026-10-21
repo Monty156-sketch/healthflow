@@ -454,6 +454,8 @@ model Department {
   archivedAt DateTime?
   /// False for departments that close at night, such as the eye clinic.
   runsNights Boolean   @default(true)
+  /// WARD: its in-charge runs its roster. SUPPORT: security, drivers, cleaners; the administrator runs the roster. OFFICE: accounts, administration; no roster.
+  kind       DepartmentKind @default(WARD)
 
   staff Staff[]
   rosters Roster[]
@@ -1488,6 +1490,12 @@ model DayOffRequest {
 
   @@unique([staffId, date])
   @@index([facilityId, date])
+}
+
+enum DepartmentKind {
+  WARD
+  SUPPORT
+  OFFICE
 }
 
 enum TransferKind {

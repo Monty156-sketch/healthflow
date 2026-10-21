@@ -26,6 +26,7 @@ import {
 } from "../../lib/labels.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { makeResetToken, RESET_LINK_MINUTES } from "../../lib/signedTokens.js";
+import { transferToday } from "./transfers.js";
 import { appUrl } from "../../lib/email.js";
 
 export const staffRouter = Router();
@@ -321,8 +322,13 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
     fields.staffNo = "Another staff member already has this staff number.";
   }
   if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields });
+  // Moving someone already in a ward to another one is a transfer: recorded, and the rosters follow.
+  const moving = Boolean(existing.departmentId && input.departmentId && input.departmentId !== existing.departmentId && ["ACTIVE", "ON_LEAVE"].includes(existing.status));
+  if (moving && (await prisma.wardTransfer.findFirst({ where: { staffId: existing.id, appliedAt: null, cancelledAt: null }, select: { id: true } }))) {
+    return res.status(409).json({ error: "transfer_open", fields: { departmentId: "This person has a transfer waiting. Cancel it on the Ward transfers page first." } });
+  }
 
-  const s = await prisma.staff.update({
+  let s = await prisma.staff.update({
     where: { id: existing.id },
     data: {
       staffNo: input.staffNo,
@@ -330,7 +336,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       phone: input.phone,
       email: input.email,
       cadreId: input.cadreId,
-      departmentId: input.departmentId,
+      departmentId: moving ? existing.departmentId : input.departmentId,
       position: input.position,
       employmentStatus: input.employmentStatus,
       dateJoined: input.dateJoined,
@@ -349,6 +355,10 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
     },
     include: staffInclude,
   });
+  if (moving) {
+    await transferToday(who.facilityId, existing.id, input.departmentId!, who.email);
+    s = await prisma.staff.findUniqueOrThrow({ where: { id: existing.id }, include: staffInclude });
+  }
 
   // Name each changed field in words. Values are kept out of the sentence
   // for contact details and the exclusion reason; they stay in before/after.

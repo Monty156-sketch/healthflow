@@ -104,15 +104,64 @@ describe("inter-ward transfers", () => {
     expect(await applyDueTransfers()).toBe(0);
   });
 
-  it("makes the person in charge of the new ward when asked, and only the administrator sets transfers", async () => {
+  it("makes the person in charge of the new ward when asked; an in-charge moves only their own ward's people", async () => {
     const { facility, api, maternity, surgery } = await hospital();
     const { user: manager, staff } = await makeUser({ role: "ROSTER_MANAGER", facilityId: facility.id, withStaff: { fullName: "Sister Ama" } });
     await prisma.staff.update({ where: { id: staff!.id }, data: { departmentId: maternity.id, status: "ACTIVE" } });
     await prisma.userProfile.update({ where: { id: manager.id }, data: { departmentId: maternity.id } });
-    expect((await as(manager).post("/api/facility/transfers", { staffId: staff!.id, toDepartmentId: surgery.id, effectiveDate: new Date().toISOString().slice(0, 10) })).status).toBe(403);
+    const today = new Date().toISOString().slice(0, 10);
+    const other = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "S9", fullName: "Kofi", status: "ACTIVE", departmentId: surgery.id } });
+    expect((await as(manager).post("/api/facility/transfers", { staffId: other.id, toDepartmentId: maternity.id, effectiveDate: today })).status).toBe(400);
+    expect((await as(manager).post("/api/facility/transfers", { staffId: staff!.id, toDepartmentId: surgery.id, effectiveDate: today, inCharge: true })).status).toBe(403);
     const now = await api.post("/api/facility/transfers", { staffId: staff!.id, toDepartmentId: surgery.id, effectiveDate: new Date().toISOString().slice(0, 10), kind: "EMERGENCY", inCharge: true });
     expect(now.body.transfer.status).toBe("DONE");
     expect(await profileOf(manager.userEmail)).toMatchObject({ role: "ROSTER_MANAGER", departmentId: surgery.id });
     expect((await as(manager).get("/api/facility/transfers")).body.transfers).toHaveLength(1);
+  });
+});
+
+describe("support units and the staff record", () => {
+  it("adds security, drivers, cleaners and offices; staff register into them; offices get no roster; support units start from nobody", async () => {
+    const { facility, api, code, nurse } = await hospital();
+    const units = (await request(app).get(`/api/public/join/${code}`).set("X-Forwarded-For", freshIp())).body.departments as { id: string; name: string; kind: string }[];
+    const security = units.find((u) => u.name === "Security")!;
+    const accounts = units.find((u) => u.name === "Accounts")!;
+    expect(security.kind).toBe("SUPPORT");
+    expect(accounts.kind).toBe("OFFICE");
+    // Asking to be in-charge of a support unit just registers them; the administrator runs it.
+    const guard = await pub("/api/public/join/register", reg(code, "guard@h.test", { departmentId: security.id, asInCharge: true }));
+    expect(guard.body.status).toBe("active");
+    expect((await prisma.staff.findFirstOrThrow({ where: { email: "guard@h.test" } })).requestedInCharge).toBe(false);
+    expect((await api.post("/api/facility/rosters", { year: 2026, month: 11, departmentId: accounts.id })).status).toBe(400);
+    const sec = await api.post("/api/facility/rosters", { year: 2026, month: 11, departmentId: security.id });
+    expect(sec.status).toBe(201);
+    await api.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", isOvernight: false, minStaff: 3, colour: "#25619f" });
+    const demand = (await api.get(`/api/facility/ward-demand/${security.id}`)).body.shifts;
+    expect(demand[0].minStaff).toBe(0);
+    const gen = await api.post(`/api/facility/rosters/${sec.body.roster.id}/generate`, {});
+    expect(gen.body.error).toBe("no_demand");
+    // Shown once only: switching a unit off does not bring it back.
+    expect((await api.get("/api/facility/departments")).body.departments.filter((d: { name: string }) => d.name === "Security")).toHaveLength(1);
+  });
+
+  it("records a ward change on the staff record as a transfer and cancels their open swaps in the old ward", async () => {
+    const { facility, api, nurse, maternity, surgery } = await hospital();
+    const shift = (await api.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", isOvernight: false, minStaff: 1, colour: "#25619f" })).body.shift;
+    const [ama, efua] = await Promise.all(["Ama", "Efua"].map((n, i) => prisma.staff.create({ data: { facilityId: facility.id, staffNo: `M${i}`, fullName: n, status: "ACTIVE", cadreId: nurse.id, departmentId: maternity.id } })));
+    const now = new Date();
+    const mat = (await api.post("/api/facility/rosters", { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, departmentId: maternity.id })).body.roster.id;
+    const later = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    if (later.getUTCMonth() !== now.getUTCMonth()) return; // last day of the month: nothing later to cancel
+    const [a, b] = await Promise.all([ama, efua].map((p) => prisma.rosterAssignment.create({ data: { rosterId: mat, facilityId: facility.id, staffId: p.id, shiftId: shift.id, dutyDate: later, source: "MANUAL" } })));
+    const swap = await prisma.dutySwap.create({ data: { facilityId: facility.id, rosterId: mat, swapType: "EXCHANGE", requesterStaffId: efua.id, requesterAssignmentId: b.id, targetStaffId: ama.id, targetAssignmentId: a.id } });
+
+    const record = (await api.get(`/api/facility/staff/${ama.id}`)).body.staff;
+    const res = await api.patch(`/api/facility/staff/${ama.id}`, { staffNo: record.staffNo, fullName: record.fullName, cadreId: nurse.id, departmentId: surgery.id, employmentStatus: record.employmentStatus, excludedFromNights: false, willingForExtraDuties: false, maxDutiesPerWeek: 0, eligibleShiftIds: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.staff.department.name).toBe("Surgery");
+    const t = await prisma.wardTransfer.findFirstOrThrow({ where: { staffId: ama.id } });
+    expect(t.appliedAt).not.toBeNull();
+    expect((await prisma.dutySwap.findUniqueOrThrow({ where: { id: swap.id } })).status).toBe("CANCELLED");
+    expect(await prisma.rosterAssignment.count({ where: { id: a.id } })).toBe(0);
   });
 });

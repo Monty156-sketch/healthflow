@@ -17,6 +17,7 @@ import { notifyDeciders, notifyWard } from "../lib/notify.js";
 import { parseOr400, optionalText, requiredText } from "../lib/validate.js";
 import { currentNotice } from "./facility/privacy.js";
 import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
+import { ensureSupportUnits } from "../lib/supportUnits.js";
 
 export const joinRouter = Router();
 
@@ -44,7 +45,9 @@ joinRouter.get("/:code", async (req, res) => {
   if (!code) return res.status(404).json(BAD_CODE);
   const [cadres, departments] = await Promise.all([
     prisma.cadre.findMany({ where: { facilityId: code.facilityId, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true } }),
-    prisma.department.findMany({ where: { facilityId: code.facilityId, active: true, archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    ensureSupportUnits(code.facilityId, code.facility.facilityType).then(() =>
+      prisma.department.findMany({ where: { facilityId: code.facilityId, active: true, archivedAt: null }, orderBy: { name: "asc" }, select: { id: true, name: true, kind: true } })
+    ),
   ]);
   // Hospitals roster by ward, so everyone names their ward and says whether they are its in-charge.
   res.json({ facilityName: code.facility.name, cadres, departments, byWard: WARD_FACILITY_TYPES.includes(code.facility.facilityType) });
@@ -85,10 +88,12 @@ joinRouter.post("/register", async (req, res) => {
   const phone = input.phone ? normalisePhone(input.phone) : null;
   if (input.phone && !phone) fields.phone = "Enter a Ghana mobile number, such as 024 123 4567, or leave it empty.";
   if (input.cadreId && !(await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId, active: true }, select: { id: true } }))) fields.cadreId = "Choose a cadre from the list.";
-  if (input.departmentId && !(await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true } }))) fields.departmentId = "Choose a department from the list.";
+  const dept = input.departmentId ? await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true, kind: true } }) : null;
+  if (input.departmentId && !dept) fields.departmentId = "Choose a department from the list.";
   const byWard = WARD_FACILITY_TYPES.includes(code.facility.facilityType);
   if (byWard && !input.departmentId && !input.departmentText) fields.departmentId = "Choose your ward or department.";
-  const asInCharge = byWard && input.asInCharge;
+  // Only a ward has an in-charge; security, drivers and offices are run by the administrator.
+  const asInCharge = byWard && input.asInCharge && dept?.kind === "WARD";
   const problem = checkPassword(input.password, input.email);
   if (problem) fields.password = problem;
   if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields });
@@ -142,7 +147,7 @@ joinRouter.post("/register", async (req, res) => {
   if (waits) {
     const note = { type: "join_pending", title: `${staff.fullName} is waiting for approval`, body: `${staff.fullName} registered with the access code${asInCharge ? " as a ward in-charge" : ""} and waits for approval.`, linkUrl: "/staff/access", severity: "INFO" as const };
     // In a hospital the ward's own in-charge approves its staff; an in-charge is approved by the administrator.
-    if (byWard) await notifyWard(facilityId, asInCharge ? null : input.departmentId, note);
+    if (byWard) await notifyWard(facilityId, asInCharge || dept?.kind !== "WARD" ? null : input.departmentId, note);
     else await notifyDeciders(facilityId, note);
   }
   res.status(201).json({ status: waits ? "pending" : "active", facilityName: code.facility.name });
