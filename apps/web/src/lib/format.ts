@@ -29,6 +29,8 @@ export const FACILITY_TYPE: Record<string, string> = {
   POLYCLINIC: "Polyclinic",
   HOSPITAL: "Hospital",
   PRIVATE_HOSPITAL: "Private Hospital",
+  REGIONAL_HOSPITAL: "Regional Hospital",
+  TEACHING_HOSPITAL: "Teaching Hospital",
 };
 
 export const ROLE: Record<string, string> = {

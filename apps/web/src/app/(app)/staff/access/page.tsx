@@ -10,17 +10,17 @@ import { PrintButton } from "@/components/PrintButton";
 import { QrCode } from "@/components/QrCode";
 
 interface Code { code: string; active: boolean; requiresApproval: boolean; usesCount: number; maxUses: number | null; expiresAt: string | null; problem: string | null; joinUrl: string; phoneCheck: boolean }
-interface Pending { id: string; fullName: string; staffNo: string; phone: string | null; email: string | null; position: string | null; requestedCadre: string | null; requestedDepartment: string | null; createdAt: string; cadre: { id: string; name: string } | null; department: { id: string; name: string } | null }
+interface Pending { id: string; fullName: string; requestedInCharge: boolean; staffNo: string; phone: string | null; email: string | null; position: string | null; requestedCadre: string | null; requestedDepartment: string | null; createdAt: string; cadre: { id: string; name: string } | null; department: { id: string; name: string } | null }
 
 const say = (e: unknown, fallback: string) => (e instanceof ApiError ? ((e.body as { message?: string } | undefined)?.message ?? fallback) : fallback);
 
-function Waiting({ onChanged }: { onChanged: () => void }) {
+function Waiting({ onChanged, ward }: { onChanged: () => void; ward: boolean }) {
   const list = useResource<{ pending: Pending[] }>("/api/facility/join/pending");
   const cadres = useResource<{ cadres: Cadre[] }>("/api/facility/cadres");
   const departments = useResource<{ departments: Department[] }>("/api/facility/departments");
   const [picked, setPicked] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
-  const [edit, setEdit] = useState({ fullName: "", cadreId: "", departmentId: "" });
+  const [edit, setEdit] = useState({ fullName: "", cadreId: "", departmentId: "", inCharge: false });
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -60,7 +60,7 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
                 {rows.map((p) => (
                   <tr key={p.id}>
                     <td className={TD}><Checkbox label={`Select ${p.fullName}`} checked={picked.includes(p.id)} onChange={(on) => setPicked((x) => (on ? [...x, p.id] : x.filter((i) => i !== p.id)))} /></td>
-                    <td className={TD}>{p.fullName}</td>
+                    <td className={TD}>{p.fullName}{p.requestedInCharge && <span className="block text-[13px] text-[var(--muted)]">Ward in-charge</span>}</td>
                     <td className={TD}>{p.staffNo}</td>
                     <td className={TD}>{p.cadre?.name ?? (p.requestedCadre ? `${p.requestedCadre} (typed)` : "Not given")}, {p.department?.name ?? (p.requestedDepartment ? `${p.requestedDepartment} (typed)` : "none")}</td>
                     <td className={TD}>{p.email}{p.phone ? `, ${p.phone}` : ""}</td>
@@ -72,15 +72,16 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
           {error && <div className="mt-3"><ErrorText>{error}</ErrorText></div>}
           <div className="mt-4 flex flex-wrap gap-2">
             <Button disabled={busy || picked.length === 0} onClick={() => run("/api/facility/join/approve", { staffIds: picked })}>Approve selected</Button>
-            <Button variant="secondary" disabled={busy || picked.length !== 1} onClick={() => { const p = rows.find((r) => r.id === picked[0])!; setEdit({ fullName: p.fullName, cadreId: p.cadre?.id ?? "", departmentId: p.department?.id ?? "" }); setEditing(p.id); }}>Correct, then approve</Button>
+            <Button variant="secondary" disabled={busy || picked.length !== 1} onClick={() => { const p = rows.find((r) => r.id === picked[0])!; setEdit({ fullName: p.fullName, cadreId: p.cadre?.id ?? "", departmentId: p.department?.id ?? "", inCharge: p.requestedInCharge }); setEditing(p.id); }}>Correct, then approve</Button>
             <Button variant="secondary" disabled={busy || picked.length === 0} onClick={() => setRejecting(true)}>Decline selected</Button>
           </div>
           {editing && (
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <Field label="Full name">{(a) => <Input {...a} value={edit.fullName} onChange={(e) => setEdit({ ...edit, fullName: e.target.value })} />}</Field>
               <Field label="Cadre">{(a) => <Select {...a} value={edit.cadreId} onChange={(e) => setEdit({ ...edit, cadreId: e.target.value })}><option value="">None</option>{cadres.data?.cadres.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select>}</Field>
-              <Field label="Department">{(a) => <Select {...a} value={edit.departmentId} onChange={(e) => setEdit({ ...edit, departmentId: e.target.value })}><option value="">None</option>{departments.data?.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>}</Field>
-              <div className="sm:col-span-3"><Button disabled={busy || !edit.fullName.trim()} onClick={() => run("/api/facility/join/approve", { staffIds: [editing], fullName: edit.fullName, cadreId: edit.cadreId || null, departmentId: edit.departmentId || null })}>Approve with these details</Button></div>
+              {!ward && <Field label="Department">{(a) => <Select {...a} value={edit.departmentId} onChange={(e) => setEdit({ ...edit, departmentId: e.target.value })}><option value="">None</option>{departments.data?.departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>}</Field>}
+              {rows.find((r) => r.id === editing)?.requestedInCharge && <div className="sm:col-span-3"><Checkbox label="Approve as in-charge of this ward" checked={edit.inCharge} onChange={(on) => setEdit({ ...edit, inCharge: on })} /></div>}
+              <div className="sm:col-span-3"><Button disabled={busy || !edit.fullName.trim()} onClick={() => run("/api/facility/join/approve", { staffIds: [editing], fullName: edit.fullName, cadreId: edit.cadreId || null, ...(ward ? {} : { departmentId: edit.departmentId || null, asInCharge: edit.inCharge }) })}>Approve with these details</Button></div>
             </div>
           )}
           {rejecting && (
@@ -96,12 +97,20 @@ function Waiting({ onChanged }: { onChanged: () => void }) {
 }
 
 export default function AccessCodePage() {
-  const { isAdmin, facility } = useFacility() as { isAdmin: boolean; facility?: { name?: string } };
+  const { isAdmin, facility, me } = useFacility();
   const code = useResource<Code>(isAdmin ? "/api/facility/join/code" : null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [confirmNew, setConfirmNew] = useState(false);
 
+  if (!isAdmin && me.departmentId) {
+    return (
+      <>
+        <PageHeader title="Waiting for approval" description="Staff who registered for your ward." />
+        <Waiting ward onChanged={() => undefined} />
+      </>
+    );
+  }
   if (!isAdmin) return <Notice tone="warning">Only the facility administrator manages the access code.</Notice>;
   if (code.error && !code.data) return <LoadError onRetry={code.reload} />;
   if (!code.data) return <Loading label="Loading the access code" />;
@@ -151,7 +160,7 @@ export default function AccessCodePage() {
               <p className="ml-8 text-sm text-[var(--muted)]">With approval off, anyone with the code gets in at once.</p>
             </div>
           </Panel>
-          <Waiting onChanged={code.reload} />
+          <Waiting ward={false} onChanged={code.reload} />
         </div>
       </div>
       <div className="hidden print:block">

@@ -18,6 +18,8 @@ const TYPES = [
   ["POLYCLINIC", "Polyclinic"],
   ["HOSPITAL", "Hospital"],
   ["PRIVATE_HOSPITAL", "Private hospital"],
+  ["REGIONAL_HOSPITAL", "Regional hospital"],
+  ["TEACHING_HOSPITAL", "Teaching hospital"],
 ] as const;
 
 interface Plan { id: string; name: string; monthlyPriceGhs: number; setupPriceGhs: number | null; staffBandMin: number | null; staffBandMax: number | null; features: string[] }

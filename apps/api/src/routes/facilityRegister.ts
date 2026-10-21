@@ -30,7 +30,7 @@ const limiter = rateLimit({
   message: { error: "too_many_attempts", message: "Too many registrations from this connection. Try again in an hour, or call 055 457 1800." },
 });
 
-const TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;
+const TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL", "REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"] as const;
 
 const input = z.object({
   facilityName: z.string().trim().min(2, "Enter the facility name.").max(160),

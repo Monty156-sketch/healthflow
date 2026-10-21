@@ -35,7 +35,7 @@ function countLine(n: number, show: Show, narrowed: boolean) {
 }
 
 export default function StaffListPage() {
-  const { isAdmin } = useFacility();
+  const { isAdmin, me } = useFacility();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [show, setShow] = useState<Show>("current");
@@ -69,7 +69,9 @@ export default function StaffListPage() {
         title="Staff"
         description={staff.data ? countLine(rows.length, show, Boolean(q || cadreId || departmentId)) : undefined}
         actions={
-          isAdmin && (
+          !isAdmin && me.departmentId ? (
+            <ButtonLink href="/staff/access" variant="secondary">Waiting for approval</ButtonLink>
+          ) : isAdmin && (
             <>
               <ButtonLink href="/staff/invite">Invite staff</ButtonLink>
               <ButtonLink href="/staff/access" variant="secondary">

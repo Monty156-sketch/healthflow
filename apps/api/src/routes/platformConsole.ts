@@ -191,7 +191,7 @@ consoleRouter.post("/districts/:id/officers", async (req, res) => {
 
 // ------------------------------------------------------------- new facility wizard
 
-const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"] as const;
+const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL", "REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"] as const;
 
 consoleRouter.get("/setup-options", async (_req, res) => {
   const [districts, facilities] = await Promise.all([

@@ -12,7 +12,7 @@ interface Row {
 }
 
 const TYPE: Record<string, string> = {
-  CHPS_COMPOUND: "CHPS compound", HEALTH_CENTRE: "Health centre", CLINIC: "Clinic", POLYCLINIC: "Polyclinic", HOSPITAL: "Hospital", PRIVATE_HOSPITAL: "Private hospital",
+  CHPS_COMPOUND: "CHPS compound", HEALTH_CENTRE: "Health centre", CLINIC: "Clinic", POLYCLINIC: "Polyclinic", HOSPITAL: "Hospital", PRIVATE_HOSPITAL: "Private hospital", REGIONAL_HOSPITAL: "Regional hospital", TEACHING_HOSPITAL: "Teaching hospital",
 };
 
 export default function DistrictFacilitiesPage() {

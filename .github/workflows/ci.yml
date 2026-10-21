@@ -60,7 +60,10 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm test 2>&1 | tee /tmp/test.log || { grep -E "FAIL|Error|×|expected|Expected|Received|❯ test" /tmp/test.log | head -60 | sed 's/^/::error::/'; exit 1; }
 
   # Real browser, real Worker, real API and database. It catches what unit
   # tests cannot: a page that does not hydrate, a script blocked by the

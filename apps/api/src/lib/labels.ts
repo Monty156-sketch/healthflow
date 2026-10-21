@@ -26,6 +26,8 @@ export const FACILITY_TYPE_LABEL: Record<string, string> = {
   POLYCLINIC: "Polyclinic",
   HOSPITAL: "Hospital",
   PRIVATE_HOSPITAL: "Private Hospital",
+  REGIONAL_HOSPITAL: "Regional Hospital",
+  TEACHING_HOSPITAL: "Teaching Hospital",
 };
 
 const WEEKDAY = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
