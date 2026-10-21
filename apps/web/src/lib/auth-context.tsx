@@ -10,7 +10,7 @@ import {
   ReactNode,
 } from "react";
 import { SESSION_IDLE_TIMEOUT_MINUTES } from "@healthflow/shared";
-import { api, setAccessToken, setOnSessionExpired, type Session, type SessionUser } from "./api";
+import { api, forgetReads, setAccessToken, setOnSessionExpired, type Session, type SessionUser } from "./api";
 
 export type AuthUser = SessionUser;
 
@@ -179,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   /** Starts using a session the server just issued (sign-in, or sign-in after setup). */
   function adoptSession(session: Session) {
+    forgetReads();
     setAccessToken(session.accessToken);
     ending.current = false;
     lastActivity.current = Date.now();

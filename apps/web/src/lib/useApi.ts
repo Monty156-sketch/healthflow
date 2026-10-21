@@ -4,13 +4,15 @@
 // a load can fail with a retry; a save is saving, saved, or failed with a
 // retry, and a failed save never throws away what the person typed.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, cachedRead, rememberRead } from "./api";
 import type { SaveState } from "@/components/ui";
 
 export function useResource<T>(path: string | null) {
-  const [data, setData] = useState<T | null>(null);
+  // A page visited before shows what it had at once and refreshes underneath.
+  const seen = path ? cachedRead<T>(path) : undefined;
+  const [data, setData] = useState<T | null>(seen ?? null);
   const [error, setError] = useState<ApiError | Error | null>(null);
-  const [loading, setLoading] = useState(Boolean(path));
+  const [loading, setLoading] = useState(Boolean(path) && seen === undefined);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
@@ -19,6 +21,7 @@ export function useResource<T>(path: string | null) {
     api
       .get<T>(path)
       .then((d) => {
+        rememberRead(path, d);
         if (!cancelled) {
           setData(d);
           setError(null);

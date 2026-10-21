@@ -4,7 +4,7 @@
 // or written by the platform; staff are imported by the facility itself.
 import type { FacilityType } from "@healthflow/db";
 import { prisma } from "./prisma.js";
-import { defaultOnRoster, defaultRunsNights, defaultTakesNights } from "./dutyPlan.js";
+import { cadreDefaults, defaultRunsNights } from "./dutyPlan.js";
 import { ensureRules } from "../routes/facility/rules.js";
 import { noticeTemplate } from "../routes/facility/privacy.js";
 import { randomToken, sha256 } from "./crypto.js";
@@ -12,7 +12,7 @@ import { appUrl, sendEmail } from "./email.js";
 import { INVITATION_DAYS } from "../routes/invitations.js";
 
 /** Every cadre and department a health facility in Ghana is likely to have. Added to each facility, so staff imports are not turned away for a missing one. */
-export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security"];
+export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
 export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Accounts", "Stores", "Transport", "Mortuary", "Support Services"];
 
 /** Adds any standard cadre or department the facility does not already have, by name, leaving everything it has as it is. */
@@ -26,7 +26,7 @@ export async function seedGroups(facilityId: string, _type?: FacilityType) {
   const newDeps = STANDARD_DEPARTMENTS.filter((n) => !haveDep.has(n.toLowerCase()));
   const newCads = STANDARD_CADRES.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
   if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
-  if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, takesNights: defaultTakesNights(c.name) && defaultOnRoster(c.name), onRoster: defaultOnRoster(c.name) })) });
+  if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, ...cadreDefaults(c.name) })) });
   return { departments: newDeps.length, cadres: newCads.length };
 }
 
@@ -35,7 +35,7 @@ export async function seedChosen(facilityId: string, departments: string[], cadr
   const deps = [...new Map(departments.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
   const cads = [...new Map(cadres.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
   if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
-  if (cads.length) await prisma.cadre.createMany({ data: cads.map((name, i) => ({ facilityId, name, sortOrder: i, takesNights: defaultTakesNights(name) && defaultOnRoster(name), onRoster: defaultOnRoster(name) })) });
+  if (cads.length) await prisma.cadre.createMany({ data: cads.map((name, i) => ({ facilityId, name, sortOrder: i, ...cadreDefaults(name) })) });
   return { departments: deps.length, cadres: cads.length };
 }
 

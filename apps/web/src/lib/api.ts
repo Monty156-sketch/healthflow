@@ -14,7 +14,18 @@ function supportHeader(path: string): Record<string, string> {
   return s ? { "x-support-session": s.id } : {};
 }
 
+/**
+ * What the last read of each address returned, so going back to a page shows it at once while a fresh copy loads.
+ * Emptied when the person signs out or in, and after any change is saved, so nothing stale or someone else's is ever shown.
+ */
+const readCache = new Map<string, unknown>();
+export const cacheKey = (path: string) => `${supportHeader(path)["x-support-session"] ?? ""}|${path}`;
+export const cachedRead = <T,>(path: string) => readCache.get(cacheKey(path)) as T | undefined;
+export const rememberRead = (path: string, value: unknown) => void readCache.set(cacheKey(path), value);
+export const forgetReads = () => readCache.clear();
+
 export function setAccessToken(token: string | null) {
+  if (token === null) forgetReads();
   accessToken = token;
 }
 
@@ -75,6 +86,7 @@ async function request<T>(
     throw new ApiError(res.status, body);
   }
 
+  if (options.method && options.method !== "GET") forgetReads();
   if (res.status === 204) return undefined as T;
   return res.json();
 }
