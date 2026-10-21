@@ -50,12 +50,9 @@ async function ensureSeeded(facilityId: string) {
   if (!shifts.length) return;
   const night = shifts.filter((s) => s.isOvernight);
   const day = shifts.filter((s) => !s.isOvernight && !s.isOnCall);
-  const named = (w: string) => day.find((x) => x.name.toLowerCase().includes(w));
-  const afternoon = named("afternoon");
-  const morning = named("morning");
   const seeds = [
-    { name: "4 nights on, 3 off", shifts: night, n: 4, m: 3, after: afternoon?.id ?? null, pattern: [] as string[] },
-    { name: "4 days on, 1 off", shifts: day, n: 4, m: 1, after: null, pattern: afternoon && morning ? [afternoon.id, morning.id] : [] },
+    { name: "4 nights on, 3 off", shifts: night, n: 4, m: 3, after: null, pattern: [] as string[] },
+    { name: "4 days on, 2 off", shifts: day, n: 4, m: 2, after: null, pattern: [] as string[] },
   ].filter((s) => s.shifts.length > 0);
   let priority = 1;
   for (const s of seeds) {

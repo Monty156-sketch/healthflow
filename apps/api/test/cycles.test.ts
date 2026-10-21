@@ -42,14 +42,14 @@ describe("duty cycle rules", () => {
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
     const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
     const { rules } = (await api.get("/api/facility/cycles")).body;
-    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 1 off"]);
+    expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 2 off"]);
     expect(rules.every((r: { enforcement: string }) => r.enforcement === "PREFER")).toBe(true);
     expect(rules[0].countingShiftIds).toEqual([n.id]);
     expect(rules[1].countingShiftIds.sort()).toEqual([a.id, m.id].sort());
     expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2]);
-    // the night rule sends people back on Afternoon; the day rule alternates Afternoon, Morning
-    expect(rules[0].nextShiftAfterRestId).toBe(m.id);
-    expect(rules[1].blockShiftPatternIds).toEqual([m.id, a.id]);
+    // a cycle is only a rule; the order of shifts comes from the rotation
+    expect(rules[0].nextShiftAfterRestId).toBeNull();
+    expect(rules[1].blockShiftPatternIds).toEqual([]);
     // reading again does not seed twice
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(2);
   });
@@ -153,7 +153,7 @@ describe("capacity check", () => {
     const rules = (await api4.get("/api/facility/cycles")).body.rules;
     await api4.patch(`/api/facility/cycles/${rules[0].id}/active`, { active: false });
     const after = (await api4.get("/api/facility/cycles/capacity?month=2026-10")).body.cadres.find((c: { cadreId: string }) => c.cadreId === mw4.id);
-    expect(after.rule.name).toBe("4 days on, 1 off");
+    expect(after.rule.name).toBe("4 days on, 2 off");
   });
 
   it("only counts active staff", async () => {
