@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useResource } from "@/lib/useApi";
 import { SwapAsk } from "@/components/SwapAsk";
+import { ClockCard } from "@/components/ClockCard";
 import { ButtonLink, Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel } from "@/components/ui";
 
 interface Today {
@@ -35,6 +36,7 @@ export default function TodayPage() {
   return (
     <>
       <PageHeader title="Today" />
+      <ClockCard />
       <section aria-labelledby="next-duty" className="mb-6 rounded-[var(--radius)] border-2 border-[var(--foreground)] bg-[var(--surface)] p-5">
         <h2 id="next-duty" className="text-base font-medium text-[var(--muted)]">{n?.onDutyNow ? "You are on duty now" : "Your next duty"}</h2>
         {n ? (

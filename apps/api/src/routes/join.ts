@@ -75,6 +75,7 @@ const registerInput = z.object({
   departmentText: optionalText(80, "Department"),
   position: optionalText(80, "Position"),
   asInCharge: z.boolean().default(false),
+  leaveGrade: z.enum(["SENIOR", "JUNIOR"]).nullish(),
 });
 
 /** Step two, and the last: create the account. */
@@ -140,7 +141,7 @@ joinRouter.post("/register", async (req, res) => {
     if (used.count === 0) return null;
     const s = await tx.staff.create({
       data: {
-        facilityId, staffNo: staffNo!, fullName: input.fullName, phone, email: input.email, cadreId: input.cadreId, departmentId: input.departmentId, position: input.position,
+        facilityId, staffNo: staffNo!, fullName: input.fullName, phone, email: input.email, cadreId: input.cadreId, departmentId: input.departmentId, position: input.position, leaveGrade: input.leaveGrade ?? null,
         requestedCadre: input.cadreId ? null : input.cadreText, requestedDepartment: input.departmentId ? null : input.departmentText,
         status: waits ? "PENDING" : "ACTIVE", joinedVia: "CODE", requestedInCharge: asInCharge,
       },

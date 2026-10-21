@@ -34,7 +34,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Fields>({});
   const [notice, setNotice] = useState<{ version: string; body: string } | null>(null);
-  const [form, setForm] = useState({ fullName: "", email: "", password: "", confirm: "", staffNo: "", phone: "", cadre: "", cadreText: "", department: "", departmentText: "", as: "staff" });
+  const [form, setForm] = useState({ fullName: "", email: "", password: "", confirm: "", staffNo: "", phone: "", cadre: "", cadreText: "", department: "", departmentText: "", as: "staff", grade: "" });
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const [agreed, setAgreed] = useState(false);
   const [result, setResult] = useState<{ status: "pending" | "active" } | null>(null);
@@ -86,6 +86,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
     setError(null);
     setFields({});
     if (!notice) return setError("This facility has not published its privacy notice yet. Ask your in-charge.");
+    if (!form.grade) return setFields({ grade: "Choose your grade." });
     if (form.password !== form.confirm) return setFields({ confirm: "The two passwords are not the same." });
     if (!agreed) return setFields({ agree: "Confirm that you have read the privacy notice to continue." });
     setBusy(true);
@@ -103,6 +104,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
         departmentId: unitId ?? (form.department && form.department !== OTHER ? form.department : null),
         departmentText: !unitId && form.department === OTHER ? form.departmentText : null,
         asInCharge: Boolean(facility?.byWard) && form.as === "incharge",
+        leaveGrade: form.grade,
       });
       setResult(res);
       setStep("done");
@@ -150,6 +152,15 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
           <Field label="Email" error={fields.email} hint="You sign in with this.">{(a) => <Input {...a} type="email" autoComplete="email" value={form.email} onChange={(e) => set("email", e.target.value)} />}</Field>
           <Field label="Password" error={fields.password} hint="At least 12 characters.">{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} />}</Field>
           <Field label="Confirm password" error={fields.confirm}>{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.confirm} onChange={(e) => set("confirm", e.target.value)} />}</Field>
+          <Field label="Your grade" error={fields.grade} hint="Gives your yearly leave days: senior staff 36 working days, junior staff 28.">
+            {(a) => (
+              <Select {...a} value={form.grade} onChange={(e) => set("grade", e.target.value)}>
+                <option value="">Choose</option>
+                <option value="SENIOR">Senior staff</option>
+                <option value="JUNIOR">Junior staff</option>
+              </Select>
+            )}
+          </Field>
           <Field label="Staff number" optional error={fields.staffNo}>{(a) => <Input {...a} autoComplete="off" value={form.staffNo} onChange={(e) => set("staffNo", e.target.value)} />}</Field>
           <Field label="Mobile phone number" optional error={fields.phone} hint="For text messages about your duties, if your facility uses them.">
             {(a) => <Input {...a} type="tel" autoComplete="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} />}

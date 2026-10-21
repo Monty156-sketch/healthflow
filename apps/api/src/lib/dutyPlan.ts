@@ -50,11 +50,13 @@ export function unitForCadre(cadre: string | null | undefined): { name: string; 
   return null;
 }
 
-/** What a unit starts needing on its morning, afternoon and night shifts. Clinical nurses 2/1/1, midwives 1/1/1, any other unit the morning only. */
+/** What a unit starts needing on its morning, afternoon and night shifts. Clinical nurses 2/1/1, midwives 1/1/1, public health nothing until its figure is agreed, any other unit the morning only. */
 export function unitMinimums(unit: string): [number, number, number] {
   const u = unit.trim().toLowerCase();
   if (u === "clinical nurses") return [2, 1, 1];
   if (u === "midwives") return [1, 1, 1];
+  // Public health has no agreed figure yet, so it starts empty for the in-charge to set. Change this line when it is agreed.
+  if (u === "public health") return [0, 0, 0];
   return [1, 0, 0];
 }
 
@@ -68,12 +70,13 @@ export const defaultKind = (department: string): "WARD" | "SUPPORT" | "OFFICE" =
 
 /**
  * Morning, afternoon and night minimums a new facility starts with, by type. They are only a starting point:
- * every facility can change them. Busier facilities need more on each shift: clinics, polyclinics and hospitals 4/3/3,
- * regional and teaching hospitals 5/4/4. A health centre starts at 2/1/1 and a CHPS compound at 1/1/1.
+ * every facility can change them. Busier facilities need more on each shift: polyclinics and hospitals 4/3/3,
+ * regional and teaching hospitals 5/4/4. A health centre starts at 2/1/1; a clinic and a CHPS compound, smaller than a health centre, at 1/1/1.
  */
 export function starterMinimums(facilityType: string): [number, number, number] {
   const base: Record<string, [number, number, number]> = {
     CHPS_COMPOUND: [1, 1, 1],
+    CLINIC: [1, 1, 1],
     HEALTH_CENTRE: [2, 1, 1],
     REGIONAL_HOSPITAL: [5, 4, 4],
     TEACHING_HOSPITAL: [5, 4, 4],

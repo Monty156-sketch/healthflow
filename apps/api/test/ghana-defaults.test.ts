@@ -33,7 +33,8 @@ describe("Ghana Health Service cadre defaults", () => {
   it("starts clinical nurses at 2/1/1, midwives at 1/1/1, any other unit at the morning only", () => {
     expect(unitMinimums("Clinical Nurses")).toEqual([2, 1, 1]);
     expect(unitMinimums("Midwives")).toEqual([1, 1, 1]);
-    expect(unitMinimums("Public Health")).toEqual([1, 0, 0]);
+    expect(unitMinimums("Public Health")).toEqual([0, 0, 0]);
+    expect(unitMinimums("Laboratory")).toEqual([1, 0, 0]);
   });
   it("lets senior grades lead a shift", () => {
     expect(["Senior Staff Nurse", "Ward In-Charge", "Principal Midwife", "Sister"].every(leadsByGrade)).toBe(true);
@@ -41,8 +42,9 @@ describe("Ghana Health Service cadre defaults", () => {
   });
   it("starts shift minimums by facility type", () => {
     expect(starterMinimums("CHPS_COMPOUND")).toEqual([1, 1, 1]);
+    expect(starterMinimums("CLINIC")).toEqual([1, 1, 1]);
     expect(starterMinimums("HEALTH_CENTRE")).toEqual([2, 1, 1]);
-    for (const t of ["CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"]) expect(starterMinimums(t)).toEqual([4, 3, 3]);
+    for (const t of ["POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"]) expect(starterMinimums(t)).toEqual([4, 3, 3]);
     for (const t of ["REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"]) expect(starterMinimums(t)).toEqual([5, 4, 4]);
   });
 });
