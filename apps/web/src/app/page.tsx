@@ -5,10 +5,10 @@ import { PublicNav } from "@/components/PublicNav";
 import { RosterExample } from "@/components/RosterExample";
 
 export const metadata: Metadata = {
-  title: "HealthFlow | A duty roster you can defend",
+  title: "HealthFlow | Fair duty rosters for Ghana's health facilities",
   description:
     "HealthFlow builds the monthly staff roster for a health facility from its own shifts and rules, checks it against Ghana's Labour Act before it is published, and prints the A4 sheet staff already recognise.",
-  openGraph: { title: "HealthFlow | A duty roster you can defend", description: "Duty rostering and labour-law checks for Ghanaian health facilities.", type: "website", locale: "en_GH" },
+  openGraph: { title: "HealthFlow | Fair duty rosters for Ghana's health facilities", description: "Duty rostering and labour-law checks for Ghanaian health facilities.", type: "website", locale: "en_GH" },
 };
 
 const H2 = "text-2xl font-semibold leading-snug sm:text-3xl";
@@ -76,7 +76,7 @@ export default function LandingPage() {
           <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:px-5 sm:py-20 lg:grid-cols-[5fr_6fr]">
             <div className="min-w-0">
               <h1 id="hero" className="text-4xl leading-[1.08] font-semibold sm:text-5xl">
-                A duty roster you can defend.
+                Fair duty rosters, built on your own rules.
               </h1>
               <p className="mt-5 max-w-[46ch] text-lg leading-relaxed text-[var(--muted)]">
                 HealthFlow builds your monthly staff roster from your own shifts and rules, checks it against Ghana&apos;s Labour Act before it is published, and prints the A4 sheet your staff already recognise.

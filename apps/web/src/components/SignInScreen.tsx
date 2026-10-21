@@ -67,7 +67,7 @@ function messageFor(err: unknown): string {
 const COPY: Record<Audience, { title: string; line: string; body: string; tag: string | null }> = {
   facility: {
     title: "Sign in",
-    line: "A duty roster you can defend.",
+    line: "Fair duty rosters, built on your own rules.",
     body: "Built from your own shifts and rules, checked against the Labour Act before it is published, and printed on the A4 sheet your staff already read.",
     tag: null,
   },
