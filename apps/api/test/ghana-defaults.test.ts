@@ -1,23 +1,39 @@
 import { portfolioFor } from "../src/lib/facilitySetup.js";
 import { describe, expect, it } from "vitest";
-import { cadreDefaults, leadsByGrade, starterMinimums } from "../src/lib/dutyPlan.js";
+import { cadreDefaults, defaultRunsNights, leadsByGrade, starterMinimums, unitForCadre, unitMinimums } from "../src/lib/dutyPlan.js";
 
 describe("Ghana Health Service cadre defaults", () => {
   it("puts nurses and midwives on shifts with nights", () => {
-    for (const n of ["Nurse", "Midwife", "Enrolled Nurse", "Community Health Nurse", "Health Assistant"]) {
+    for (const n of ["Nurse", "Midwife", "Enrolled Nurse", "Community Health Officer", "Health Assistant"]) {
       expect(cadreDefaults(n)).toEqual({ onRoster: true, weekdaysOnly: false, takesNights: true });
     }
   });
-  it("puts pharmacy, laboratory, imaging, records and physician assistants on office hours", () => {
-    for (const n of ["Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Health Information Officer", "Disease Control Officer", "Physician Assistant"]) {
+  it("puts the office-hours cadres on weekday mornings", () => {
+    for (const n of ["Specialist", "Community Health Nurse", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer"]) {
       expect(cadreDefaults(n)).toEqual({ onRoster: true, weekdaysOnly: true, takesNights: false });
     }
   });
-  it("keeps doctors, accountants and administrators off the duty roster", () => {
-    for (const n of ["Medical Officer", "Specialist", "Accountant", "Administrator"]) expect(cadreDefaults(n).onRoster).toBe(false);
+  it("keeps medical officers, accountants and administrators off the duty roster", () => {
+    for (const n of ["Medical Officer", "Accountant", "Administrator"]) expect(cadreDefaults(n).onRoster).toBe(false);
   });
   it("gives security, drivers and orderlies nights", () => {
     for (const n of ["Security", "Driver", "Orderly"]) expect(cadreDefaults(n)).toEqual({ onRoster: true, weekdaysOnly: false, takesNights: true });
+  });
+  it("closes exactly the departments the facilities named at night", () => {
+    for (const d of ["Accounts", "Administration", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Public Health", "Radiology", "Stores"]) expect(defaultRunsNights(d)).toBe(false);
+    for (const d of ["Outpatient", "Maternity", "Emergency", "Laboratory", "Clinical Nurses", "Midwives"]) expect(defaultRunsNights(d)).toBe(true);
+  });
+  it("puts a nurse, midwife or public health cadre in their unit", () => {
+    expect(unitForCadre("Enrolled Nurse")?.name).toBe("Clinical Nurses");
+    expect(unitForCadre("Nurse")?.name).toBe("Clinical Nurses");
+    expect(unitForCadre("Midwife")?.name).toBe("Midwives");
+    expect(unitForCadre("Community Health Nurse")?.name).toBe("Public Health");
+    expect(unitForCadre("Pharmacist")).toBeNull();
+  });
+  it("starts clinical nurses at 2/1/1, midwives at 1/1/1, any other unit at the morning only", () => {
+    expect(unitMinimums("Clinical Nurses")).toEqual([2, 1, 1]);
+    expect(unitMinimums("Midwives")).toEqual([1, 1, 1]);
+    expect(unitMinimums("Public Health")).toEqual([1, 0, 0]);
   });
   it("lets senior grades lead a shift", () => {
     expect(["Senior Staff Nurse", "Ward In-Charge", "Principal Midwife", "Sister"].every(leadsByGrade)).toBe(true);

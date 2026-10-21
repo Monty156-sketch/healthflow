@@ -3,6 +3,7 @@
 // work on plain data; this file loads the data, calls them, and stores the
 // result. Editing cells, review and publishing arrive with the roster
 // builder.
+import { rostersByUnit, seedUnitDemand } from "../../lib/unitDemand.js";
 import { notifyRosterPublished } from "../../lib/rosterPublished.js";
 import { Router } from "express";
 import { z } from "zod";
@@ -305,7 +306,7 @@ rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const input = parseOr400(createInput, req.body, res);
   if (!input) return;
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } });
-  const byWard = WARD_FACILITY_TYPES.includes(facility.facilityType);
+  const byWard = await rostersByUnit(who.facilityId, facility.facilityType, WARD_FACILITY_TYPES);
   const departmentId = who.departmentId ?? input.departmentId;
   if (byWard && !departmentId) return res.status(400).json({ error: "invalid_input", fields: { departmentId: "Choose the ward or department this roster is for." }, message: "Choose the ward or department this roster is for." });
   if (!byWard && departmentId) return res.status(400).json({ error: "invalid_input", message: "This facility keeps one roster for the whole facility." });
@@ -315,6 +316,7 @@ rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const exists = await prisma.roster.findFirst({ where: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null } });
   if (exists) return res.status(409).json({ error: "roster_exists", message: `There is already a roster for ${monthName(input)}${dept ? ` in ${dept.name}` : ""}.`, id: exists.id });
   const roster = await prisma.roster.create({ data: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null, preparedBy: who.email }, include: { department: { select: { name: true } } } });
+  if (dept && !WARD_FACILITY_TYPES.includes(facility.facilityType)) await seedUnitDemand(who.facilityId, dept);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_created", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} started the roster for ${monthName(roster)}${dept ? ` in ${dept.name}` : ""}.`,

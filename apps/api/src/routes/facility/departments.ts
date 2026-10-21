@@ -3,7 +3,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
-import { defaultKind, defaultRunsNights } from "../../lib/dutyPlan.js";
+import { defaultKind, defaultRunsNights, isStandardDepartment } from "../../lib/dutyPlan.js";
 import { ensureSupportUnits } from "../../lib/supportUnits.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400, requiredText, optionalText } from "../../lib/validate.js";
@@ -48,6 +48,7 @@ departmentsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       name: d.name,
       code: d.code,
       runsNights: d.runsNights,
+      locked: isStandardDepartment(d.name),
       kind: d.kind,
       active: d.active,
       staffCount: d._count.staff,
@@ -85,6 +86,10 @@ departmentsRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => 
   if (!existing) return res.status(404).json({ error: "not_found" });
   if (await nameTaken(who.facilityId, input.name, existing.id)) {
     return res.status(409).json({ error: "name_taken", fields: { name: "A department with this name already exists." } });
+  }
+  // Whether a standard department runs nights is fixed; a department the facility added itself can be set either way.
+  if (isStandardDepartment(existing.name) && input.runsNights !== undefined && input.runsNights !== existing.runsNights) {
+    return res.status(409).json({ error: "fixed_setting", fields: { runsNights: `Night duty is fixed for ${existing.name}.` }, message: `Night duty is fixed for ${existing.name}.` });
   }
   const dept = await prisma.department.update({
     where: { id: existing.id },

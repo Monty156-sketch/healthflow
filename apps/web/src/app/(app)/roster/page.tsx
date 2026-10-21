@@ -53,7 +53,7 @@ function StartRoster({ onCreated }: { onCreated: (id: string) => void }) {
               // Accounts and administration have no roster.
               const list = (wards.data?.departments ?? []).filter((d) => d.active && (d.kind ?? "WARD") === kind);
               return list.length ? (
-                <optgroup key={kind} label={kind === "SUPPORT" ? "Support staff" : "Wards"}>
+                <optgroup key={kind} label={kind === "SUPPORT" ? "Support staff" : "Wards and units"}>
                   {list.map((d) => (
                     <option key={d.id} value={d.id}>
                       {kind === "SUPPORT" ? `${d.name} roster` : d.name}

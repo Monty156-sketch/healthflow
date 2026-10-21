@@ -169,7 +169,7 @@ describe("support units and the staff record", () => {
 describe("Ghana defaults on a new facility's cadres and staff", () => {
   it("adds a cadre the way Ghana Health Service facilities work it, and marks senior grades as leads", async () => {
     const { api } = await hospital();
-    const pharm = (await api.post("/api/facility/cadres", { name: "Pharmacist" })).body.cadre;
+    const pharm = (await api.post("/api/facility/cadres", { name: "Radiographer" })).body.cadre;
     expect(pharm).toMatchObject({ weekdaysOnly: true, takesNights: false, onRoster: true });
     const nurse = (await api.post("/api/facility/cadres", { name: "Staff Nurse" })).body.cadre;
     expect(nurse).toMatchObject({ weekdaysOnly: false, takesNights: true });
@@ -178,5 +178,52 @@ describe("Ghana defaults on a new facility's cadres and staff", () => {
     const junior = await api.post("/api/facility/staff", { ...base, staffNo: "N2", fullName: "Efua", cadreId: nurse.id, position: "Staff Nurse" });
     expect(senior.body.staff.canLead).toBe(true);
     expect(junior.body.staff.canLead).toBe(false);
+  });
+});
+
+describe("a health centre rosters by unit", () => {
+  async function centre() {
+    const facility = await makeFacility("Sombo Health Centre");
+    await prisma.privacyNotice.create({ data: { facilityId: facility.id, version: "1", body: "Notice", publishedAt: new Date() } });
+    const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Administrator" } });
+    const api = as(admin);
+    const code = (await api.get("/api/facility/join/code")).body.code as string;
+    await api.put("/api/facility/join/code", { requiresApproval: false, active: true });
+    const mk = (name: string, code: string, s: string, e: string, h: number, over = false) =>
+      prisma.shift.create({ data: { facilityId: facility.id, name, code, startTime: s, endTime: e, durationHours: h, isOvernight: over, minStaff: 3 } });
+    const [m, a, n] = [await mk("Morning", "M", "07:00", "14:00", 7), await mk("Afternoon", "A", "14:00", "20:00", 6), await mk("Night", "N", "20:00", "07:00", 11, true)];
+    const nurse = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Enrolled Nurse" } });
+    const midwife = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Midwife" } });
+    const units = await Promise.all(["Clinical Nurses", "Midwives"].map((name) => prisma.department.create({ data: { facilityId: facility.id, name } })));
+    return { facility, api, code, nurse, midwife, units, shifts: { m, a, n } };
+  }
+
+  it("puts a registering nurse and midwife in their unit, whatever department they pick", async () => {
+    const { code, nurse, midwife, facility } = await centre();
+    await pub("/api/public/join/register", reg(code, "esi@c.test", { cadreId: nurse.id }));
+    await pub("/api/public/join/register", reg(code, "abu@c.test", { cadreId: midwife.id }));
+    const where = async (email: string) => (await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email }, include: { department: true } })).department?.name;
+    expect(await where("esi@c.test")).toBe("Clinical Nurses");
+    expect(await where("abu@c.test")).toBe("Midwives");
+  });
+
+  it("asks which unit a roster is for and starts it from 2/1/1 for clinical nurses and 1/1/1 for midwives", async () => {
+    const { api, units, shifts } = await centre();
+    expect((await api.get("/api/facility")).body.facility.rosterByWard).toBe(true);
+    expect((await api.post("/api/facility/rosters", { year: 2026, month: 11 })).status).toBe(400);
+    for (const u of units) expect((await api.post("/api/facility/rosters", { year: 2026, month: 11, departmentId: u.id })).status).toBe(201);
+    const minOf = async (dept: string, shiftId: string) => (await prisma.shiftDemand.findFirstOrThrow({ where: { departmentId: dept, shiftId } })).minStaff;
+    expect([await minOf(units[0].id, shifts.m.id), await minOf(units[0].id, shifts.a.id), await minOf(units[0].id, shifts.n.id)]).toEqual([2, 1, 1]);
+    expect([await minOf(units[1].id, shifts.m.id), await minOf(units[1].id, shifts.a.id), await minOf(units[1].id, shifts.n.id)]).toEqual([1, 1, 1]);
+  });
+
+  it("keeps the standard settings fixed and lets the facility add its own", async () => {
+    const { api, facility } = await centre();
+    const eye = await prisma.department.create({ data: { facilityId: facility.id, name: "Eye", runsNights: false } });
+    const rad = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Radiographer", weekdaysOnly: true, takesNights: false } });
+    expect((await api.patch(`/api/facility/departments/${eye.id}`, { name: "Eye", runsNights: true })).status).toBe(409);
+    expect((await api.patch(`/api/facility/cadres/${rad.id}`, { name: "Radiographer", takesNights: true })).status).toBe(409);
+    const own = (await api.post("/api/facility/departments", { name: "Chaplaincy", runsNights: false })).body.department;
+    expect((await api.patch(`/api/facility/departments/${own.id}`, { name: "Chaplaincy", runsNights: true })).status).toBe(200);
   });
 });

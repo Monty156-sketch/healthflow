@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400, requiredText, optionalText } from "../../lib/validate.js";
-import { cadreDefaults } from "../../lib/dutyPlan.js";
+import { cadreDefaults, isStandardCadre } from "../../lib/dutyPlan.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
 
 export const cadresRouter = Router();
@@ -52,6 +52,7 @@ cadresRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       takesNights: c.takesNights,
       onRoster: c.onRoster,
       weekdaysOnly: c.weekdaysOnly,
+      locked: isStandardCadre(c.name),
       active: c.active,
       staffCount: c._count.staff,
     })),
@@ -98,6 +99,10 @@ cadresRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
   if (!existing) return res.status(404).json({ error: "not_found" });
   if (await nameTaken(who.facilityId, input.name, existing.id)) {
     return res.status(409).json({ error: "name_taken", fields: { name: "A cadre with this name already exists." } });
+  }
+  // Nights, office hours and the roster are fixed for the standard cadres; a cadre the facility added itself can be set freely.
+  if (isStandardCadre(existing.name) && ((input.takesNights !== undefined && input.takesNights !== existing.takesNights) || (input.onRoster !== undefined && input.onRoster !== existing.onRoster) || (input.weekdaysOnly !== undefined && input.weekdaysOnly !== existing.weekdaysOnly))) {
+    return res.status(409).json({ error: "fixed_setting", message: `How ${existing.name} works is fixed.` });
   }
   const cadre = await prisma.cadre.update({
     where: { id: existing.id },
