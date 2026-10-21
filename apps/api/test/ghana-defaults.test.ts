@@ -39,14 +39,11 @@ describe("Ghana Health Service cadre defaults", () => {
     expect(["Senior Staff Nurse", "Ward In-Charge", "Principal Midwife", "Sister"].every(leadsByGrade)).toBe(true);
     expect(leadsByGrade("Staff Nurse") || leadsByGrade(null)).toBe(false);
   });
-  it("starts shift minimums a facility's people can sustain", () => {
-    // Sombo: 9 people on shifts. Under the old 4/3/3 it could never be filled.
-    const [m, a, n] = starterMinimums("HEALTH_CENTRE", 9);
-    expect(m + a + n).toBeLessThanOrEqual(6);
-    expect(n).toBeGreaterThanOrEqual(1);
-    expect(starterMinimums("CHPS_COMPOUND", 4)).toEqual([1, 1, 1]);
-    expect(starterMinimums("REGIONAL_HOSPITAL", 0)).toEqual([4, 3, 3]);
-    expect(starterMinimums("HOSPITAL", 60)).toEqual([4, 3, 3]);
+  it("starts shift minimums by facility type", () => {
+    expect(starterMinimums("CHPS_COMPOUND")).toEqual([1, 1, 1]);
+    expect(starterMinimums("HEALTH_CENTRE")).toEqual([2, 1, 1]);
+    for (const t of ["CLINIC", "POLYCLINIC", "HOSPITAL", "PRIVATE_HOSPITAL"]) expect(starterMinimums(t)).toEqual([4, 3, 3]);
+    for (const t of ["REGIONAL_HOSPITAL", "TEACHING_HOSPITAL"]) expect(starterMinimums(t)).toEqual([5, 4, 4]);
   });
 });
 
@@ -67,5 +64,9 @@ describe("what each type of facility is offered at registration", () => {
     expect(hospital.departments).toContain("Theatre");
     expect(hospital.cadres).toContain("Specialist");
     expect(portfolioFor("POLYCLINIC")).toEqual(hospital);
+    // Only a health centre is offered the roster units.
+    expect(centre.departments).toContain("Clinical Nurses");
+    expect(chps.departments).not.toContain("Clinical Nurses");
+    expect(portfolioFor("CLINIC").departments).not.toContain("Midwives");
   });
 });

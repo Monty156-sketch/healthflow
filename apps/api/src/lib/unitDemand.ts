@@ -16,8 +16,9 @@ export async function seedUnitDemand(facilityId: string, department: { id: strin
   if (data.length) await prisma.shiftDemand.createMany({ data, skipDuplicates: true });
 }
 
-/** A health centre, clinic or CHPS compound rosters by unit once it has one; a hospital always does. */
+/** Only a health centre rosters by unit (clinical nurses, midwives, public health); a hospital always rosters by ward. Clinics and CHPS compounds keep one roster. */
 export async function rostersByUnit(facilityId: string, facilityType: string, hospitalTypes: string[]) {
   if (hospitalTypes.includes(facilityType)) return true;
+  if (facilityType !== "HEALTH_CENTRE") return false;
   return Boolean(await prisma.department.findFirst({ where: { facilityId, active: true, name: { in: ["Clinical Nurses", "Midwives"] } }, select: { id: true } }));
 }

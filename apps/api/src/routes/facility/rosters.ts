@@ -316,7 +316,7 @@ rostersRouter.post("/", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const exists = await prisma.roster.findFirst({ where: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null } });
   if (exists) return res.status(409).json({ error: "roster_exists", message: `There is already a roster for ${monthName(input)}${dept ? ` in ${dept.name}` : ""}.`, id: exists.id });
   const roster = await prisma.roster.create({ data: { facilityId: who.facilityId, month: input.month, year: input.year, departmentId: dept?.id ?? null, preparedBy: who.email }, include: { department: { select: { name: true } } } });
-  if (dept && !WARD_FACILITY_TYPES.includes(facility.facilityType)) await seedUnitDemand(who.facilityId, dept);
+  if (dept && facility.facilityType === "HEALTH_CENTRE") await seedUnitDemand(who.facilityId, dept);
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_created", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} started the roster for ${monthName(roster)}${dept ? ` in ${dept.name}` : ""}.`,

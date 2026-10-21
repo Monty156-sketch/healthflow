@@ -67,19 +67,16 @@ export const defaultKind = (department: string): "WARD" | "SUPPORT" | "OFFICE" =
       : "WARD";
 
 /**
- * Morning, afternoon and night minimums to start from. A CHPS compound or health centre runs lean; a hospital ward more.
- * Held to what the people on shifts can sustain (about seven duties for every ten people a day), cutting the afternoon first. Nights keep at least one.
+ * Morning, afternoon and night minimums a new facility starts with, by type. They are only a starting point:
+ * every facility can change them. Busier facilities need more on each shift: clinics, polyclinics and hospitals 4/3/3,
+ * regional and teaching hospitals 5/4/4. A health centre starts at 2/1/1 and a CHPS compound at 1/1/1.
  */
-export function starterMinimums(facilityType: string, onShifts: number): [number, number, number] {
-  const base: Record<string, [number, number, number]> = { CHPS_COMPOUND: [1, 1, 1], HEALTH_CENTRE: [2, 2, 1], CLINIC: [2, 2, 1], POLYCLINIC: [3, 2, 2] };
-  const [m0, a0, n0] = base[facilityType] ?? [4, 3, 3];
-  if (onShifts <= 0) return [m0, a0, n0];
-  const cap = Math.max(3, Math.floor(onShifts * 0.7));
-  let [m, a, n] = [m0, a0, n0];
-  while (m + a + n > cap && (a > 1 || m > 1 || n > 1)) {
-    if (a > 1) a--;
-    else if (m > 1) m--;
-    else n--;
-  }
-  return [m, a, n];
+export function starterMinimums(facilityType: string): [number, number, number] {
+  const base: Record<string, [number, number, number]> = {
+    CHPS_COMPOUND: [1, 1, 1],
+    HEALTH_CENTRE: [2, 1, 1],
+    REGIONAL_HOSPITAL: [5, 4, 4],
+    TEACHING_HOSPITAL: [5, 4, 4],
+  };
+  return base[facilityType] ?? [4, 3, 3];
 }

@@ -95,7 +95,7 @@ joinRouter.post("/register", async (req, res) => {
   if (byWard && !input.departmentId && !input.departmentText) fields.departmentId = "Choose your ward or department.";
   // Only a ward has an in-charge; security, drivers and offices are run by the administrator.
   // A health centre rosters by unit: a nurse goes to Clinical Nurses, a midwife to Midwives, public health staff to Public Health.
-  if (!byWard && input.cadreId) {
+  if (code.facility.facilityType === "HEALTH_CENTRE" && input.cadreId) {
     const cadre = await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId }, select: { name: true } });
     const unit = unitForCadre(cadre?.name);
     if (unit) {

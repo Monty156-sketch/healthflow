@@ -226,4 +226,14 @@ describe("a health centre rosters by unit", () => {
     const own = (await api.post("/api/facility/departments", { name: "Chaplaincy", runsNights: false })).body.department;
     expect((await api.patch(`/api/facility/departments/${own.id}`, { name: "Chaplaincy", runsNights: true })).status).toBe(200);
   });
+
+  it("keeps one roster, with no unit choice, for a clinic or CHPS compound", async () => {
+    const { api, facility } = await centre();
+    for (const type of ["CLINIC", "CHPS_COMPOUND"] as const) {
+      await prisma.facility.update({ where: { id: facility.id }, data: { facilityType: type } });
+      expect((await api.get("/api/facility")).body.facility.rosterByWard).toBe(false);
+      const made = await api.post("/api/facility/rosters", { year: 2026, month: type === "CLINIC" ? 11 : 12 });
+      expect(made.status).toBe(201);
+    }
+  });
 });

@@ -15,10 +15,10 @@ import { INVITATION_DAYS } from "../routes/invitations.js";
 
 /** Every cadre and department a health facility in Ghana is likely to have. Added to each facility, so staff imports are not turned away for a missing one. */
 
-const SMALL_FACILITIES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"];
 const CHPS_CADRES = ["Community Health Officer", "Community Health Nurse", "Midwife", "Health Assistant", "Cleaner"];
-const CHPS_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare"];
+const CHPS_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Public Health"];
 const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
+const CLINIC_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Accounts", "Administration", "Support Services"];
 const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Accounts", "Administration", "Support Services"];
 
 /**
@@ -28,7 +28,8 @@ const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Ant
  */
 export function portfolioFor(type?: string | null): { cadres: string[]; departments: string[] } {
   if (type === "CHPS_COMPOUND") return { cadres: CHPS_CADRES, departments: CHPS_DEPARTMENTS };
-  if (type && SMALL_FACILITIES.includes(type)) return { cadres: CENTRE_CADRES, departments: CENTRE_DEPARTMENTS };
+  if (type === "CLINIC") return { cadres: CENTRE_CADRES, departments: CLINIC_DEPARTMENTS };
+  if (type === "HEALTH_CENTRE") return { cadres: CENTRE_CADRES, departments: CENTRE_DEPARTMENTS };
   return { cadres: STANDARD_CADRES, departments: STANDARD_DEPARTMENTS };
 }
 
