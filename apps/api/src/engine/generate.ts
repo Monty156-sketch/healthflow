@@ -153,9 +153,11 @@ interface RunState {
   back?: { shiftId: string; enforcement: "BLOCK" | "PREFER"; firedDay: number; restEnds: number };
   /** The last duty worked: which day, and whether it was a night. Survives days off, so the next block knows what came before. */
   last?: { day: number; night: boolean };
+  /** This person's rotation. It decides which shift follows a rest; the cycle rule only says how many duties and how many days off. */
+  rot?: ERotation | null;
 }
 
-const freshState = (): RunState => ({ runs: new Map(), rest: new Map() });
+const freshState = (rot?: ERotation | null): RunState => ({ runs: new Map(), rest: new Map(), rot: rot ?? null });
 
 /** What a duty on this day would cost this person under their cycle rules. hard > 0 means it breaks a rule set to Block. */
 function dutyCheck(st: RunState, rules: ECycleRule[], day: number, shift: EShift): { hard: number; soft: number } {
@@ -215,8 +217,12 @@ function advance(st: RunState, rules: ECycleRule[], day: number, shift: EShift |
       if (!st.rest.has(day + i) || winner.enforcement === "BLOCK") st.rest.set(day + i, winner.enforcement);
     }
     for (const r of fired) st.runs.set(r.id, 0);
-    st.back = winner.nextShiftAfterRestId
-      ? { shiftId: winner.nextShiftAfterRestId, enforcement: winner.enforcement, firedDay: day, restEnds: day + winner.offDaysRequired }
+    // The shift after the rest is the next one in the person's rotation; a rule's own setting is only a fallback for staff with no rotation.
+    const seq = st.rot?.sequenceShiftIds ?? [];
+    const at = seq.indexOf(shift.id);
+    const after = at >= 0 ? seq[(at + 1) % seq.length] : winner.nextShiftAfterRestId;
+    st.back = after
+      ? { shiftId: after, enforcement: at >= 0 ? st.rot!.enforcement : winner.enforcement, firedDay: day, restEnds: day + winner.offDaysRequired }
       : undefined;
   }
 }
@@ -298,9 +304,21 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     return { ...r, night: counted.length > 0 && counted.every((x) => x.isOvernight) };
   });
   const cycleRules = new Map(staff.map((s) => [s.id, rulesFor(s, kinded)]));
+  const rotationOf = new Map<string, ERotation | null>();
+  for (const s of staff) {
+    rotationOf.set(
+      s.id,
+      (input.rotations ?? []).find(
+        (r) =>
+          r.sequenceShiftIds.length > 1 &&
+          (!r.cadreIds.length || (s.cadreId && r.cadreIds.includes(s.cadreId))) &&
+          (!r.departmentIds.length || (s.departmentId && r.departmentIds.includes(s.departmentId)))
+      ) ?? null
+    );
+  }
   const state = new Map<string, RunState>();
   for (const s of staff) {
-    const st = freshState();
+    const st = freshState(rotationOf.get(s.id));
     for (let d = period.startDay - LOOKBACK; d < period.startDay; d++) {
       const sid = dutyOn(s.id, d);
       advance(st, cycleRules.get(s.id)!, d, sid ? shiftById.get(sid)! : null);
@@ -532,18 +550,6 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   // ---- Carry-over from the last three months (spec Part 4, phase 2): who has
   // already done more or fewer duties, and more or fewer weekends, than their
   // cadre. Only people with history count, so a new starter is not pulled up.
-  const rotationOf = new Map<string, ERotation | null>();
-  for (const s of staff) {
-    rotationOf.set(
-      s.id,
-      (input.rotations ?? []).find(
-        (r) =>
-          r.sequenceShiftIds.length > 1 &&
-          (!r.cadreIds.length || (s.cadreId && r.cadreIds.includes(s.cadreId))) &&
-          (!r.departmentIds.length || (s.departmentId && r.departmentIds.includes(s.departmentId)))
-      ) ?? null
-    );
-  }
   const carryTotal: Record<string, number> = {};
   const carrySpecial: Record<string, number> = {};
   {
@@ -970,14 +976,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
           const end = b.picks[b.picks.length - 1][0];
           const ahead = (w.duties + loadOf(b)) - (w.target * (end - period.startDay + 1)) / days;
           cost += 3 * ahead + (ahead < -3 ? 12 * (ahead + 3) : 0);
-          // The shift after a night rest, and the rotation order.
-          if (w.lastNight && !b.night) {
-            const back = ruleFor(s, true)?.nextShiftAfterRestId;
-            if (back && b.picks[0][1] !== back) {
-              if (ruleFor(s, true)!.enforcement === "BLOCK") continue;
-              cost += 8;
-            }
-          }
+          // The rotation order: the block after a rest starts on the next shift in the person's rotation.
           const rot = rotationOf.get(s.id);
           if (rot && w.lastShift) {
             const seq = rot.sequenceShiftIds;
@@ -985,10 +984,10 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
             const to = seq.indexOf(b.picks[0][1]);
             if (from >= 0 && to >= 0) {
               const dist = (to - from + seq.length) % seq.length;
-              if (dist === 1) cost -= 4;
-              else if (dist >= 2) {
+              if (dist === 1) cost -= 8;
+              else {
                 if (rot.enforcement === "BLOCK") continue;
-                cost += 6;
+                cost += 20;
               }
             }
           }
@@ -1111,7 +1110,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   /** Walks a person's month under their cycle rules and totals what breaks. */
   const scan = (s: EStaff): { hard: number; soft: number } => {
     const mine = by.get(s.id)!;
-    const st = freshState();
+    const st = freshState(rotationOf.get(s.id));
     const rules = cycleRules.get(s.id)!;
     let hard = 0;
     let soft = 0;
@@ -1345,7 +1344,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   const cells: GeneratedCell[] = [...generated, ...fixed].sort((x, y) => x.day - y.day || x.shiftId.localeCompare(y.shiftId) || x.staffId.localeCompare(y.staffId));
   if (input.offShiftId) {
     for (const s of staff) {
-      const st = freshState();
+      const st = freshState(rotationOf.get(s.id));
       const rules = cycleRules.get(s.id)!;
       const mine = by.get(s.id)!;
       for (let d = period.startDay - LOOKBACK; d <= period.endDay; d++) {

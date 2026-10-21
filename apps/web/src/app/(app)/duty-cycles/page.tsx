@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { CycleForm } from "@/components/CycleForm";
-import { ShiftStrip, buildStrip } from "@/components/ShiftStrip";
 import { PatternPreview } from "@/components/PatternPreview";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -234,22 +233,7 @@ export default function DutyCyclesPage() {
                     After <span className="figures font-semibold">{r.consecutiveDuties}</span> consecutive duties, give{" "}
                     <span className="figures font-semibold">{r.offDaysRequired}</span> days off{r.offDaysConsecutive ? ", together" : ""}.
                   </p>
-                  {r.nextShiftAfterRestId || r.blockShiftPatternIds.length > 0 ? (
-                    <>
-                      {r.blockShiftPatternIds.length > 0 && (
-                        <p className="mb-1 text-[15px]">Inside a block: {r.blockShiftPatternIds.map((id) => data.shifts.find((s) => s.id === id)?.name ?? "a shift").join(", ")}.</p>
-                      )}
-                      {r.nextShiftAfterRestId && (
-                        <p className="mb-3 text-[15px]">After the days off, the first duty back is {data.shifts.find((s) => s.id === r.nextShiftAfterRestId)?.name ?? "a shift"}.</p>
-                      )}
-                      <ShiftStrip
-                        cells={buildStrip({ duties: r.consecutiveDuties, off: r.offDaysRequired, pattern: r.blockShiftPatternIds, afterRest: r.nextShiftAfterRestId })}
-                        shifts={data.shifts}
-                      />
-                    </>
-                  ) : (
-                    <PatternPreview duties={r.consecutiveDuties} off={r.offDaysRequired} colour={colour} />
-                  )}
+                  <PatternPreview duties={r.consecutiveDuties} off={r.offDaysRequired} colour={colour} />
                   {isAdmin && editing === null && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       <Button variant="secondary" onClick={() => setEditing(r)}>

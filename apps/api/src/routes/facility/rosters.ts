@@ -140,7 +140,6 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const cycles: ECycleRule[] = cycleRows.map((c) => ({
     id: c.id, name: c.name, countingShiftIds: c.countingShifts.map((s) => s.id), consecutiveDuties: c.consecutiveDuties, offDaysRequired: c.offDaysRequired,
     cadreIds: c.applicableCadreIds, departmentIds: c.applicableDepartmentIds, enforcement: c.enforcement, priority: c.priority,
-    nextShiftAfterRestId: c.nextShiftAfterRestId, blockShiftPatternIds: c.blockShiftPatternIds,
   }));
   const rotations: ERotation[] = rotationRows.map((r) => ({
     id: r.id, name: r.name, sequenceShiftIds: r.sequenceOrder, cadreIds: r.applicableCadreIds, departmentIds: r.applicableDepartmentIds, enforcement: r.enforcement,

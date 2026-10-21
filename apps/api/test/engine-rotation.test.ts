@@ -129,3 +129,25 @@ describe("generating again", () => {
     }
   });
 });
+
+describe("cycles are only rules; the rotation orders the shifts", () => {
+  it("with plain 4 nights / 3 off and 4 days / 2 off rules, each block starts on the next shift in the rotation", () => {
+    const plain = [cycle("n", "4 nights on, 3 off", ["N"], 4, 3, 1), cycle("d", "4 days on, 2 off", ["A"], 4, 2, 2)];
+    const rot: ERotation = { id: "r2", name: "Night then afternoon", sequenceShiftIds: ["N", "A"], cadreIds: [], departmentIds: [], enforcement: "BLOCK" };
+    const input = base({ cycles: plain, rotations: [rot], shifts: [{ ...A, minStaff: 3 }, { ...N, minStaff: 2 }, OFF] });
+    const r = generate(input);
+    expect(r.feasible).toBe(true);
+    let afterRest = 0;
+    let right = 0;
+    for (const s of input.staff) {
+      const list = duties(r, s.id);
+      for (let i = 1; i < list.length; i++) {
+        if (list[i].day === list[i - 1].day + 1) continue;
+        afterRest++;
+        if (list[i].shiftId !== list[i - 1].shiftId) right++;
+      }
+    }
+    expect(afterRest).toBeGreaterThan(0);
+    expect(right).toBe(afterRest);
+  });
+});
