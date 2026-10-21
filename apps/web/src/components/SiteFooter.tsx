@@ -25,7 +25,7 @@ export function SiteFooter() {
         <div className="grid gap-x-8 gap-y-8 grid-cols-2 lg:grid-cols-4">
           <div className="col-span-2 lg:col-span-1">
             <p className="text-lg font-semibold text-[var(--foreground)]">HealthFlow</p>
-            <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-[var(--muted)]">A duty roster you can defend, for Ghana&apos;s health facilities.</p>
+            <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-[var(--muted)]">Fair duty rosters for every ward and every facility in Ghana.</p>
           </div>
           <nav aria-label="Product">
             <h2 className={H}>Product</h2>

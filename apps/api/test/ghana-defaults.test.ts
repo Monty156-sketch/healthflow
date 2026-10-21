@@ -1,3 +1,4 @@
+import { portfolioFor } from "../src/lib/facilitySetup.js";
 import { describe, expect, it } from "vitest";
 import { cadreDefaults, leadsByGrade, starterMinimums } from "../src/lib/dutyPlan.js";
 
@@ -30,5 +31,25 @@ describe("Ghana Health Service cadre defaults", () => {
     expect(starterMinimums("CHPS_COMPOUND", 4)).toEqual([1, 1, 1]);
     expect(starterMinimums("REGIONAL_HOSPITAL", 0)).toEqual([4, 3, 3]);
     expect(starterMinimums("HOSPITAL", 60)).toEqual([4, 3, 3]);
+  });
+});
+
+describe("what each type of facility is offered at registration", () => {
+  it("keeps theatre, radiology and specialists to polyclinics and hospitals", () => {
+    const chps = portfolioFor("CHPS_COMPOUND");
+    const centre = portfolioFor("HEALTH_CENTRE");
+    const hospital = portfolioFor("REGIONAL_HOSPITAL");
+    expect(chps.cadres).toContain("Community Health Officer");
+    expect(chps.cadres).not.toContain("Pharmacist");
+    for (const small of [chps, centre]) {
+      expect(small.departments).not.toContain("Theatre");
+      expect(small.departments).not.toContain("Radiology");
+      expect(small.cadres).not.toContain("Specialist");
+      expect(small.cadres).not.toContain("Radiographer");
+    }
+    expect(centre.cadres).toContain("Physician Assistant");
+    expect(hospital.departments).toContain("Theatre");
+    expect(hospital.cadres).toContain("Specialist");
+    expect(portfolioFor("POLYCLINIC")).toEqual(hospital);
   });
 });

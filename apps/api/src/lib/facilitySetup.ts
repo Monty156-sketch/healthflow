@@ -15,16 +15,34 @@ import { INVITATION_DAYS } from "../routes/invitations.js";
 export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
 export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Accounts", "Stores", "Transport", "Mortuary", "Support Services"];
 
+const SMALL_FACILITIES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"];
+const CHPS_CADRES = ["Community Health Officer", "Community Health Nurse", "Midwife", "Health Assistant", "Cleaner"];
+const CHPS_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Public Health", "Administration"];
+const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
+const CENTRE_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Laboratory", "Pharmacy", "Public Health", "Records", "Administration", "Accounts", "Support Services"];
+
+/**
+ * The cadres and departments a facility of this type is offered at registration.
+ * A CHPS compound or health centre does not have a surgeon, theatre or radiology, so they are not listed;
+ * polyclinics, hospitals, regional and teaching hospitals get the full set. The administrator can add any.
+ */
+export function portfolioFor(type?: string | null): { cadres: string[]; departments: string[] } {
+  if (type === "CHPS_COMPOUND") return { cadres: CHPS_CADRES, departments: CHPS_DEPARTMENTS };
+  if (type && SMALL_FACILITIES.includes(type)) return { cadres: CENTRE_CADRES, departments: CENTRE_DEPARTMENTS };
+  return { cadres: STANDARD_CADRES, departments: STANDARD_DEPARTMENTS };
+}
+
 /** Adds any standard cadre or department the facility does not already have, by name, leaving everything it has as it is. */
-export async function seedGroups(facilityId: string, _type?: FacilityType) {
+export async function seedGroups(facilityId: string, type?: FacilityType) {
+  const portfolio = portfolioFor(type);
   const [deps, cads] = await Promise.all([
     prisma.department.findMany({ where: { facilityId }, select: { name: true } }),
     prisma.cadre.findMany({ where: { facilityId }, select: { name: true } }),
   ]);
   const haveDep = new Set(deps.map((d) => d.name.toLowerCase()));
   const haveCad = new Set(cads.map((c) => c.name.toLowerCase()));
-  const newDeps = STANDARD_DEPARTMENTS.filter((n) => !haveDep.has(n.toLowerCase()));
-  const newCads = STANDARD_CADRES.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
+  const newDeps = portfolio.departments.filter((n) => !haveDep.has(n.toLowerCase()));
+  const newCads = portfolio.cadres.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
   if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name) })) });
   if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, ...cadreDefaults(c.name) })) });
   return { departments: newDeps.length, cadres: newCads.length };

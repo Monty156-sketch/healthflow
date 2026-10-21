@@ -14,7 +14,7 @@ import { appUrl, sendEmail } from "../lib/email.js";
 import { parseOr400 } from "../lib/validate.js";
 import { normalisePhone } from "../lib/sms.js";
 import { issueCode } from "../lib/accessCode.js";
-import { ensureStarterNotice, seedChosen, STANDARD_CADRES, STANDARD_DEPARTMENTS } from "../lib/facilitySetup.js";
+import { ensureStarterNotice, portfolioFor, seedChosen } from "../lib/facilitySetup.js";
 import { makeEnrolmentToken } from "../lib/signedTokens.js";
 import { ensureRules } from "./facility/rules.js";
 import { writeAuditLog } from "../lib/audit.js";
@@ -52,11 +52,12 @@ const input = z.object({
 });
 
 /** What the registration form offers: the usual departments and cadres, ticked by default, and the plans. */
-facilityRegisterRouter.get("/options", async (_req, res) => {
+facilityRegisterRouter.get("/options", async (req, res) => {
+  const portfolio = portfolioFor(typeof req.query.type === "string" ? req.query.type : null);
   const plans = await prisma.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: "asc" }, { monthlyPriceGhs: "asc" }] });
   res.json({
-    departments: STANDARD_DEPARTMENTS,
-    cadres: STANDARD_CADRES,
+    departments: portfolio.departments,
+    cadres: portfolio.cadres,
     plans: plans.map((p) => ({ id: p.id, name: p.name, monthlyPriceGhs: p.monthlyPriceGhs, setupPriceGhs: p.setupPriceGhs, staffBandMin: p.staffBandMin, staffBandMax: p.staffBandMax, features: (p.features as string[] | null) ?? [] })),
   });
 });

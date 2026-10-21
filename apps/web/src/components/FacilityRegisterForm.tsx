@@ -81,9 +81,14 @@ export function FacilityRegisterForm() {
   useEffect(() => {
     let live = true;
     api.get<{ districts: { id: string; name: string; region: string }[] }>("/api/public/districts").then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
-    api.get<Options>("/api/public/register-facility/options").then((o) => { if (live) { setOptions(o); setDepartments(o.departments); setCadres(o.cadres); } }).catch(() => live && setProblem("The form could not load. Check your connection and refresh the page."));
     return () => { live = false; };
   }, []);
+  // The departments and cadres on offer depend on the type of facility, so they are fetched again when the type changes.
+  useEffect(() => {
+    let live = true;
+    api.get<Options>(`/api/public/register-facility/options${v.facilityType ? `?type=${encodeURIComponent(v.facilityType)}` : ""}`).then((o) => { if (live) { setOptions(o); setDepartments(o.departments); setCadres(o.cadres); } }).catch(() => live && setProblem("The form could not load. Check your connection and refresh the page."));
+    return () => { live = false; };
+  }, [v.facilityType]);
   const listed = districts !== null && districts.length > 0;
   const other = districtId === "other";
 
