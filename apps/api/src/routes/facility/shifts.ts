@@ -209,12 +209,9 @@ shiftsRouter.post("/starter", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const who = caller(req);
   const have = await prisma.shift.count({ where: { facilityId: who.facilityId, countsAsDuty: true } });
   if (have > 0) return res.status(409).json({ error: "already_has_shifts", message: "This facility already has shifts." });
-  // Minimums a facility of this size can actually sustain: Ghana Health Service practice by facility type, held to what the people on shifts can cover.
-  const [facility, onShifts] = await Promise.all([
-    prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } }),
-    prisma.staff.count({ where: { facilityId: who.facilityId, status: "ACTIVE", cadre: { onRoster: true, weekdaysOnly: false }, morningOnly: false } }),
-  ]);
-  const [m, a, n] = starterMinimums(facility.facilityType, onShifts);
+  // Starting minimums by facility type; the facility can change any of them.
+  const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } });
+  const [m, a, n] = starterMinimums(facility.facilityType);
   const starters = [
     { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", durationHours: 6, isOvernight: false, minStaff: m, colour: "#b56b12", sortOrder: 1 },
     { name: "Afternoon", code: "M", startTime: "14:00", endTime: "20:00", durationHours: 6, isOvernight: false, minStaff: a, colour: "#25619f", sortOrder: 2 },
