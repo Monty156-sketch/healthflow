@@ -528,6 +528,8 @@ model Staff {
   maxDutiesPerWeek     Int              @default(0) // 0 = no limit
   /// Can take charge of a shift (senior, or named by the in-charge).
   canLead              Boolean          @default(false)
+  /// SENIOR (36 working days a year) or JUNIOR (28), as in the Ghana Civil Service conditions of service. Empty until set.
+  leaveGrade           String?
   maxNightsPerMonth    Int              @default(0) // 0 = no limit
   maxHoursPerMonth     Int              @default(0) // 0 = no limit
   restrictions         StaffRestriction[]

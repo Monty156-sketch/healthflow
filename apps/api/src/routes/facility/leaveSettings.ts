@@ -1,6 +1,7 @@
 // Leave settings (Part 3, 3.4 to 3.6): leave types, yearly entitlements and
 // public holidays. Entitlements start unset on purpose: the figure comes from
 // conditions of service and varies by grade, so the system never invents one.
+import { defaultAnnualDays } from "../../lib/leaveDefaults.js";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -106,7 +107,7 @@ leaveSettingsRouter.get("/entitlements", allowRoles(...READ_ROLES), async (req, 
   const from = new Date(Date.UTC(year, 0, 1));
   const to = new Date(Date.UTC(year + 1, 0, 1));
   const [staff, ents, taken] = await Promise.all([
-    prisma.staff.findMany({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, staffNo: true, cadre: { select: { name: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, staffNo: true, leaveGrade: true, cadre: { select: { name: true } } } }),
     prisma.leaveEntitlement.findMany({ where: { facilityId, leaveTypeId: typeId, leaveYear: year } }),
     prisma.leaveRequest.groupBy({ by: ["staffId", "status"], where: { facilityId, leaveTypeId: typeId, status: { in: ["APPROVED", "SUBMITTED"] }, startDate: { gte: from, lt: to } }, _sum: { daysDeducted: true } }),
   ]);
@@ -120,7 +121,8 @@ leaveSettingsRouter.get("/entitlements", allowRoles(...READ_ROLES), async (req, 
       return {
         staffId: s.id, name: s.fullName, staffNo: s.staffNo, cadre: s.cadre?.name ?? null,
         configured: Boolean(e), daysEntitled: e?.daysEntitled ?? null, daysCarriedOver: e?.daysCarriedOver ?? 0,
-        taken: takenDays, pending: sum(s.id, "SUBMITTED"), remaining: e ? e.daysEntitled + e.daysCarriedOver - takenDays : null,
+        leaveGrade: s.leaveGrade, defaultDays: defaultAnnualDays(s.leaveGrade),
+        taken: takenDays, pending: sum(s.id, "SUBMITTED"), remaining: e ? e.daysEntitled + e.daysCarriedOver - takenDays : defaultAnnualDays(s.leaveGrade) === null ? null : defaultAnnualDays(s.leaveGrade)! - takenDays,
       };
     }),
   });

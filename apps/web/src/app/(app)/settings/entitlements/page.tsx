@@ -19,7 +19,7 @@ function Sheet({ data, reload }: { data: Data; reload: () => void }) {
   const [onlyUnset, setOnlyUnset] = useState(true);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "success" | "block"; text: string } | null>(null);
-  const unset = data.rows.filter((r) => !r.configured).length;
+  const unset = data.rows.filter((r) => !r.configured && r.defaultDays === null).length;
   const val = (r: EntitlementRow) => edits[r.staffId] ?? { e: r.daysEntitled === null ? "" : String(r.daysEntitled), c: String(r.daysCarriedOver) };
   const put = (id: string, r: EntitlementRow, patch: Partial<{ e: string; c: string }>) => setEdits((o) => ({ ...o, [id]: { ...val(r), ...patch } }));
   const fail = (err: unknown) => setMsg({ tone: "block", text: err instanceof ApiError && (err.body as { fields?: Record<string, string> })?.fields ? "Check the figures. Days cannot be negative or more than a year." : "It was not saved. Check your connection and try again." });
@@ -49,7 +49,7 @@ function Sheet({ data, reload }: { data: Data; reload: () => void }) {
 
   return (
     <div className="space-y-5">
-      {unset > 0 && <Notice tone="warning">{unset} {unset === 1 ? "person has" : "people have"} no figure set. The figure comes from your conditions of service and can differ by grade, so nothing is filled in for you.</Notice>}
+      {unset > 0 && <Notice tone="warning">{unset} {unset === 1 ? "person has" : "people have"} no figure and no leave grade. Set their leave grade on their staff record (senior staff 36 working days, junior staff 28), or enter the days here.</Notice>}
       <Panel title="Set for all staff" description="Same for everyone. Change anyone below.">
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Days a year">{(a) => <Input {...a} className="figures w-28" inputMode="decimal" value={bulk} onChange={(e) => setBulk(e.target.value.replace(/[^\d.]/g, ""))} />}</Field>
@@ -73,7 +73,7 @@ function Sheet({ data, reload }: { data: Data; reload: () => void }) {
                 <tr key={r.staffId}>
                   <th scope="row" className="border-b border-[var(--border)] px-3 py-2 font-medium">{r.name}{r.cadre && <span className="font-normal text-[var(--muted)]">, {r.cadre}</span>}</th>
                   <td className="border-b border-[var(--border)] px-3 py-1">
-                    <Input aria-label={`Days a year for ${r.name}`} className="figures w-24" inputMode="decimal" placeholder="Not set" value={v.e} onChange={(e) => put(r.staffId, r, { e: e.target.value.replace(/[^\d.]/g, "") })} />
+                    <Input aria-label={`Days a year for ${r.name}`} className="figures w-24" inputMode="decimal" placeholder={r.defaultDays !== null ? `${r.defaultDays} by grade` : "Not set"} value={v.e} onChange={(e) => put(r.staffId, r, { e: e.target.value.replace(/[^\d.]/g, "") })} />
                   </td>
                   <td className="border-b border-[var(--border)] px-3 py-1">
                     <Input aria-label={`Days carried over for ${r.name}`} className="figures w-24" inputMode="decimal" value={v.c} onChange={(e) => put(r.staffId, r, { c: e.target.value.replace(/[^\d.]/g, "") })} />

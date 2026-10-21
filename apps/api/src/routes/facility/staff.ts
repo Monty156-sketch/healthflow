@@ -63,6 +63,7 @@ const staffInput = z
       .default(0),
     /** Can take charge of a shift. */
     canLead: z.boolean().optional(),
+    leaveGrade: z.enum(["SENIOR", "JUNIOR"]).nullish(),
     /** 0 means no limit. */
     maxNightsPerMonth: z.number({ invalid_type_error: "Most nights in a month must be a number." }).int("Most nights in a month must be a whole number.").min(0, "Most nights in a month cannot be negative.").max(31, "Most nights in a month is too high.").optional(),
     maxHoursPerMonth: z.number({ invalid_type_error: "Most hours in a month must be a number." }).int("Most hours in a month must be a whole number.").min(0, "Most hours in a month cannot be negative.").max(744, "Most hours in a month is too high.").optional(),
@@ -150,6 +151,7 @@ function present(s: Omit<StaffRow, "photoUrl"> & { photoUrl?: string | null }) {
     exclusionReason: s.exclusionReason,
     maxDutiesPerWeek: s.maxDutiesPerWeek,
     canLead: s.canLead,
+    leaveGrade: s.leaveGrade,
     maxNightsPerMonth: s.maxNightsPerMonth,
     maxHoursPerMonth: s.maxHoursPerMonth,
     account: s.userProfile
@@ -259,6 +261,7 @@ staffRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
       canLead: input.canLead ?? leadsByGrade(input.position),
+      leaveGrade: input.leaveGrade ?? null,
       maxNightsPerMonth: input.maxNightsPerMonth ?? 0,
       maxHoursPerMonth: input.maxHoursPerMonth ?? 0,
       eligibleForShifts: { connect: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
@@ -299,6 +302,7 @@ const FIELD_LABEL: Record<string, string> = {
   exclusionReason: "night exclusion reason",
   maxDutiesPerWeek: "maximum duties per week",
   canLead: "who can lead a shift",
+  leaveGrade: "leave grade",
   maxNightsPerMonth: "most nights in a month",
   maxHoursPerMonth: "most hours in a month",
   eligibleShifts: "shifts they may work",
@@ -349,6 +353,7 @@ staffRouter.patch("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
       exclusionReason: input.excludedFromNights ? input.exclusionReason : null,
       maxDutiesPerWeek: input.maxDutiesPerWeek,
       ...(input.canLead !== undefined ? { canLead: input.canLead } : {}),
+      ...(input.leaveGrade !== undefined ? { leaveGrade: input.leaveGrade } : {}),
       ...(input.maxNightsPerMonth !== undefined ? { maxNightsPerMonth: input.maxNightsPerMonth } : {}),
       ...(input.maxHoursPerMonth !== undefined ? { maxHoursPerMonth: input.maxHoursPerMonth } : {}),
       eligibleForShifts: { set: [...new Set(input.eligibleShiftIds)].map((id) => ({ id })) },
