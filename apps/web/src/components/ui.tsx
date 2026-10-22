@@ -81,7 +81,7 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
       <button
         type="button"
         onClick={() => setShown((x) => !x)}
-        aria-label={shown ? "Hide password" : "Show password"}
+        aria-label={shown ? "Hide what I typed" : "Show what I typed"}
         aria-pressed={shown}
         className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"
       >
