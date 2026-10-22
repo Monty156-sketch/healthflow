@@ -64,6 +64,20 @@ describe("clocking in and out", () => {
 
   afterEach(() => vi.useRealTimers());
 
+  it("two taps at the same moment make one clock-in and one attendance record", async () => {
+    const { facility, admin, nurse } = await setup();
+    await admin.put("/api/facility/geofence", { lat: 10.06, lng: -2.5, radiusM: 150 });
+    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, fullName: "Ama Dery" } });
+    const shift = await prisma.shift.create({ data: { facilityId: facility.id, name: "Day", code: "D", startTime: "00:00", endTime: "23:59", durationHours: 24, minStaff: 1 } });
+    const now = new Date();
+    const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: now.getUTCMonth() + 1, year: now.getUTCFullYear(), status: "PUBLISHED" } });
+    await prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: staff.id, shiftId: shift.id, dutyDate: new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000) } });
+    const both = await Promise.all([nurse.post("/api/facility/me/clock", { kind: "IN", ...here }), nurse.post("/api/facility/me/clock", { kind: "IN", ...here })]);
+    expect(both.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(await prisma.clockEvent.count({ where: { staffId: staff.id } })).toBe(1);
+    expect(await prisma.attendance.count({ where: { staffId: staff.id } })).toBe(1);
+  });
+
   it("marks a night nurse who clocks in after midnight against last evening's night duty", async () => {
     // The clock is set first so the sign-in tokens are issued at the same moment the test runs in.
     vi.useFakeTimers({ toFake: ["Date"] });

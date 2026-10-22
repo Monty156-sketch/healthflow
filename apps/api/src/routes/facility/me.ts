@@ -237,8 +237,9 @@ meRouter.put("/notification-preferences", async (req, res) => {
 
 // ------------------------------------------------------------- clock in and out
 
-const clockState = async (facilityId: string, staffId: string) => {
-  const last = await prisma.clockEvent.findFirst({ where: { facilityId, staffId }, orderBy: { at: "desc" } });
+type Db = Pick<typeof prisma, "clockEvent" | "rosterAssignment" | "attendance">;
+const clockState = async (facilityId: string, staffId: string, db: Db = prisma) => {
+  const last = await db.clockEvent.findFirst({ where: { facilityId, staffId }, orderBy: { at: "desc" } });
   return { state: last?.kind === "IN" ? ("IN" as const) : ("OUT" as const), lastAt: last?.at ?? null };
 };
 
@@ -264,45 +265,52 @@ meRouter.post("/clock", async (req, res) => {
   if (!body) return;
   const f = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { geoLat: true, geoLng: true, geoRadiusM: true } });
   if (f.geoLat === null || f.geoLng === null || f.geoRadiusM === null) return res.status(409).json({ error: "geofence_off", message: "Your facility has not turned on clocking in and out." });
-  const now = await clockState(who.facilityId, who.staffId);
-  if (body.kind === "IN" && now.state === "IN") return res.status(409).json({ error: "already_in", message: "You are already clocked in." });
-  if (body.kind === "OUT" && now.state === "OUT") return res.status(409).json({ error: "already_out", message: "You are not clocked in." });
-  const distance = Math.round(metresBetween(f.geoLat, f.geoLng, body.lat, body.lng));
-  if (!insideArea(distance, f.geoRadiusM, body.accuracy)) {
-    return res.status(403).json({ error: "outside_area", message: `You are not at the facility. Move closer and try again.` });
-  }
-  await prisma.clockEvent.create({ data: { facilityId: who.facilityId, staffId: who.staffId, kind: body.kind, distanceM: distance } });
-
-  // Clocking in marks the person present, or late, against today's published duty, or against last night's
-  // night duty when it is still running (a night shift clocked into after midnight). A record is made once.
-  if (body.kind === "IN") {
-    const at = new Date();
-    const today = new Date(Math.floor(at.getTime() / DAY) * DAY);
-    const nowMin = at.getUTCHours() * 60 + at.getUTCMinutes();
-    const pick = { where: { staffId: who.staffId, facilityId: who.facilityId, roster: { status: "PUBLISHED" as const }, shift: { countsAsDuty: true } }, include: { shift: { select: { startTime: true, endTime: true } } } };
-    let duty = await prisma.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: today } });
-    let startedYesterday = false;
-    if (!duty) {
-      const last = await prisma.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: new Date(today.getTime() - DAY) } });
-      const s0 = last?.shift.startTime ? clock(last.shift.startTime) : null;
-      const e0 = last?.shift.endTime ? clock(last.shift.endTime) : null;
-      if (last && s0 !== null && e0 !== null && e0 <= s0 && nowMin < e0) {
-        duty = last;
-        startedYesterday = true;
+  const [lat0, lng0, radius0] = [f.geoLat, f.geoLng, f.geoRadiusM];
+  // One tap at a time per person: a second tap that arrives together waits, then sees the first and is turned away,
+  // so there is never a double clock-in or a second attendance record.
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${who.staffId}))`;
+    const now = await clockState(who.facilityId, who.staffId, tx);
+    if (body.kind === "IN" && now.state === "IN") return { status: 409, body: { error: "already_in", message: "You are already clocked in." } };
+    if (body.kind === "OUT" && now.state === "OUT") return { status: 409, body: { error: "already_out", message: "You are not clocked in." } };
+    const distance = Math.round(metresBetween(lat0, lng0, body.lat, body.lng));
+    if (!insideArea(distance, radius0, body.accuracy)) {
+      return { status: 403, body: { error: "outside_area", message: `You are not at the facility. Move closer and try again.` } };
+    }
+    await tx.clockEvent.create({ data: { facilityId: who.facilityId, staffId: who.staffId, kind: body.kind, distanceM: distance } });
+  
+    // Clocking in marks the person present, or late, against today's published duty, or against last night's
+    // night duty when it is still running (a night shift clocked into after midnight). A record is made once.
+    if (body.kind === "IN") {
+      const at = new Date();
+      const today = new Date(Math.floor(at.getTime() / DAY) * DAY);
+      const nowMin = at.getUTCHours() * 60 + at.getUTCMinutes();
+      const pick = { where: { staffId: who.staffId, facilityId: who.facilityId, roster: { status: "PUBLISHED" as const }, shift: { countsAsDuty: true } }, include: { shift: { select: { startTime: true, endTime: true } } } };
+      let duty = await tx.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: today } });
+      let startedYesterday = false;
+      if (!duty) {
+        const last = await tx.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: new Date(today.getTime() - DAY) } });
+        const s0 = last?.shift.startTime ? clock(last.shift.startTime) : null;
+        const e0 = last?.shift.endTime ? clock(last.shift.endTime) : null;
+        if (last && s0 !== null && e0 !== null && e0 <= s0 && nowMin < e0) {
+          duty = last;
+          startedYesterday = true;
+        }
+      }
+      if (duty && !(await tx.attendance.findFirst({ where: { staffId: who.staffId, rosterAssignmentId: duty.id }, select: { id: true } }))) {
+        const start = duty.shift.startTime ? clock(duty.shift.startTime) : null;
+        const late = start === null ? 0 : Math.max(0, startedYesterday ? nowMin + 24 * 60 - start : nowMin - start);
+        await tx.attendance
+          .create({
+            data: {
+              facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: startedYesterday ? new Date(today.getTime() - DAY) : today, shiftId: duty.shiftId,
+              status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
+            },
+          })
       }
     }
-    if (duty && !(await prisma.attendance.findFirst({ where: { staffId: who.staffId, rosterAssignmentId: duty.id }, select: { id: true } }))) {
-      const start = duty.shift.startTime ? clock(duty.shift.startTime) : null;
-      const late = start === null ? 0 : Math.max(0, startedYesterday ? nowMin + 24 * 60 - start : nowMin - start);
-      await prisma.attendance
-        .create({
-          data: {
-            facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: startedYesterday ? new Date(today.getTime() - DAY) : today, shiftId: duty.shiftId,
-            status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
-          },
-        })
-        .catch(() => undefined);
-    }
-  }
+    return null;
+  });
+  if (outcome) return res.status(outcome.status).json(outcome.body);
   res.status(201).json({ ...(await clockState(who.facilityId, who.staffId)) });
 });
