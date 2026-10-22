@@ -181,12 +181,35 @@ billingConsole.post("/invoices/generate", async (req, res) => {
   res.status(201).json({ issued: made, skipped: p.items.length - made });
 });
 
-async function docFor(id: string) {
+async function docFor(id: string, receipt = false) {
   const i = await prisma.invoice.findUnique({ where: { id }, include: { facility: { select: { name: true } } } });
   if (!i) return null;
-  return { row: i, buffer: await invoicePdf({ number: i.invoiceNumber, facilityName: i.facility.name, issuedAt: i.issuedAt, dueAt: i.dueAt, periodStart: i.periodStart, periodEnd: i.periodEnd, lines: i.lineItems as unknown as Line[], totalGhs: i.totalGhs, status: i.status, paidAt: i.paidAt, paymentReference: i.paymentReference }) };
+  return { row: i, buffer: await invoicePdf({ number: i.invoiceNumber, facilityName: i.facility.name, issuedAt: i.issuedAt, dueAt: i.dueAt, periodStart: i.periodStart, periodEnd: i.periodEnd, lines: i.lineItems as unknown as Line[], totalGhs: i.totalGhs, status: i.status, paidAt: i.paidAt, paymentReference: i.paymentReference, paymentMethod: i.paymentMethod, receipt }) };
 }
 export { docFor as invoiceDocument };
+
+/** Every payment received, newest first, and for each facility when it last paid and what it has paid in all. */
+billingConsole.get("/payments", async (req, res) => {
+  const m = typeof req.query.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : null;
+  const range = m ? { gte: new Date(`${m}-01T00:00:00Z`), lt: new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1)) } : undefined;
+  const paid = await prisma.invoice.findMany({
+    where: { status: "PAID", ...(range ? { paidAt: range } : {}) }, orderBy: { paidAt: "desc" }, take: 500,
+    select: { id: true, invoiceNumber: true, totalGhs: true, paidAt: true, paymentMethod: true, paymentReference: true, facility: { select: { id: true, name: true } } },
+  });
+  const facilities = await prisma.facility.findMany({
+    where: { active: true, status: { in: ["TRIAL", "ACTIVE", "LAPSED", "SUSPENDED"] } }, orderBy: { name: "asc" },
+    select: { id: true, name: true, status: true, subscription: { select: { currentPeriodEnd: true } }, invoices: { where: { status: "PAID" }, select: { totalGhs: true, paidAt: true } } },
+  });
+  res.json({
+    month: m,
+    payments: paid.map((i) => ({ id: i.id, number: i.invoiceNumber, facilityId: i.facility.id, facility: i.facility.name, totalGhs: i.totalGhs, paidAt: i.paidAt, method: i.paymentMethod, reference: i.paymentReference })),
+    receivedGhs: paid.reduce((n, i) => n + i.totalGhs, 0),
+    facilities: facilities.map((f) => {
+      const last = f.invoices.reduce<Date | null>((d, i) => (i.paidAt && (!d || i.paidAt > d) ? i.paidAt : d), null);
+      return { id: f.id, name: f.name, status: f.status, payments: f.invoices.length, paidGhs: f.invoices.reduce((n, i) => n + i.totalGhs, 0), lastPaidAt: last, paidUpTo: f.invoices.length ? f.subscription?.currentPeriodEnd ?? null : null };
+    }).sort((a, b) => (b.lastPaidAt?.getTime() ?? 0) - (a.lastPaidAt?.getTime() ?? 0) || a.name.localeCompare(b.name)),
+  });
+});
 
 billingConsole.get("/invoices/:id/pdf", async (req, res) => {
   const d = await docFor(String(req.params.id));

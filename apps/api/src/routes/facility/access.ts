@@ -17,7 +17,7 @@ accessRouter.get("/", async (req, res) => {
   const canPay = who.role === "FACILITY_ADMIN";
   const end = accessEnds(f, f.subscription);
   const days = end ? daysUntil(end) : null;
-  const locked = f.status === "PENDING" || f.status === "DECLINED" || f.status === "LAPSED";
+  const locked = f.status === "PENDING" || f.status === "DECLINED" || f.status === "LAPSED" || f.status === "SUSPENDED";
   const knowsOfBilling = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"].includes(who.role);
   res.json({
     status: f.status,

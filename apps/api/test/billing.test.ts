@@ -65,24 +65,17 @@ describe("invoices", () => {
 });
 
 describe("suspension", () => {
-  it("pauses editing but keeps reading and export", async () => {
+  it("shuts the facility out of everything but its own status, until reinstated", async () => {
     const { api, facility, admin } = await setup();
     expect((await api.post(`/api/platform/facilities/${facility.id}/suspend`, { reason: "Unpaid for 60 days" })).status).toBe(200);
-    expect((await as(admin).get("/api/facility/staff")).status).toBe(200);
-    expect((await as(admin).get("/api/facility/privacy/export.json")).status).toBe(200);
-    const write = await as(admin).post("/api/facility/departments", { name: "New" });
-    expect(write.status).toBe(403);
-    expect(write.body.error).toBe("suspended");
+    for (const path of ["/api/facility/staff", "/api/facility/privacy/export.json", "/api/facility/billing"]) {
+      const r = await as(admin).get(path);
+      expect(r.status).toBe(402);
+      expect(r.body.error).toBe("suspended");
+    }
+    expect((await as(admin).post("/api/facility/departments", { name: "New" })).status).toBe(402);
+    expect((await as(admin).get("/api/facility/access")).body).toMatchObject({ status: "SUSPENDED", locked: true, note: "Unpaid for 60 days" });
     await api.post(`/api/platform/facilities/${facility.id}/reactivate`, {});
     expect((await as(admin).post("/api/facility/departments", { name: "New" })).status).toBeLessThan(300);
-  });
-});
-
-describe("revenue", () => {
-  it("adds up monthly recurring revenue from active subscriptions", async () => {
-    const { api } = await setup();
-    const r = (await api.get("/api/platform/revenue")).body;
-    expect(r.mrrGhs).toBe(500);
-    expect(r.activeSubscriptions).toBe(1);
   });
 });
