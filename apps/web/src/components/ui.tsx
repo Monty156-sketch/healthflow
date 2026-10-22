@@ -15,6 +15,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
 } from "react";
 import Link from "next/link";
 
@@ -71,7 +72,29 @@ export function Label(props: LabelHTMLAttributes<HTMLLabelElement>) {
 }
 
 export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={`${CONTROL} ${className}`} {...props} />;
+  const [shown, setShown] = useState(false);
+  if (props.type !== "password") return <input className={`${CONTROL} ${className}`} {...props} />;
+  // Every password box gets an eye to show or hide what was typed.
+  return (
+    <div className="relative">
+      <input className={`${CONTROL} pr-12 ${className}`} {...props} type={shown ? "text" : "password"} />
+      <button
+        type="button"
+        onClick={() => setShown((x) => !x)}
+        aria-label={shown ? "Hide what I typed" : "Show what I typed"}
+        aria-pressed={shown}
+        className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)]"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          {shown ? (
+            <><path d="M3 3l18 18" /><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c5 0 8.5 4 9.5 6a14 14 0 0 1-3 3.8M6.5 7.6A14 14 0 0 0 2.5 12c1 2 4.5 6 9.5 6a9.6 9.6 0 0 0 3.4-.6" /><path d="M9.9 10a3 3 0 0 0 4.1 4.1" /></>
+          ) : (
+            <><path d="M2.5 12C3.5 10 7 6 12 6s8.5 4 9.5 6c-1 2-4.5 6-9.5 6S3.5 14 2.5 12z" /><circle cx="12" cy="12" r="3" /></>
+          )}
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 export function Select({ className = "", children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
