@@ -58,17 +58,6 @@ describe("staff joining with the facility access code", () => {
     expect((await pub.post("/api/auth/login", { email: "ama@sombo.test", password: PASSWORD })).status).toBe(200);
   });
 
-  it("puts CHPS compounds and clinics on the same, smallest plan", async () => {
-    const small = await prisma.plan.create({ data: { name: "CHPS and Clinic", monthlyPriceGhs: 150, sortOrder: 1 } });
-    const big = await prisma.plan.create({ data: { name: "Hospital", monthlyPriceGhs: 1000, sortOrder: 2 } });
-    for (const type of ["CHPS_COMPOUND", "CLINIC"]) {
-      expect((await pub.get(`/api/public/register-facility/options?type=${type}`)).body.plans.map((p: { id: string }) => p.id)).toEqual([small.id]);
-    }
-    expect((await pub.get("/api/public/register-facility/options?type=HOSPITAL")).body.plans).toHaveLength(2);
-    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: big.id }))).body.fields.planId).toBeTruthy();
-    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: small.id }))).status).toBe(201);
-  });
-
   it("turns away a taken email or staff number, a weak password, a stale notice, a revoked code, and respects the use limit", async () => {
     const { api, facility, code } = await setup();
     await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "S-100", fullName: "Someone", status: "ACTIVE" } });
@@ -150,6 +139,17 @@ describe("a facility registering itself", () => {
     expect(facility.districtId).toBe(district.id);
     expect(facility.subscription).toMatchObject({ planId: plan.id, status: "TRIAL" });
     expect((await pub.get("/api/public/register-facility/options")).body.plans).toHaveLength(1);
+  });
+
+  it("puts CHPS compounds and clinics on the same, smallest plan", async () => {
+    const small = await prisma.plan.create({ data: { name: "CHPS and Clinic", monthlyPriceGhs: 150, sortOrder: 1 } });
+    const big = await prisma.plan.create({ data: { name: "Hospital", monthlyPriceGhs: 1000, sortOrder: 2 } });
+    for (const type of ["CHPS_COMPOUND", "CLINIC"]) {
+      expect((await pub.get(`/api/public/register-facility/options?type=${type}`)).body.plans.map((p: { id: string }) => p.id)).toEqual([small.id]);
+    }
+    expect((await pub.get("/api/public/register-facility/options?type=HOSPITAL")).body.plans).toHaveLength(2);
+    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: big.id }))).body.fields.planId).toBeTruthy();
+    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: small.id }))).status).toBe(201);
   });
 
   it("turns away a taken email, a repeated facility, a weak password, and missing consent", async () => {
