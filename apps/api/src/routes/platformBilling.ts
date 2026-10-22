@@ -7,6 +7,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
+import { extendAfterPayment } from "../lib/access.js";
 import { platformAudit } from "../lib/platformAudit.js";
 import { invoicePdf, paymentTermsDays, bankDetails } from "../lib/invoicePdf.js";
 import { sendEmail } from "../lib/email.js";
@@ -99,7 +100,7 @@ billingConsole.post("/facilities/:id/suspend", async (req, res) => {
   if (!input) return;
   const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
   if (!f) return res.status(404).json({ error: "not_found" });
-  await prisma.facility.update({ where: { id: f.id }, data: { status: "SUSPENDED" } });
+  await prisma.facility.update({ where: { id: f.id }, data: { status: "SUSPENDED", accessNote: input.reason } });
   await prisma.subscription.updateMany({ where: { facilityId: f.id }, data: { status: "SUSPENDED" } });
   await platformAudit(req, "facility_suspended", `${liveUser(req).displayName} suspended ${f.name}: ${input.reason}. Reading and export stay open; generating and editing are paused.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   res.json({ ok: true });
@@ -108,9 +109,14 @@ billingConsole.post("/facilities/:id/suspend", async (req, res) => {
 billingConsole.post("/facilities/:id/reactivate", async (req, res) => {
   const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
   if (!f) return res.status(404).json({ error: "not_found" });
-  await prisma.facility.update({ where: { id: f.id }, data: { status: "ACTIVE" } });
-  await prisma.subscription.updateMany({ where: { facilityId: f.id }, data: { status: "ACTIVE" } });
-  await platformAudit(req, "facility_reactivated", `${liveUser(req).displayName} reactivated ${f.name}.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
+  // Back to what it was, unless its date has passed in the meantime: then it is locked until paid or extended.
+  const cur = await prisma.facility.findUnique({ where: { id: f.id }, select: { trialEndsAt: true, subscription: { select: { currentPeriodEnd: true, trialEndsAt: true } } } });
+  const end = cur?.subscription?.trialEndsAt ?? cur?.subscription?.currentPeriodEnd ?? null;
+  const passed = Boolean(end && end.getTime() <= Date.now());
+  const onTrial = Boolean(cur?.subscription?.trialEndsAt);
+  await prisma.facility.update({ where: { id: f.id }, data: { status: passed ? "LAPSED" : onTrial ? "TRIAL" : "ACTIVE", accessNote: null } });
+  await prisma.subscription.updateMany({ where: { facilityId: f.id }, data: { status: passed ? "PAST_DUE" : onTrial ? "TRIAL" : "ACTIVE" } });
+  await platformAudit(req, "facility_reactivated", `${liveUser(req).displayName} reinstated ${f.name}${passed ? ", but its paid period had already ended, so it stays locked until the bill is paid or the date is extended" : ""}.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   res.json({ ok: true });
 });
 
@@ -210,6 +216,7 @@ billingConsole.post("/invoices/:id/payment", async (req, res) => {
   // A facility that was past due returns to active when nothing is overdue any more.
   const stillOwing = await prisma.invoice.count({ where: { facilityId: i.facilityId, OR: [{ status: "OVERDUE" }, { status: "ISSUED", dueAt: { lt: new Date() } }] } });
   if (stillOwing === 0) await prisma.subscription.updateMany({ where: { facilityId: i.facilityId, status: "PAST_DUE" }, data: { status: "ACTIVE" } });
+  await extendAfterPayment(i.facilityId);
   await platformAudit(req, "payment_recorded", `${liveUser(req).displayName} recorded payment of GHS ${i.totalGhs.toFixed(2)} against invoice ${i.invoiceNumber} (${input.method.replace(/_/g, " ").toLowerCase()}, reference ${input.reference}).`, { facilityId: i.facilityId, entityType: "Invoice", entityId: i.id });
   res.json({ ok: true });
 });

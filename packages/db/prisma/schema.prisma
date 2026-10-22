@@ -34,6 +34,12 @@ enum FacilityStatus {
   TRIAL
   ACTIVE
   SUSPENDED
+  /// Registered itself; waiting for PS Tech to approve. Nothing is open until then.
+  PENDING
+  /// PS Tech did not approve the registration.
+  DECLINED
+  /// The trial or the paid month ended without payment. Only billing is open.
+  LAPSED
 }
 
 enum Role {
@@ -359,6 +365,8 @@ model Facility {
   dataProtectionContactEmail  String?
   status                      FacilityStatus @default(TRIAL)
   trialEndsAt                 DateTime?
+  /// Why the facility is declined or suspended, in PS Tech's words, shown to the facility.
+  accessNote                  String?
 
   // Roster Engine v2 fairness tolerances (Part 4)
   fairnessToleranceDuties      Int    @default(1)

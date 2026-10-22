@@ -85,17 +85,14 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   const passwordHash = await hashPassword(body.password);
 
   const facility = await prisma.facility.create({
-    data: { name: body.facilityName, facilityType: body.facilityType, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "TRIAL" },
+    data: { name: body.facilityName, facilityType: body.facilityType, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
   });
   // A health centre rosters by unit, so it always has the three, whatever was ticked.
   const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Midwives", "Public Health"] : [];
   const have = new Set(body.departments.map((d) => d.trim().toLowerCase()));
   await seedChosen(facility.id, [...body.departments, ...units.filter((u) => !have.has(u.toLowerCase()))], body.cadres);
-  const trialEnds = new Date(Date.now() + 30 * 86_400_000);
-  if (plan) {
-    await prisma.subscription.create({ data: { facilityId: facility.id, planId: plan.id, status: "TRIAL", trialEndsAt: trialEnds, currentPeriodStart: new Date(), currentPeriodEnd: trialEnds } });
-    await prisma.facility.update({ where: { id: facility.id }, data: { trialEndsAt: trialEnds } });
-  }
+  // The 30 day trial starts when PS Tech approves the registration, not now.
+  if (plan) await prisma.subscription.create({ data: { facilityId: facility.id, planId: plan.id, status: "TRIAL" } });
   await ensureRules(facility.id);
   const { notice } = await ensureStarterNotice(facility.id, facility.name);
   await prisma.$transaction(async (tx) => {
@@ -113,8 +110,8 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
 
   const notify = (process.env.ACCESS_REQUEST_NOTIFY ?? "muslimfroko05@gmail.com").split(",").map((s) => s.trim()).filter(Boolean);
   await Promise.allSettled([
-    ...notify.map((to) => sendEmail({ to, subject: `A facility registered: ${facility.name}`, text: `${facility.name}, ${body.region}${district ? `, ${district.name}` : body.districtText ? `, district: ${body.districtText}` : ""}\nAdministrator: ${body.adminName}, ${body.adminEmail}, ${body.adminPhone}\nPlan: ${plan?.name ?? "none chosen"}. Departments chosen: ${body.departments.length}. Cadres chosen: ${body.cadres.length}.\n\nIt is on a 30 day trial. See it in the console: ${appUrl("/platform")}` })),
-    sendEmail({ to: body.adminEmail, subject: `${facility.name} is registered on HealthFlow`, text: `Dear ${body.adminName},\n\n${facility.name} is registered on HealthFlow.\n\nYour staff access code is ${code.code}. Give it to your staff. They open ${appUrl("/join")}, enter it, and you approve each person.\n\nSign in at ${appUrl("/login")} with this email address. You will set up an authenticator app the first time.\n\nPS Tech, Wa, Upper West Region, Ghana. 055 457 1800.` }),
+    ...notify.map((to) => sendEmail({ to, subject: `A facility needs approval: ${facility.name}`, text: `${facility.name}, ${body.region}${district ? `, ${district.name}` : body.districtText ? `, district: ${body.districtText}` : ""}\nAdministrator: ${body.adminName}, ${body.adminEmail}, ${body.adminPhone}\nPlan: ${plan?.name ?? "none chosen"}. Departments chosen: ${body.departments.length}. Cadres chosen: ${body.cadres.length}.\n\nIt is waiting for your approval. Nothing opens for them until you approve it: ${appUrl("/platform/registrations")}` })),
+    sendEmail({ to: body.adminEmail, subject: `${facility.name}: registration received`, text: `Dear ${body.adminName},\n\nWe have received the registration for ${facility.name}. PS Tech checks each new facility before it opens, and may telephone you on ${body.adminPhone}. You will get an email as soon as it is approved, and your 30 day trial starts then.\n\nYou can sign in at ${appUrl("/login")} with this email address to set up your authenticator app and see the status.\n\nPS Tech, Wa, Upper West Region, Ghana. 055 457 1800.` }),
   ]);
   res.status(201).json({ facilityName: facility.name, code: code.code, joinUrl: appUrl(`/join/${code.code}`), signInUrl: appUrl("/login"), enrolmentToken: makeEnrolmentToken(created.id) });
 });

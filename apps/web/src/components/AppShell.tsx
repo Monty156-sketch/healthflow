@@ -9,7 +9,7 @@ import { createContext, ReactNode, useContext, useEffect, useState, useSyncExter
 import { useAuth } from "@/lib/auth-context";
 import { useResource } from "@/lib/useApi";
 import { ApiError } from "@/lib/api";
-import { ROLE } from "@/lib/format";
+import { ROLE, showDate } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
 import { getSupport, setSupport } from "@/lib/supportSession";
 import { SectionTabs } from "@/components/SectionTabs";
@@ -281,6 +281,47 @@ export function NoFacilityNotice({ role }: { role: string }) {
   );
 }
 
+interface Access {
+  status: string;
+  locked: boolean;
+  canPay: boolean;
+  note: string | null;
+  endsOn: string | null;
+  kind: "trial" | "subscription";
+  daysLeft: number | null;
+  reminder: boolean;
+}
+
+const dayWord = (n: number) => (n === 1 ? "tomorrow" : `in ${n} days`);
+
+/** What a person sees while their facility is waiting for approval, declined, or unpaid. Only the bills page is open, to the administrator. */
+function LockedScreen({ access, facility, onSignOut, children }: { access: Access; facility: string | undefined; onSignOut: () => void; children: ReactNode }) {
+  const pathname = usePathname();
+  const onBilling = pathname === "/billing";
+  const lapsed = access.status === "LAPSED";
+  const head =
+    access.status === "PENDING" ? "Waiting for approval"
+    : access.status === "DECLINED" ? "Registration not approved"
+    : access.canPay ? "Payment is due" : "Access is paused";
+  const text =
+    access.status === "PENDING" ? "PS Tech checks each new facility before it opens. We may telephone you. You will get an email as soon as it is approved, and your trial starts then. Questions: 055 457 1800."
+    : access.status === "DECLINED" ? `${access.note ?? "This registration was not approved."} If this is a mistake, call PS Tech on 055 457 1800.`
+    : access.canPay ? `Your ${access.kind === "trial" ? "trial" : "paid month"}${access.endsOn ? ` ended on ${showDate(access.endsOn)}` : " has ended"}. Pay the bill below and HealthFlow opens again for you and your staff straight away.`
+    : "HealthFlow is paused for this facility because its bill has not been paid. Ask your facility administrator to pay it. Access returns as soon as it is paid.";
+  return (
+    <main id="main" className="mx-auto max-w-3xl px-4 py-8">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <Brand area="facility" />
+        <Button variant="secondary" onClick={onSignOut}>Sign out</Button>
+      </div>
+      {facility && <p className="text-sm text-[var(--muted)]">{facility}</p>}
+      <h1 className="mt-1 text-2xl font-semibold">{head}</h1>
+      <div className="mt-3 mb-6"><Notice tone="warning">{text}</Notice></div>
+      {lapsed && access.canPay && (onBilling ? children : <Link href="/billing" className="inline-flex min-h-11 items-center rounded-[var(--radius)] bg-[var(--accent)] px-4 font-medium text-[var(--on-accent)]">Go to the bills page</Link>)}
+    </main>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, loading: authLoading, logout } = useAuth();
   const router = useRouter();
@@ -305,7 +346,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "STAFF" || supporting);
-  const resource = useResource<FacilityResponse>(facilityRole ? "/api/facility" : null);
+  const access = useResource<Access>(facilityRole ? "/api/facility/access" : null);
+  const locked = Boolean(access.data?.locked) && !supporting;
+  const resource = useResource<FacilityResponse>(facilityRole && access.data && !locked ? "/api/facility" : null);
+  // A facility that must pay goes straight to its bills.
+  const toBills = locked && access.data?.status === "LAPSED" && access.data.canPay && pathname !== "/billing";
+  useEffect(() => { if (toBills) router.replace("/billing"); }, [toBills, router]);
 
   if (authLoading || !user) {
     return (
@@ -314,6 +360,22 @@ export function AppShell({ children }: { children: ReactNode }) {
       </main>
     );
   }
+
+  if (facilityRole && access.error && !access.data) {
+    return (
+      <main id="main" className="mx-auto max-w-xl px-4 py-16">
+        <LoadError message="Your facility could not be loaded. Check your connection and try again." onRetry={access.reload} />
+      </main>
+    );
+  }
+  if (facilityRole && !access.data) {
+    return (
+      <main id="main" className="px-4">
+        <Loading label="Loading your facility" />
+      </main>
+    );
+  }
+  if (locked && access.data) return <LockedScreen access={access.data} facility={undefined} onSignOut={logout}>{children}</LockedScreen>;
 
   if (facilityRole && resource.error && !resource.data) {
     const denied = resource.error instanceof ApiError && resource.error.status === 403;
@@ -420,6 +482,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             {data?.facility.status === "SUSPENDED" && (
               <div className="mb-4">
                 <Notice tone="warning">This facility&apos;s account is suspended. Contact PS Tech.</Notice>
+              </div>
+            )}
+            {access.data?.reminder && access.data.endsOn && access.data.daysLeft !== null && (
+              <div className="no-print mb-4">
+                <Notice tone="warning">
+                  The {access.data.kind === "trial" ? "trial" : "paid month"} for this facility ends {dayWord(access.data.daysLeft)} ({showDate(access.data.endsOn)}). If it is not paid by then, HealthFlow closes for everyone until it is.{" "}
+                  {access.data.canPay ? <Link href="/billing" className="font-medium underline underline-offset-2">Pay on the Billing page</Link> : "Ask your facility administrator to pay."}
+                </Notice>
               </div>
             )}
             <SectionTabs role={role} />

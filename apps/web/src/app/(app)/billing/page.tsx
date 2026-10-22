@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useFacility } from "@/components/AppShell";
+import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
@@ -20,7 +20,8 @@ const band = (p: Data["plans"][number]) => (p.staffBandMin != null && p.staffBan
 const cedi = (n: number) => `GH₵ ${n.toLocaleString("en-GH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function FacilityBilling() {
-  const { isAdmin } = useFacility();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "FACILITY_ADMIN";
   const { data, error, reload } = useResource<Data>(isAdmin ? "/api/facility/billing" : null);
   const [say, setSay] = useState<{ tone: "success" | "warning" | "block"; text: string } | null>(null);
   const [returned] = useState(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("reference")));
@@ -47,6 +48,7 @@ export default function FacilityBilling() {
   return (
     <>
       <PageHeader title="Billing" description="Your plan, when it renews, and your invoices." />
+      {data.facilityStatus === "LAPSED" && <div className="mb-4"><Notice tone="warning">Access is paused until the bill below is paid. Paying online opens HealthFlow again for you and your staff within a minute.</Notice></div>}
       {data.facilityStatus === "SUSPENDED" && <div className="mb-4"><Notice tone="warning">Your account is suspended. Rosters can still be read and exported. Contact PS Tech.</Notice></div>}
       {say && <div className="mb-4"><Notice tone={say.tone}>{say.text}</Notice></div>}
       <div className="space-y-6">

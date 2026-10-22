@@ -105,12 +105,13 @@ describe("a facility registering itself", () => {
     adminPhone: "024 111 2233", password: PASSWORD, acceptedTerms: true, departments: ["Outpatient", "Maternity"], cadres: ["Nurse", "Midwife", "Pharmacist"], ...extra,
   });
 
-  it("creates the facility, its administrator and an HF- access code that staff can use straight away", async () => {
+  it("creates the facility, its administrator and an HF- access code, and waits for PS Tech to approve it", async () => {
     const res = await pub.post("/api/public/register-facility", body());
     expect(res.status).toBe(201);
     expect(res.body.code).toMatch(/^HF-[2-9A-HJKMNP-Z]{6}$/);
     const facility = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" } });
-    expect(facility.status).toBe("TRIAL");
+    expect(facility.status).toBe("PENDING");
+    expect(facility.trialEndsAt).toBeNull();
     expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Clinical Nurses", "Maternity", "Midwives", "Outpatient", "Public Health"]);
     expect(await prisma.cadre.count({ where: { facilityId: facility.id } })).toBe(3);
     expect(res.body.enrolmentToken).toBeTruthy();
@@ -118,13 +119,16 @@ describe("a facility registering itself", () => {
     const admin = await prisma.userProfile.findUniqueOrThrow({ where: { userEmail: "abena@kaleo.test" } });
     expect(admin).toMatchObject({ role: "FACILITY_ADMIN", active: true, facilityId: facility.id });
 
+    // Staff cannot join a facility that has not been approved.
+    expect((await pub.get(`/api/public/join/${res.body.code}`)).status).toBe(404);
+    await prisma.facility.update({ where: { id: facility.id }, data: { status: "TRIAL" } });
     expect((await pub.get(`/api/public/join/${res.body.code}`)).body.facilityName).toBe("Kaleo Health Centre");
     const login = await pub.post("/api/auth/login", { email: "abena@kaleo.test", password: PASSWORD, audience: "facility" });
     expect(login.status).toBe(403); // the password is right; the administrator must set up two-step sign-in next
     expect(login.body.error).toBe("mfa_setup_required");
   });
 
-  it("needs a plan when plans exist, starts a 30 day trial on it, and files the facility under the chosen district", async () => {
+  it("needs a plan when plans exist, holds a trial subscription on it, and files the facility under the chosen district", async () => {
     const plan = await prisma.plan.create({ data: { name: "Health centre", monthlyPriceGhs: 100, sortOrder: 1 } });
     const district = await prisma.district.create({ data: { name: "Nadowli-Kaleo", region: "Upper West" } });
     expect((await pub.post("/api/public/register-facility", body())).body.fields.planId).toBeTruthy();

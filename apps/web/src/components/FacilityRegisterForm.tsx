@@ -172,7 +172,7 @@ export function FacilityRegisterForm() {
     const message = `Join ${done.facilityName} on HealthFlow. Open ${done.joinUrl} or go to the HealthFlow site, choose "Join with your facility code" and enter ${done.code}.`;
     return (
       <div className="space-y-5">
-        <Notice tone="success"><strong className="block">{done.facilityName} is registered.</strong>Staff join with this code. It is also under Staff, Access code.</Notice>
+        <Notice tone="success"><strong className="block">{done.facilityName} is registered and waiting for approval.</strong>PS Tech checks each new facility and may telephone you. Your 30 day trial starts when it is approved, and we will email you. Staff can use this code after that. It is also under Staff, Access code.</Notice>
         <div>
           <p className="text-sm text-[var(--muted)]">Your staff access code</p>
           <p className="figures text-3xl font-semibold tracking-wide" aria-label={`Access code ${done.code.split("").join(" ")}`}>{done.code}</p>
