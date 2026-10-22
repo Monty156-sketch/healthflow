@@ -10,6 +10,7 @@ import type { EAssignment, ECycleRule, ELeave, EContext, ERotation, ERule, EShif
 import { DAY_MIN, interval, hoursOf, weekdayOf } from "./time.js";
 import { evaluateCompliance, ineligibleReason, RULE_EVALUATORS } from "./evaluators.js";
 import { demandOn } from "./demand.js";
+import { planCycles } from "./cyclePlan.js";
 
 export interface GenerateInput {
   staff: EStaff[];
@@ -60,6 +61,11 @@ export interface GenerateInput {
   daysOff?: { staffId: string; day: number; approved: boolean }[];
   /** False builds day by day only, without planning blocks first. For comparison and tests. */
   blocks?: boolean | "only";
+  /**
+   * True (the default) builds each person's month from their duty cycle and rotation first, for
+   * everyone whose cycle rules are all set to Block, and fills the minimums around that. False leaves the cycles to the day-by-day pass, for tests.
+   */
+  cycleFirst?: boolean;
 }
 
 export interface Shortfall {
@@ -349,7 +355,9 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
   const keptOff = new Set(input.locked.filter((l) => shiftById.get(l.shiftId) && !shiftById.get(l.shiftId)!.countsAsDuty).map((l) => `${l.staffId}:${l.day}`));
   const approvedOff = new Set((input.daysOff ?? []).filter((o) => o.approved).map((o) => `${o.staffId}:${o.day}`));
   const askedOff = new Set((input.daysOff ?? []).filter((o) => !o.approved).map((o) => `${o.staffId}:${o.day}`));
-  const staticReason = (s: EStaff, shift: EShift, day: number): string | null => {
+  const frozen = new Set<string>();
+  const staticReason = (s: EStaff, shift: EShift, day: number): string | null => (frozen.has(s.id) ? "follows its duty cycle" : baseReason(s, shift, day));
+  const baseReason = (s: EStaff, shift: EShift, day: number): string | null => {
     if (onLeave(s, day)) return "leave";
     if (approvedOff.has(`${s.id}:${day}`)) return "day off approved";
     if (shift.isOvernight && s.noNights?.some((p) => day >= p.startDay && day <= p.endDay)) return "no nights for now";
@@ -357,6 +365,36 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     if (s.morningOnly && (weekdayOf(day) === 0 || weekdayOf(day) === 6 || holidays.has(day))) return "in-charges work weekday mornings only";
     return ineligibleReason(s, shift);
   };
+
+  // ---- Cycle first: each person's month is their cycle rules and rotation; the minimums are filled around it
+  if (input.cycleFirst !== false) {
+    const lockedIds = new Set(input.locked.filter((l) => l.day >= period.startDay && l.day <= period.endDay).map((l) => l.staffId));
+    const planned = staff.filter((s) => !s.morningOnly && !lockedIds.has(s.id) && cycleRules.get(s.id)!.length > 0 && cycleRules.get(s.id)!.every((r) => r.enforcement === "BLOCK"));
+    if (planned.length) {
+      const jr = input.variation ? mulberry32(input.variation * 7919) : () => 0;
+      const plan = planCycles({
+        staff: planned,
+        rulesOf: (s) => cycleRules.get(s.id)!,
+        rotationOf: (s) => rotationOf.get(s.id) ?? null,
+        shiftById,
+        duty,
+        period,
+        holidays,
+        blocked: (s, shift, day) => baseReason(s, shift, day) !== null,
+        by,
+        fixedStaff: staff.filter((s) => !planned.includes(s)),
+        holidayWorked: input.holidayWorked,
+        jitter: jr,
+      });
+      for (const [id, days] of plan) {
+        frozen.add(id);
+        for (const [day, shiftId] of days) {
+          by.get(id)!.set(day, shiftId);
+          fixed.push({ staffId: id, shiftId, day, source: "GENERATED" });
+        }
+      }
+    }
+  }
 
   interface Slot {
     day: number;
@@ -428,7 +466,7 @@ function generateOnce(input: GenerateInput, planBlocks: boolean): GenerateResult
     daySlots.set(day, slots);
     preflight.push(...shortfalls);
   }
-  if (preflight.length && !input.partial) {
+  if (preflight.length && !input.partial && !frozen.size) {
     return { feasible: false, shortfalls: preflight, cells: [], unfilled: [], findings: [], stats: { duties: 0, unfilled: 0, improvements: 0, carried: 0, scatter: 0 } };
   }
 

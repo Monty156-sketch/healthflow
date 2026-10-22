@@ -37,13 +37,13 @@ describe("duty cycle rules", () => {
     expect(bad.body.fields.nextShiftAfterRestId).toBeTruthy();
   });
 
-  it("seeds the two starting rules, all preferring, with the right counting shifts", async () => {
+  it("seeds the two starting rules, all enforced, with the right counting shifts", async () => {
     const { api, midwife } = await setup();
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
     const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
     const { rules } = (await api.get("/api/facility/cycles")).body;
     expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 2 off"]);
-    expect(rules.every((r: { enforcement: string }) => r.enforcement === "PREFER")).toBe(true);
+    expect(rules.every((r: { enforcement: string }) => r.enforcement === "BLOCK")).toBe(true);
     expect(rules[0].countingShiftIds).toEqual([n.id]);
     expect(rules[1].countingShiftIds.sort()).toEqual([a.id, m.id].sort());
     expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2]);
@@ -70,7 +70,9 @@ describe("duty cycle rules", () => {
   it("switching to Block needs confirmation; priorities must be unique", async () => {
     const { api, midwife, facility } = await setup();
     await shiftsNeedingMidwives(api, midwife.id);
-    const rule = (await api.get("/api/facility/cycles")).body.rules[0];
+    const seeded = (await api.get("/api/facility/cycles")).body.rules[0];
+    expect((await api.patch(`/api/facility/cycles/${seeded.id}`, { ...seeded, enforcement: "PREFER" })).status).toBe(200);
+    const rule = { ...seeded, enforcement: "PREFER" };
     const body = { ...rule, enforcement: "BLOCK" };
     const unconfirmed = await api.patch(`/api/facility/cycles/${rule.id}`, body);
     expect(unconfirmed.status).toBe(409);
@@ -78,7 +80,7 @@ describe("duty cycle rules", () => {
     const ok = await api.patch(`/api/facility/cycles/${rule.id}`, { ...body, confirmBlock: true });
     expect(ok.status).toBe(200);
     expect(ok.body.rule.enforcement).toBe("BLOCK");
-    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "cycle_rule_updated" } });
+    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "cycle_rule_updated" }, orderBy: { createdAt: "desc" } });
     expect(audit?.summary).toBe(
       'Kofi Bawa changed the duty cycle rule "4 nights on, 3 off" from after 4 consecutive duties, 3 days off, preferred to after 4 consecutive duties, 3 days off, enforced.'
     );
