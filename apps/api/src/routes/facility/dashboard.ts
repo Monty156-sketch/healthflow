@@ -6,6 +6,8 @@ import { Router } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoDate } from "../../lib/labels.js";
+import { rostersByUnit } from "../../lib/unitDemand.js";
+import { WARD_FACILITY_TYPES } from "./rosters.js";
 
 export const dashboardRouter = Router();
 
@@ -15,7 +17,7 @@ function utcDay(offset = 0): Date {
 }
 
 dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
-  const { facilityId } = caller(req);
+  const { facilityId, departmentId: ownWard } = caller(req);
   const today = utcDay();
   const weekStart = utcDay(-6);
   const tomorrow = utcDay(1);
@@ -57,6 +59,41 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const findings = monthRosters.length
     ? await prisma.complianceFinding.groupBy({ by: ["severity"], where: { rosterId: { in: monthRosters.map((r) => r.id) }, status: "OPEN" }, _count: { _all: true } })
     : [];
+
+  // A facility that rosters by ward or unit: one line per unit, with its own roster, rule findings and today's cover against its own minimums.
+  const facilityRow = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { facilityType: true } });
+  let units: unknown[] | null = null;
+  if (await rostersByUnit(facilityId, facilityRow.facilityType, WARD_FACILITY_TYPES)) {
+    const depts = await prisma.department.findMany({
+      where: { facilityId, active: true, archivedAt: null, kind: "WARD", ...(ownWard ? { id: ownWard } : {}) },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+    const unitRosters = monthRosters.length ? await prisma.roster.findMany({ where: { facilityId, month, year, departmentId: { in: depts.map((d) => d.id) } }, select: { id: true, departmentId: true, status: true, version: true } }) : [];
+    const rosterIds = unitRosters.map((r) => r.id);
+    const [unitFindings, unitToday, demand] = await Promise.all([
+      rosterIds.length ? prisma.complianceFinding.groupBy({ by: ["rosterId", "severity"], where: { rosterId: { in: rosterIds }, status: "OPEN" }, _count: { _all: true } }) : [],
+      rosterIds.length ? prisma.rosterAssignment.groupBy({ by: ["rosterId", "shiftId"], where: { rosterId: { in: rosterIds }, dutyDate: today }, _count: { _all: true } }) : [],
+      prisma.shiftDemand.findMany({ where: { facilityId, departmentId: { in: depts.map((d) => d.id) } } }),
+    ]);
+    const dayNo = Math.floor(today.getTime() / 86_400_000);
+    units = depts.map((d) => {
+      const r = unitRosters.find((x) => x.departmentId === d.id) ?? null;
+      const need = demand.filter((x) => x.departmentId === d.id);
+      const cover = shifts
+        .map((sh) => {
+          const row = need.find((x) => x.shiftId === sh.id);
+          const needed = row
+            ? demandOn({ minStaff: row.minStaff, minByCadre: {}, weekendMinStaff: row.weekendMinStaff, holidayMinStaff: row.holidayMinStaff }, dayNo, todayHoliday ? [dayNo] : []).minStaff
+            : 0;
+          const scheduled = r ? unitToday.filter((t) => t.rosterId === r.id && t.shiftId === sh.id).reduce((n, t) => n + t._count._all, 0) : 0;
+          return { code: sh.code, name: sh.name, colour: sh.colour, needed, scheduled };
+        })
+        .filter((c) => c.needed > 0 || c.scheduled > 0);
+      const count = (sev: string) => (r ? unitFindings.filter((f) => f.rosterId === r.id && f.severity === sev).reduce((n, f) => n + f._count._all, 0) : 0);
+      return { id: d.id, name: d.name, rosterId: r?.id ?? null, status: r?.status ?? null, version: r?.version ?? null, openBlocks: count("BLOCK"), openWarnings: count("WARN"), cover };
+    });
+  }
 
   const staffBy = Object.fromEntries(statusGroups.map((g) => [g.status, g._count._all]));
   const scheduledByShift = Object.fromEntries(todayAssignments.map((g) => [g.shiftId, g._count._all]));
@@ -106,6 +143,7 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
     month,
     year,
     nextMonthStatus: nextRoster?.status ?? null,
+    units,
     waiting: { leave: leavePending, swaps: swapsPending, returnsDue: retBy.DUE ?? 0, returnsOverdue: retBy.OVERDUE ?? 0 },
     week,
   });
