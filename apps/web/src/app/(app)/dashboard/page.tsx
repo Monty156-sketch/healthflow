@@ -100,6 +100,17 @@ function RecentActivity() {
   );
 }
 
+interface Unit {
+  id: string;
+  name: string;
+  rosterId: string | null;
+  status: string | null;
+  version: number | null;
+  openBlocks: number;
+  openWarnings: number;
+  cover: { code: string; name: string; colour: string | null; needed: number; scheduled: number }[];
+}
+
 interface Dash {
   date: string;
   staff: { total: number; active: number; onLeaveToday: number };
@@ -123,6 +134,8 @@ interface Dash {
   month: number;
   year: number;
   nextMonthStatus: string | null;
+  /** Set when the facility rosters by ward or unit. */
+  units: Unit[] | null;
   waiting: { leave: number; swaps: number; returnsDue: number; returnsOverdue: number };
   week: { date: string; scheduled: number; present: number; absent: number; recorded: number }[];
 }
@@ -280,6 +293,67 @@ function RosterCard({ d }: { d: Dash }) {
   );
 }
 
+/** One card per ward or unit: its roster this month, what is open on it, and today's cover against its own minimums. */
+function Units({ d }: { d: Dash }) {
+  const units = d.units ?? [];
+  const lacking = units.filter((u) => !u.rosterId).length;
+  return (
+    <Panel
+      title={`${MONTHS[d.month - 1]} rosters by unit`}
+      description={units.length ? `${units.length - lacking} of ${units.length} have a roster this month. Today's cover is shown against each unit's own minimums.` : undefined}
+      actions={
+        <Link href="/roster" className="flex min-h-11 items-center text-sm font-medium text-[var(--accent-text)] underline-offset-4 hover:underline">
+          Open rosters
+        </Link>
+      }
+    >
+      {units.length === 0 ? (
+        <p className="text-sm text-[var(--muted)]">No wards or units are set up yet.</p>
+      ) : (
+        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {units.map((u) => {
+            const st = u.status ? ROSTER_STATUS[u.status] : null;
+            const short = u.cover.filter((c) => c.scheduled < c.needed);
+            return (
+              <li key={u.id} className="flex flex-col rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold">{u.name}</p>
+                  {st ? <StatusBadge tone={st.tone}>{st.label}</StatusBadge> : <StatusBadge tone="neutral">No roster</StatusBadge>}
+                </div>
+                {u.rosterId ? (
+                  <>
+                    <p className="mt-1 text-[13px] text-[var(--muted)]">
+                      <span className="figures">{u.openBlocks}</span> rule {u.openBlocks === 1 ? "break" : "breaks"} open, <span className="figures">{u.openWarnings}</span> {u.openWarnings === 1 ? "warning" : "warnings"}
+                    </p>
+                    {u.cover.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2" aria-label={`Today's cover for ${u.name}`}>
+                        {u.cover.map((c) => {
+                          const low = c.scheduled < c.needed;
+                          return (
+                            <span key={c.code} className={`figures inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[13px] ${low ? "border-[var(--status-warning)] text-[var(--status-warning)]" : "border-[var(--border)] text-[var(--foreground)]"}`} title={`${c.name}: ${c.scheduled} scheduled of ${c.needed} needed`}>
+                              {c.code} {c.scheduled}/{c.needed}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {short.length > 0 && <p className="mt-2 text-[13px] text-[var(--status-warning)]">Short today on {short.map((c) => c.name).join(", ")}.</p>}
+                  </>
+                ) : (
+                  <p className="mt-1 text-[13px] text-[var(--muted)]">Nothing has been planned for {MONTHS[d.month - 1]} yet.</p>
+                )}
+                <Link href={u.rosterId ? `/roster/${u.rosterId}` : "/roster"} className="mt-auto flex min-h-11 items-end pt-3 text-sm font-medium text-[var(--accent-text)] underline-offset-4 hover:underline">
+                  {u.rosterId ? "Open this roster" : "Create the roster"}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
 function Waiting({ d }: { d: Dash }) {
   const rows = [
     { n: d.waiting.leave, text: "leave requests to decide", href: "/leave" },
@@ -324,16 +398,26 @@ function Dashboard() {
         <Kpi label="Attendance today" value={data.today.recorded} note={att} href="/attendance" />
         <Kpi label="Waiting for you" value={waitingTotal} note={waitingTotal ? "Leave, swaps and returns" : "Nothing outstanding"} />
       </div>
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      {data.units ? (
         <div className="space-y-6">
-          <TodayCover d={data} />
-          <Week d={data} />
+          <Units d={data} />
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <Week d={data} />
+            <Waiting d={data} />
+          </div>
         </div>
-        <div className="space-y-6">
-          <RosterCard d={data} />
-          <Waiting d={data} />
+      ) : (
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="space-y-6">
+            <TodayCover d={data} />
+            <Week d={data} />
+          </div>
+          <div className="space-y-6">
+            <RosterCard d={data} />
+            <Waiting d={data} />
+          </div>
         </div>
-      </div>
+      )}
       {!setupDone && (
         <div className="mt-6">
           <SetupSteps />

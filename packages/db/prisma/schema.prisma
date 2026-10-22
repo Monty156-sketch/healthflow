@@ -565,6 +565,7 @@ model Staff {
   @@index([facilityId])
   @@index([cadreId])
   @@index([departmentId])
+  @@index([facilityId, status])
 }
 
 model UserProfile {
@@ -796,6 +797,8 @@ model RosterAssignment {
 
   @@index([rosterId])
   @@index([staffId, dutyDate])
+  @@index([facilityId, dutyDate])
+  @@index([rosterId, dutyDate])
 }
 
 model RosterVersionSnapshot {
@@ -831,6 +834,7 @@ model ComplianceFinding {
 
   @@index([rosterId])
   @@index([staffId])
+  @@index([rosterId, status])
 }
 
 model LeaveType {
@@ -913,6 +917,8 @@ model LeaveRequest {
 
   @@index([facilityId])
   @@index([staffId])
+  @@index([facilityId, status])
+  @@index([staffId, startDate])
 }
 
 model PublicHoliday {
@@ -951,6 +957,8 @@ model Attendance {
 
   @@index([facilityId])
   @@index([staffId, dutyDate])
+  @@index([facilityId, dutyDate])
+  @@index([rosterAssignmentId])
 }
 
 model DutySwap {
@@ -979,6 +987,7 @@ model DutySwap {
 
   @@index([facilityId])
   @@index([rosterId])
+  @@index([facilityId, status])
 }
 
 model Notification {
@@ -1000,6 +1009,7 @@ model Notification {
 
   @@index([facilityId])
   @@index([recipientStaffId])
+  @@index([recipientEmail, readAt])
 }
 
 model StaffInvitation {
@@ -1147,6 +1157,7 @@ model AuditLog {
 
   @@index([facilityId])
   @@index([entityType, entityId])
+  @@index([facilityId, createdAt])
 }
 
 model ErrorReport {
