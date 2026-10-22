@@ -250,10 +250,10 @@ invitationAdminRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => 
       }
     }
     if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields });
-    staffRecord = await prisma.staff.create({
+    const make = (no: string) => prisma.staff.create({
       data: {
         facilityId: who.facilityId,
-        staffNo,
+        staffNo: no,
         fullName: input.fullName,
         email: input.email,
         cadreId: input.cadreId || null,
@@ -261,6 +261,13 @@ invitationAdminRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => 
         status: "PENDING",
       },
     });
+    try {
+      staffRecord = await make(staffNo);
+    } catch (e) {
+      // Two invitations at the same moment can pick the same placeholder number; the second takes another.
+      if ((e as { code?: string }).code !== "P2002" || !staffNo.startsWith("TBC-")) throw e;
+      staffRecord = await make(`TBC-${Date.now().toString(36).toUpperCase().slice(-5)}`);
+    }
     created = true;
   }
 

@@ -273,23 +273,35 @@ meRouter.post("/clock", async (req, res) => {
   }
   await prisma.clockEvent.create({ data: { facilityId: who.facilityId, staffId: who.staffId, kind: body.kind, distanceM: distance } });
 
-  // Clocking in on a day with a published duty marks the person present, or late, unless a record already exists.
+  // Clocking in marks the person present, or late, against today's published duty, or against last night's
+  // night duty when it is still running (a night shift clocked into after midnight). A record is made once.
   if (body.kind === "IN") {
-    const today = new Date(Math.floor(Date.now() / DAY) * DAY);
-    const duty = await prisma.rosterAssignment.findFirst({
-      where: { staffId: who.staffId, facilityId: who.facilityId, dutyDate: today, roster: { status: "PUBLISHED" }, shift: { countsAsDuty: true } },
-      include: { shift: { select: { startTime: true } } },
-    });
+    const at = new Date();
+    const today = new Date(Math.floor(at.getTime() / DAY) * DAY);
+    const nowMin = at.getUTCHours() * 60 + at.getUTCMinutes();
+    const pick = { where: { staffId: who.staffId, facilityId: who.facilityId, roster: { status: "PUBLISHED" as const }, shift: { countsAsDuty: true } }, include: { shift: { select: { startTime: true, endTime: true } } } };
+    let duty = await prisma.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: today } });
+    let startedYesterday = false;
+    if (!duty) {
+      const last = await prisma.rosterAssignment.findFirst({ ...pick, where: { ...pick.where, dutyDate: new Date(today.getTime() - DAY) } });
+      const s0 = last?.shift.startTime ? clock(last.shift.startTime) : null;
+      const e0 = last?.shift.endTime ? clock(last.shift.endTime) : null;
+      if (last && s0 !== null && e0 !== null && e0 <= s0 && nowMin < e0) {
+        duty = last;
+        startedYesterday = true;
+      }
+    }
     if (duty && !(await prisma.attendance.findFirst({ where: { staffId: who.staffId, rosterAssignmentId: duty.id }, select: { id: true } }))) {
       const start = duty.shift.startTime ? clock(duty.shift.startTime) : null;
-      const nowMin = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
-      const late = start !== null ? Math.max(0, nowMin - start) : 0;
-      await prisma.attendance.create({
-        data: {
-          facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: today, shiftId: duty.shiftId,
-          status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
-        },
-      });
+      const late = start === null ? 0 : Math.max(0, startedYesterday ? nowMin + 24 * 60 - start : nowMin - start);
+      await prisma.attendance
+        .create({
+          data: {
+            facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: startedYesterday ? new Date(today.getTime() - DAY) : today, shiftId: duty.shiftId,
+            status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
+          },
+        })
+        .catch(() => undefined);
     }
   }
   res.status(201).json({ ...(await clockState(who.facilityId, who.staffId)) });
