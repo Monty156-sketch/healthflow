@@ -37,7 +37,7 @@ const BAD_CODE = { error: "invalid_code", message: "That code is not valid. Chec
 
 async function openCode(raw: string) {
   const code = await prisma.facilityAccessCode.findUnique({ where: { code: normaliseCode(raw) }, include: { facility: { select: { id: true, name: true, active: true, status: true, facilityType: true } } } });
-  if (!code || !code.facility.active || code.facility.status === "SUSPENDED" || codeProblem(code)) return null;
+  if (!code || !code.facility.active || !["TRIAL", "ACTIVE"].includes(code.facility.status) || codeProblem(code)) return null;
   return code;
 }
 

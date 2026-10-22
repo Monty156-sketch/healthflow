@@ -5,10 +5,11 @@ import { use, useState } from "react";
 import { useResource } from "@/lib/useApi";
 import { showDate, showDateTime } from "@/lib/format";
 import { HEALTH_TONE, HEALTH_WORD, cedi } from "@/lib/console";
-import { ButtonLink, EmptyState, Loading, LoadError, PageHeader, Panel, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
+import { api, ApiError } from "@/lib/api";
+import { Button, ButtonLink, EmptyState, Field, Input, Notice, Loading, LoadError, PageHeader, Panel, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
 
 interface Detail {
-  facility: { id: string; name: string; type: string; region: string | null; district: string | null; ghsCode: string | null; status: string; active: boolean; createdAt: string; trialEndsAt: string | null };
+  facility: { id: string; name: string; type: string; region: string | null; district: string | null; ghsCode: string | null; status: string; accessNote: string | null; active: boolean; createdAt: string; trialEndsAt: string | null };
   administrator: { name: string | null; email: string; phone: string | null } | null;
   subscription: { plan: string; status: string; cycle: string; periodEnd: string | null } | null;
   health: { state: string; why: string[] };
@@ -22,6 +23,60 @@ interface Detail {
   };
   activity: { id: string; createdAt: string; actorEmail: string | null; action: string; summary: string }[];
   supportSessions: { id: string; by: string; reason: string; level: string; startedAt: string; endedAt: string | null }[];
+}
+
+const STATE_WORD: Record<string, string> = {
+  PENDING: "Waiting for approval", DECLINED: "Declined", TRIAL: "On trial", ACTIVE: "Active", LAPSED: "Locked, unpaid", SUSPENDED: "Suspended",
+};
+
+/** Approve, decline, suspend, reinstate or extend. Each asks for a reason where the facility will read one. */
+function AccessPanel({ f, onDone }: { f: Detail["facility"]; onDone: () => void }) {
+  const [mode, setMode] = useState<null | "decline" | "suspend" | "extend">(null);
+  const [reason, setReason] = useState("");
+  const [until, setUntil] = useState("");
+  const [msg, setMsg] = useState<{ tone: "success" | "block"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function go(path: string, body: object, ok: string) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await api.post(`/api/platform/facilities/${f.id}/${path}`, body);
+      setMsg({ tone: "success", text: ok });
+      setMode(null);
+      setReason("");
+      onDone();
+    } catch (e) {
+      const b = e instanceof ApiError ? (e.body as { message?: string; fields?: Record<string, string> }) : undefined;
+      setMsg({ tone: "block", text: b?.message ?? (b?.fields ? Object.values(b.fields)[0] : "That did not work. Try again.") });
+    } finally { setBusy(false); }
+  }
+  const s = f.status;
+  return (
+    <Panel title="Access" description="Whether this facility and its staff can use HealthFlow.">
+      <p className="mb-3 text-[15px]"><StatusBadge tone={s === "ACTIVE" ? "success" : s === "TRIAL" ? "neutral" : s === "PENDING" ? "warning" : "block"}>{STATE_WORD[s] ?? s.toLowerCase()}</StatusBadge>{f.accessNote && <span className="ml-2 text-[var(--muted)]">{f.accessNote}</span>}</p>
+      {msg && <div className="mb-3"><Notice tone={msg.tone}>{msg.text}</Notice></div>}
+      {mode === null ? (
+        <div className="flex flex-wrap gap-2">
+          {(s === "PENDING" || s === "DECLINED") && <Button disabled={busy} onClick={() => go("approve", {}, "Approved. The 30 day trial has started.")}>Approve and start trial</Button>}
+          {s === "PENDING" && <Button variant="secondary" onClick={() => setMode("decline")}>Decline</Button>}
+          {s !== "PENDING" && s !== "DECLINED" && s !== "SUSPENDED" && <Button variant="secondary" onClick={() => setMode("suspend")}>Suspend</Button>}
+          {s === "SUSPENDED" && <Button disabled={busy} onClick={() => go("reactivate", {}, "Reinstated.")}>Reinstate</Button>}
+          {s !== "PENDING" && s !== "DECLINED" && <Button variant="secondary" onClick={() => setMode("extend")}>{s === "LAPSED" ? "Open until a date" : "Extend access"}</Button>}
+        </div>
+      ) : (
+        <div className="max-w-lg space-y-3">
+          {mode === "extend" && <Field label="Access runs to">{(a) => <Input {...a} type="date" value={until} onChange={(e) => setUntil(e.target.value)} />}</Field>}
+          <Field label={mode === "extend" ? "Why? For example, paid by cheque, or goodwill" : mode === "suspend" ? "Why? The facility will see this" : "Why is it not approved? The facility will read this"}>{(a) => <Input {...a} value={reason} onChange={(e) => setReason(e.target.value)} />}</Field>
+          <div className="flex gap-2">
+            <Button variant={mode === "extend" ? "primary" : "danger"} disabled={busy} onClick={() => go(mode, mode === "extend" ? { until, reason } : { reason }, mode === "extend" ? "Access extended." : mode === "suspend" ? "Suspended. Reading and export stay open." : "Declined.")}>
+              {mode === "extend" ? "Extend access" : mode === "suspend" ? "Suspend" : "Decline registration"}
+            </Button>
+            <Button variant="quiet" onClick={() => setMode(null)}>Cancel</Button>
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
 }
 
 const TABS = ["Overview", "Usage", "Billing", "Configuration", "Activity"] as const;
@@ -59,6 +114,7 @@ export default function FacilityDetail({ params }: { params: Promise<{ id: strin
 
       {tab === "Overview" && (
         <div className="space-y-6">
+          <AccessPanel f={f} onDone={reload} />
           <Panel title="Profile">
             <dl className="divide-y divide-[var(--border)]">
               <Row k="Type">{f.type.replace(/_/g, " ").toLowerCase()}</Row>

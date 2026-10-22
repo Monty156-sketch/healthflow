@@ -43,6 +43,9 @@ declare global {
 }
 
 /** Writes that stay open on a suspended facility: a person's own data rights, reading notifications, and paying an invoice. */
+/** What a facility waiting for approval, declined, or unpaid can still reach: its access status, its bills and its notices. */
+const LOCKED_OK = ["/api/facility/access", "/api/facility/billing", "/api/facility/notifications"];
+
 const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications", "/api/facility/billing"];
 
 /** What full-access support may not do even inside a session: hand out access, touch personal-data rights, billing, or take a copy of everything. */
@@ -117,6 +120,12 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
   }
   if (profile.scopeType !== "FACILITY" || !profile.facilityId) {
     return res.status(403).json({ error: "no_facility_access" });
+  }
+
+  const st = profile.facility?.status;
+  if ((st === "PENDING" || st === "DECLINED" || st === "LAPSED") && !LOCKED_OK.some((p) => req.originalUrl.startsWith(p))) {
+    const m = { PENDING: ["pending_approval", "This facility is waiting for PS Tech to approve it. We will email you when it is open."], DECLINED: ["declined", "This registration was not approved. Call PS Tech on 055 457 1800."], LAPSED: ["payment_required", "Access is paused until the bill is paid."] }[st];
+    return res.status(402).json({ error: m[0], message: m[1] });
   }
 
   // A suspended facility keeps read access and keeps its export. It cannot

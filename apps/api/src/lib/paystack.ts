@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import { prisma } from "./prisma.js";
 import { writeAuditLog } from "./audit.js";
+import { extendAfterPayment } from "./access.js";
 
 const API = "https://api.paystack.co";
 
@@ -60,6 +61,7 @@ export async function settleReference(reference: string): Promise<Settled> {
   if (done.count === 1) {
     const stillOwing = await prisma.invoice.count({ where: { facilityId: invoice.facilityId, OR: [{ status: "OVERDUE" }, { status: "ISSUED", dueAt: { lt: new Date() } }] } });
     if (stillOwing === 0) await prisma.subscription.updateMany({ where: { facilityId: invoice.facilityId, status: "PAST_DUE" }, data: { status: "ACTIVE" } });
+    await extendAfterPayment(invoice.facilityId);
     await writeAuditLog({ facilityId: invoice.facilityId, action: "payment_received", entityType: "Invoice", entityId: invoice.id, summary: `Invoice ${invoice.invoiceNumber} was paid (GHS ${invoice.totalGhs.toFixed(2)}, ${(METHOD[tx.channel] ?? "OTHER").replace(/_/g, " ").toLowerCase()} through Paystack, reference ${reference}).` });
   }
   return { state: "paid", invoiceNumber: invoice.invoiceNumber };

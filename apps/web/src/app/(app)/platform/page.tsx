@@ -13,6 +13,7 @@ interface Dash {
   mrrGhs: number;
   trials: { onTrial: number; endingThisWeek: number; expired: number };
   rostersPublishedThisMonth: number;
+  access: { pendingApproval: number; lapsed: number; suspended: number };
   newestFacilities: { id: string; name: string; district: string | null; status: string; createdAt: string }[];
   recentErrors: { id: string; description: string; screen: string | null; status: string; createdAt: string; facility: string | null }[];
 }
@@ -37,6 +38,8 @@ export default function ConsolePage() {
     <>
       <PageHeader title="Console" description="What needs you today." />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Count href="/platform/registrations" label="Registrations waiting" value={String(data.access.pendingApproval)} note={data.access.pendingApproval ? "Approve or decline" : "None"} tone={data.access.pendingApproval ? "warning" : undefined} />
+        <Count href="/platform/renewals" label="Locked for non-payment" value={String(data.access.lapsed)} note={data.access.suspended ? `${data.access.suspended} suspended by hand` : "None suspended"} tone={data.access.lapsed ? "block" : undefined} />
         <Count href="/platform/facilities?health=AT_RISK" label="Facilities at risk" value={String(data.atRisk)} note={data.atRisk ? "Telephone them" : "None"} tone={data.atRisk ? "block" : undefined} />
         <Count href="/platform/billing" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
         <Count href="/system-health" label="Errors in the last 24 hours" value={String(data.errors24h)} />
@@ -57,7 +60,7 @@ export default function ConsolePage() {
                       <span className="block font-medium">{f.name}</span>
                       <span className="block text-sm text-[var(--muted)]">{[f.district, showDateTime(f.createdAt)].filter(Boolean).join(" · ")}</span>
                     </span>
-                    <StatusBadge tone={f.status === "ACTIVE" ? "success" : f.status === "SUSPENDED" ? "block" : "neutral"}>{f.status.toLowerCase()}</StatusBadge>
+                    <StatusBadge tone={f.status === "ACTIVE" ? "success" : f.status === "PENDING" ? "warning" : ["SUSPENDED", "LAPSED", "DECLINED"].includes(f.status) ? "block" : "neutral"}>{f.status.toLowerCase()}</StatusBadge>
                   </Link>
                 </li>
               ))}

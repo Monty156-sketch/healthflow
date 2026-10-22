@@ -10,6 +10,7 @@ import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
 import { billingConsole } from "./platformBilling.js";
 import { supportConsole } from "./platformSupport.js";
+import { accessConsole } from "./platformAccess.js";
 import { platformAudit } from "../lib/platformAudit.js";
 export { platformAudit };
 import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facilitySetup.js";
@@ -21,6 +22,7 @@ import { appUrl, sendEmail } from "../lib/email.js";
 export const consoleRouter = Router();
 consoleRouter.use(billingConsole);
 consoleRouter.use(supportConsole);
+consoleRouter.use(accessConsole);
 
 const HOUR = 3_600_000;
 
@@ -40,6 +42,8 @@ consoleRouter.get("/dashboard", async (_req, res) => {
     prisma.errorReport.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, description: true, screen: true, status: true, createdAt: true, facility: { select: { name: true } } } }),
     adoptionFor(),
   ]);
+  const byStatus = await prisma.facility.groupBy({ by: ["status"], where: { active: true, status: { in: ["PENDING", "LAPSED", "SUSPENDED"] } }, _count: { _all: true } });
+  const countOf = (s: string) => byStatus.find((b) => b.status === s)?._count._all ?? 0;
   const [trialing, publishedThisMonth] = await Promise.all([
     prisma.facility.findMany({ where: { active: true, status: "TRIAL" }, select: { trialEndsAt: true } }),
     prisma.roster.count({ where: { status: "PUBLISHED", year: new Date().getUTCFullYear(), month: new Date().getUTCMonth() + 1 } }),
@@ -57,6 +61,7 @@ consoleRouter.get("/dashboard", async (_req, res) => {
       expired: trialing.filter((t) => t.trialEndsAt && t.trialEndsAt.getTime() < now).length,
     },
     rostersPublishedThisMonth: publishedThisMonth,
+    access: { pendingApproval: countOf("PENDING"), lapsed: countOf("LAPSED"), suspended: countOf("SUSPENDED") },
     mrrGhs: subs.reduce((n, s) => n + s.plan.monthlyPriceGhs, 0),
     newestFacilities: newest.map((f) => ({ id: f.id, name: f.name, district: f.district?.name ?? null, status: f.status, createdAt: f.createdAt })),
     recentErrors: recentErrors.map((e) => ({ id: e.id, description: e.description.slice(0, 140), screen: e.screen, status: e.status, createdAt: e.createdAt, facility: e.facility?.name ?? null })),
@@ -141,7 +146,7 @@ consoleRouter.get("/facilities/:id", async (req, res) => {
   const a = adoption.get(f.id)!;
   const owing = invoices.filter((i) => i.status === "OVERDUE" || (i.status === "ISSUED" && i.dueAt && i.dueAt < new Date())).reduce((n, i) => n + i.totalGhs, 0);
   res.json({
-    facility: { id: f.id, name: f.name, type: f.facilityType, region: f.region, district: f.district?.name ?? null, ghsCode: f.ghsFacilityCode, status: f.status, active: f.active, createdAt: f.createdAt, trialEndsAt: f.trialEndsAt },
+    facility: { id: f.id, name: f.name, type: f.facilityType, region: f.region, district: f.district?.name ?? null, ghsCode: f.ghsFacilityCode, status: f.status, accessNote: f.accessNote, active: f.active, createdAt: f.createdAt, trialEndsAt: f.trialEndsAt },
     administrator: admin ? { name: admin.staff?.fullName ?? null, email: admin.userEmail, phone: admin.staff?.phone ?? null } : null,
     subscription: f.subscription && { plan: f.subscription.plan.name, status: f.subscription.status, cycle: f.subscription.billingCycle, periodEnd: f.subscription.currentPeriodEnd },
     health: { state: a.health, why: a.why },

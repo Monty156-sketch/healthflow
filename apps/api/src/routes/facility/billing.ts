@@ -5,6 +5,7 @@ import { prisma } from "../../lib/prisma.js";
 import { allowRoles, caller, ADMIN_ROLES } from "../../middleware/facilityAccess.js";
 import { invoiceDocument } from "../platformBilling.js";
 import { bankDetails } from "../../lib/invoicePdf.js";
+import { issueRenewalInvoice } from "../../lib/access.js";
 import { paystackConfigured, settleReference, startPayment } from "../../lib/paystack.js";
 
 export const billingRouter = Router();
@@ -12,6 +13,9 @@ billingRouter.use(allowRoles(...ADMIN_ROLES));
 
 billingRouter.get("/", async (req, res) => {
   const who = caller(req);
+  const st = await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { status: true } });
+  // A facility whose access ended always has a bill to pay.
+  if (st?.status === "LAPSED") await issueRenewalInvoice(who.facilityId);
   const [sub, invoices, facility, plans] = await Promise.all([
     prisma.subscription.findUnique({ where: { facilityId: who.facilityId }, include: { plan: { select: { name: true, monthlyPriceGhs: true } } } }),
     prisma.invoice.findMany({ where: { facilityId: who.facilityId, status: { not: "DRAFT" } }, orderBy: { issuedAt: "desc" } }),
