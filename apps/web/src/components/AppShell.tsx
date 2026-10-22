@@ -301,10 +301,12 @@ function LockedScreen({ access, facility, onSignOut, children }: { access: Acces
   const lapsed = access.status === "LAPSED";
   const head =
     access.status === "PENDING" ? "Waiting for approval"
+    : access.status === "SUSPENDED" ? "Account suspended"
     : access.status === "DECLINED" ? "Registration not approved"
     : access.canPay ? "Payment is due" : "Access is paused";
   const text =
     access.status === "PENDING" ? "PS Tech checks each new facility before it opens. We may telephone you. You will get an email as soon as it is approved, and your trial starts then. Questions: 055 457 1800."
+    : access.status === "SUSPENDED" ? `${access.note ?? "This facility's account has been suspended."} Contact PS Tech on 055 457 1800 to have it reinstated.`
     : access.status === "DECLINED" ? `${access.note ?? "This registration was not approved."} If this is a mistake, call PS Tech on 055 457 1800.`
     : access.canPay ? `Your ${access.kind === "trial" ? "trial" : "paid month"}${access.endsOn ? ` ended on ${showDate(access.endsOn)}` : " has ended"}. Pay the bill below and HealthFlow opens again for you and your staff straight away.`
     : "HealthFlow is paused for this facility because its bill has not been paid. Ask your facility administrator to pay it. Access returns as soon as it is paid.";

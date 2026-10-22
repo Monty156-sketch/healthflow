@@ -43,6 +43,26 @@ billingRouter.get("/invoices/:id/pdf", async (req, res) => {
   res.send(d.buffer);
 });
 
+/** The receipt for a paid invoice: proof of what was paid, when and how. */
+billingRouter.get("/invoices/:id/receipt", async (req, res) => {
+  const who = caller(req);
+  const d = await invoiceDocument(String(req.params.id), true);
+  if (!d || d.row.facilityId !== who.facilityId || d.row.status !== "PAID") return res.status(404).json({ error: "not_found", message: "A receipt is available once an invoice is paid." });
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="Receipt-${d.row.invoiceNumber}.pdf"`);
+  res.send(d.buffer);
+});
+
+/** An invoice on request, for a facility that needs the paper before it can pay. Returns the open one if there already is one. */
+billingRouter.post("/invoices", async (req, res) => {
+  const who = caller(req);
+  const f = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { status: true } });
+  if (!["TRIAL", "ACTIVE", "LAPSED"].includes(f.status)) return res.status(409).json({ error: "not_open", message: "An invoice cannot be raised for this account." });
+  const inv = await issueRenewalInvoice(who.facilityId);
+  if (!inv) return res.status(409).json({ error: "no_plan", message: "No plan is set for your facility yet, so there is nothing to invoice. Contact PS Tech." });
+  res.status(201).json({ id: inv.id, number: inv.invoiceNumber });
+});
+
 /** Sends the administrator to Paystack to pay one invoice by card, mobile money or bank transfer. */
 billingRouter.post("/invoices/:id/pay", async (req, res) => {
   const who = caller(req);

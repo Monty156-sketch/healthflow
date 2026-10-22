@@ -45,6 +45,8 @@ declare global {
 /** Writes that stay open on a suspended facility: a person's own data rights, reading notifications, and paying an invoice. */
 /** What a facility waiting for approval, declined, or unpaid can still reach: its access status, its bills and its notices. */
 const LOCKED_OK = ["/api/facility/access", "/api/facility/billing", "/api/facility/notifications"];
+/** A suspended facility reaches nothing but its own status. Only PS Tech can reinstate it. */
+const SUSPENDED_ONLY = ["/api/facility/access"];
 
 const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications", "/api/facility/billing"];
 
@@ -128,10 +130,8 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     return res.status(402).json({ error: m[0], message: m[1] });
   }
 
-  // A suspended facility keeps read access and keeps its export. It cannot
-  // generate or edit. Staff can still use their own data rights.
-  if (profile.facility?.status === "SUSPENDED" && !["GET", "HEAD"].includes(req.method) && !SUSPENDED_OK.some((p) => req.originalUrl.startsWith(p))) {
-    return res.status(403).json({ error: "suspended", message: "This facility's account is suspended, so changes are paused. Everything can still be read and exported. Contact PS Tech." });
+  if (st === "SUSPENDED" && !SUSPENDED_ONLY.some((p) => req.originalUrl.startsWith(p))) {
+    return res.status(402).json({ error: "suspended", message: "This facility's account is suspended. Contact PS Tech on 055 457 1800." });
   }
 
   req.caller = {

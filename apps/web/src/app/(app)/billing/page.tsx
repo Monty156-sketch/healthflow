@@ -42,6 +42,16 @@ export default function FacilityBilling() {
       setSay({ tone: "block", text: e instanceof ApiError && typeof (e.body as { message?: string })?.message === "string" ? (e.body as { message: string }).message : "Payment could not be started. Try again." });
     }
   }
+  async function raise() {
+    setSay(null);
+    try {
+      const r = await api.post<{ number: string }>("/api/facility/billing/invoices", {});
+      setSay({ tone: "success", text: `Invoice ${r.number} is ready below. Download it to attach to your payment request.` });
+      reload();
+    } catch (e) {
+      setSay({ tone: "block", text: e instanceof ApiError && typeof (e.body as { message?: string })?.message === "string" ? (e.body as { message: string }).message : "The invoice could not be raised. Try again." });
+    }
+  }
   if (!isAdmin) return <Notice tone="warning">Only facility admins can see billing.</Notice>;
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading billing" />;
@@ -108,7 +118,7 @@ export default function FacilityBilling() {
             <p className="mt-3 text-sm text-[var(--muted)]">To change plan, write to {data.contact.email ?? "PS Tech"}. The change takes effect from your next billing period.</p>
           </Panel>
         )}
-        <Panel title="Invoices">
+        <Panel title="Invoices and receipts" description="Download an invoice to show what is payable, and a receipt as proof once it is paid." actions={data.subscription && data.facilityStatus !== "SUSPENDED" ? <Button variant="secondary" onClick={raise}>Raise an invoice</Button> : undefined}>
           {data.invoices.length === 0 ? <EmptyState title="No invoices yet" /> : (
             <TableScroll label="Invoices">
               <table className="w-full min-w-[34rem] border-collapse text-[15px]">
@@ -121,7 +131,7 @@ export default function FacilityBilling() {
                       <td className={`${TD} figures`}>{i.dueAt ? showDate(i.dueAt) : ""}</td>
                       <td className={`${TD} figures`}>{cedi(i.totalGhs)}</td>
                       <td className={TD}><StatusBadge tone={i.status === "PAID" ? "success" : i.status === "OVERDUE" ? "block" : "neutral"}>{i.status.replace("_", " ").toLowerCase()}</StatusBadge></td>
-                      <td className={TD}><div className="flex flex-wrap gap-2">{data.payOnline && i.status !== "PAID" && i.status !== "WRITTEN_OFF" && <Button onClick={() => pay(i.id)}>Pay online</Button>}{!data.payOnline && i.status !== "PAID" && i.status !== "WRITTEN_OFF" && <Button variant="secondary" onClick={() => document.getElementById("ways-to-pay")?.scrollIntoView({ behavior: "smooth" })}>How to pay</Button>}<Button variant="secondary" onClick={() => api.download(`/api/facility/billing/invoices/${i.id}/pdf`, `${i.number}.pdf`)}>Download PDF</Button></div></td>
+                      <td className={TD}><div className="flex flex-wrap gap-2">{data.payOnline && i.status !== "PAID" && i.status !== "WRITTEN_OFF" && <Button onClick={() => pay(i.id)}>Pay online</Button>}{!data.payOnline && i.status !== "PAID" && i.status !== "WRITTEN_OFF" && <Button variant="secondary" onClick={() => document.getElementById("ways-to-pay")?.scrollIntoView({ behavior: "smooth" })}>How to pay</Button>}<Button variant="secondary" onClick={() => api.download(`/api/facility/billing/invoices/${i.id}/pdf`, `${i.number}.pdf`)}>Download invoice</Button>{i.status === "PAID" && <Button variant="secondary" onClick={() => api.download(`/api/facility/billing/invoices/${i.id}/receipt`, `Receipt-${i.number}.pdf`)}>Download receipt</Button>}</div></td>
                     </tr>
                   ))}
                 </tbody>

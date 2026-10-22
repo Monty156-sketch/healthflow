@@ -15,6 +15,9 @@ export interface InvoiceDoc {
   status: string;
   paidAt: Date | null;
   paymentReference: string | null;
+  paymentMethod?: string | null;
+  /** A receipt is the same document once paid: it says what was received, when and how. */
+  receipt?: boolean;
 }
 
 const M = 50;
@@ -32,13 +35,13 @@ export const paymentTermsDays = () => Number(process.env.BILLING_TERMS_DAYS ?? 3
 
 export function invoicePdf(d: InvoiceDoc): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: M, info: { Title: `Invoice ${d.number}`, Author: "PS Tech" } });
+    const doc = new PDFDocument({ size: "A4", margin: M, info: { Title: `${d.receipt ? "Receipt" : "Invoice"} ${d.number}`, Author: "PS Tech" } });
     const chunks: Buffer[] = [];
     doc.on("data", (c: Buffer) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    doc.font("Helvetica-Bold").fontSize(20).fillColor("#000").text("Invoice", M, M);
+    doc.font("Helvetica-Bold").fontSize(20).fillColor("#000").text(d.receipt ? "Receipt" : "Invoice", M, M);
     doc.font("Helvetica").fontSize(10).fillColor("#333").text("PS Tech, provider of HealthFlow", M, M + 26);
     doc.font("Helvetica-Bold").fontSize(10).fillColor("#000").text(`Number: ${d.number}`, 360, M, { width: 185, align: "right" });
     doc.font("Helvetica").text(`Issued: ${dmy(d.issuedAt)}`, 360, M + 14, { width: 185, align: "right" });
@@ -65,6 +68,15 @@ export function invoicePdf(d: InvoiceDoc): Promise<Buffer> {
     doc.font("Helvetica-Bold").fontSize(12).text("Total", M, y + 10).text(ghs(d.totalGhs), 400, y + 10, { width: 145, align: "right" });
 
     y += 60;
+    if (d.receipt) {
+      doc.font("Helvetica-Bold").fontSize(9).fillColor("#555").text("PAYMENT RECEIVED", M, y);
+      doc.font("Helvetica").fontSize(10).fillColor("#000").text(`${ghs(d.totalGhs)} received from ${plain(d.facilityName)} on ${dmy(d.paidAt)} against invoice ${d.number}.`, M, y + 14, { width: 495 });
+      doc.text(`Method: ${(d.paymentMethod ?? "other").replace(/_/g, " ").toLowerCase()}`, M, y + 44);
+      if (d.paymentReference) doc.text(`Reference: ${plain(d.paymentReference)}`, M, y + 58);
+      doc.fontSize(9).fillColor("#555").text("All amounts are in Ghana cedis. This receipt is issued by PS Tech, Wa, Upper West Region.", M, y + 84);
+      doc.end();
+      return;
+    }
     doc.font("Helvetica-Bold").fontSize(9).fillColor("#555").text("HOW TO PAY", M, y);
     doc.font("Helvetica").fontSize(10).fillColor("#000").text(`Payment is due within ${paymentTermsDays()} days of the date of issue. Pay by bank transfer, quoting the invoice number ${d.number}.`, M, y + 14, { width: 495 });
     let by = y + 46;
