@@ -52,9 +52,16 @@ const input = z.object({
 });
 
 /** What the registration form offers: the usual departments and cadres, ticked by default, and the plans. */
+/** CHPS compounds and clinics share one plan, the smallest. */
+const SMALL_TYPES = new Set(["CHPS_COMPOUND", "CLINIC"]);
+const smallPlan = (name: string) => /^CHPS/i.test(name);
+
 facilityRegisterRouter.get("/options", async (req, res) => {
-  const portfolio = portfolioFor(typeof req.query.type === "string" ? req.query.type : null);
-  const plans = await prisma.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: "asc" }, { monthlyPriceGhs: "asc" }] });
+  const type = typeof req.query.type === "string" ? req.query.type : null;
+  const portfolio = portfolioFor(type);
+  const all = await prisma.plan.findMany({ where: { active: true }, orderBy: [{ sortOrder: "asc" }, { monthlyPriceGhs: "asc" }] });
+  const small = type && SMALL_TYPES.has(type) ? all.filter((p) => smallPlan(p.name)) : [];
+  const plans = small.length ? small : all;
   res.json({
     departments: portfolio.departments,
     cadres: portfolio.cadres,
@@ -77,6 +84,9 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
 
   const plansExist = await prisma.plan.count({ where: { active: true } });
   const plan = body.planId ? await prisma.plan.findFirst({ where: { id: body.planId, active: true } }) : null;
+  if (plan && SMALL_TYPES.has(body.facilityType) && !smallPlan(plan.name) && (await prisma.plan.count({ where: { active: true, name: { startsWith: "CHPS", mode: "insensitive" } } })) > 0) {
+    return res.status(400).json({ error: "invalid_input", fields: { planId: "CHPS compounds and clinics are on the CHPS and Clinic plan." } });
+  }
   if (plansExist > 0 && !plan) return res.status(400).json({ error: "invalid_input", fields: { planId: "Choose a plan." } });
   if (body.departments.length === 0) return res.status(400).json({ error: "invalid_input", fields: { departments: "Choose at least one department." } });
   if (body.cadres.length === 0) return res.status(400).json({ error: "invalid_input", fields: { cadres: "Choose at least one cadre." } });

@@ -9,6 +9,8 @@ interface Row {
   type: string;
   joinedAt: string;
   grantedAccess: boolean;
+  suspended: boolean;
+  suspendedReason: string | null;
 }
 
 const TYPE: Record<string, string> = {
@@ -41,7 +43,7 @@ export default function DistrictFacilitiesPage() {
                     <td className={TD}>{f.name}</td>
                     <td className={TD}>{TYPE[f.type] ?? f.type}</td>
                     <td className={TD}>{new Date(f.joinedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
-                    <td className={TD}><StatusBadge tone={f.grantedAccess ? "success" : "neutral"}>{f.grantedAccess ? "Granted" : "Not granted"}</StatusBadge></td>
+                    <td className={TD}>{f.suspended ? <><StatusBadge tone="block">Suspended</StatusBadge>{f.suspendedReason && <span className="block text-sm text-[var(--muted)]">{f.suspendedReason}</span>}</> : <StatusBadge tone={f.grantedAccess ? "success" : "neutral"}>{f.grantedAccess ? "Granted" : "Not granted"}</StatusBadge>}</td>
                   </tr>
                 ))}
               </tbody>

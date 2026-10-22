@@ -140,3 +140,18 @@ describe("attendance and compliance screens", () => {
     expect(d.facilities[0]).toMatchObject({ shortDays: 0, nextMonthPublished: false });
   });
 });
+
+describe("a suspended facility", () => {
+  it("disappears from every district screen, and is named with the reason", async () => {
+    const { officer, admin, granted } = await setup();
+    await as(admin).put("/api/facility/directorate", { scopes: ["COVERAGE", "STAFFING"] });
+    expect((await as(officer).get("/api/district/coverage")).body.facilities).toHaveLength(1);
+    await prisma.facility.update({ where: { id: granted.id }, data: { status: "SUSPENDED", accessNote: "Unpaid for 60 days" } });
+    const c = (await as(officer).get("/api/district/coverage")).body;
+    expect(c.facilities).toHaveLength(0);
+    expect(c.reading.suspended).toEqual([{ id: granted.id, name: granted.name, reason: "Unpaid for 60 days" }]);
+    expect((await as(officer).get("/api/district/establishment")).body.facilities).toHaveLength(0);
+    const list = (await as(officer).get("/api/district/facilities")).body.facilities.find((f: { id: string }) => f.id === granted.id);
+    expect(list).toMatchObject({ suspended: true, suspendedReason: "Unpaid for 60 days", grantedAccess: false });
+  });
+});

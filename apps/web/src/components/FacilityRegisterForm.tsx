@@ -86,7 +86,7 @@ export function FacilityRegisterForm() {
   // The departments and cadres on offer depend on the type of facility, so they are fetched again when the type changes.
   useEffect(() => {
     let live = true;
-    api.get<Options>(`/api/public/register-facility/options${v.facilityType ? `?type=${encodeURIComponent(v.facilityType)}` : ""}`).then((o) => { if (live) { setOptions(o); setDepartments(o.departments); setCadres(o.cadres); } }).catch(() => live && setProblem("The form could not load. Check your connection and refresh the page."));
+    api.get<Options>(`/api/public/register-facility/options${v.facilityType ? `?type=${encodeURIComponent(v.facilityType)}` : ""}`).then((o) => { if (live) { setOptions(o); setDepartments(o.departments); setCadres(o.cadres); setPlanId((p) => (o.plans.some((x) => x.id === p) ? p : o.plans.length === 1 ? o.plans[0].id : "")); } }).catch(() => live && setProblem("The form could not load. Check your connection and refresh the page."));
     return () => { live = false; };
   }, [v.facilityType]);
   const listed = districts !== null && districts.length > 0;

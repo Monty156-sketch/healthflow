@@ -141,6 +141,17 @@ describe("a facility registering itself", () => {
     expect((await pub.get("/api/public/register-facility/options")).body.plans).toHaveLength(1);
   });
 
+  it("puts CHPS compounds and clinics on the same, smallest plan", async () => {
+    const small = await prisma.plan.create({ data: { name: "CHPS and Clinic", monthlyPriceGhs: 150, sortOrder: 1 } });
+    const big = await prisma.plan.create({ data: { name: "Hospital", monthlyPriceGhs: 1000, sortOrder: 2 } });
+    for (const type of ["CHPS_COMPOUND", "CLINIC"]) {
+      expect((await pub.get(`/api/public/register-facility/options?type=${type}`)).body.plans.map((p: { id: string }) => p.id)).toEqual([small.id]);
+    }
+    expect((await pub.get("/api/public/register-facility/options?type=HOSPITAL")).body.plans).toHaveLength(2);
+    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: big.id }))).body.fields.planId).toBeTruthy();
+    expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: small.id }))).status).toBe(201);
+  });
+
   it("turns away a taken email, a repeated facility, a weak password, and missing consent", async () => {
     expect((await pub.post("/api/public/register-facility", body())).status).toBe(201);
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Other Clinic" }))).body.error).toBe("email_taken");

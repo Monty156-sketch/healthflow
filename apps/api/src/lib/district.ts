@@ -16,7 +16,7 @@ export interface Granted {
 /** Facilities that have an active grant to this district which includes the scope. */
 export async function grantedFor(districtId: string, scope: DistrictScope): Promise<Granted[]> {
   const grants = await prisma.districtGrant.findMany({
-    where: { districtId, status: "ACTIVE", scopes: { has: scope }, facility: { active: true } },
+    where: { districtId, status: "ACTIVE", scopes: { has: scope }, facility: { active: true, status: { not: "SUSPENDED" } } },
     include: { facility: { select: { name: true } } },
     orderBy: { facility: { name: "asc" } },
   });
@@ -24,6 +24,12 @@ export async function grantedFor(districtId: string, scope: DistrictScope): Prom
 }
 
 export const SCOPE_WORD: Record<DistrictScope, string> = { COVERAGE: "coverage", STAFFING: "staffing", ATTENDANCE: "attendance", COMPLIANCE: "compliance" };
+
+/** Facilities in this district that PS Tech has suspended. Their data is not shown to the district; only the fact, and the reason. */
+export async function suspendedFor(districtId: string) {
+  const rows = await prisma.facility.findMany({ where: { districtId, active: true, status: "SUSPENDED" }, select: { id: true, name: true, accessNote: true }, orderBy: { name: "asc" } });
+  return rows.map((f) => ({ id: f.id, name: f.name, reason: f.accessNote }));
+}
 
 /** Every district read is written to the facility's own audit log, naming the district user and what they read. */
 export async function auditDistrictRead(req: Request, granted: Granted[], screen: string, scope: DistrictScope) {
