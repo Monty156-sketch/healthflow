@@ -70,7 +70,9 @@ describe("duty cycle rules", () => {
   it("switching to Block needs confirmation; priorities must be unique", async () => {
     const { api, midwife, facility } = await setup();
     await shiftsNeedingMidwives(api, midwife.id);
-    const rule = (await api.get("/api/facility/cycles")).body.rules[0];
+    const seeded = (await api.get("/api/facility/cycles")).body.rules[0];
+    expect((await api.patch(`/api/facility/cycles/${seeded.id}`, { ...seeded, enforcement: "PREFER" })).status).toBe(200);
+    const rule = { ...seeded, enforcement: "PREFER" };
     const body = { ...rule, enforcement: "BLOCK" };
     const unconfirmed = await api.patch(`/api/facility/cycles/${rule.id}`, body);
     expect(unconfirmed.status).toBe(409);
