@@ -19,6 +19,7 @@ import { currentNotice } from "./facility/privacy.js";
 import { unitForCadre } from "../lib/dutyPlan.js";
 import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
 import { ensureSupportUnits } from "../lib/supportUnits.js";
+import { nameKey } from "../lib/inCharges.js";
 
 export const joinRouter = Router();
 
@@ -52,6 +53,17 @@ joinRouter.get("/:code", async (req, res) => {
   ]);
   // Hospitals roster by ward, so everyone names their ward and says whether they are its in-charge.
   res.json({ facilityName: code.facility.name, cadres, departments, byWard: WARD_FACILITY_TYPES.includes(code.facility.facilityType) });
+});
+
+/** Is this name on the administrator's in-charge list? If so, the ward and rank to fill in. Only an exact name matches. */
+joinRouter.get("/:code/in-charge", async (req, res) => {
+  const code = await openCode(String(req.params.code));
+  if (!code) return res.status(404).json(BAD_CODE);
+  const name = String(req.query.name ?? "");
+  if (nameKey(name).length < 3) return res.json({ listed: false });
+  const row = await prisma.wardInCharge.findFirst({ where: { facilityId: code.facilityId, nameKey: nameKey(name), claimedStaffId: null }, include: { department: { select: { id: true, name: true } } } });
+  if (!row) return res.json({ listed: false });
+  res.json({ listed: true, rank: row.rank, departmentId: row.departmentId, ward: row.department?.name ?? null });
 });
 
 joinRouter.get("/:code/notice", async (req, res) => {
@@ -90,6 +102,13 @@ joinRouter.post("/register", async (req, res) => {
   const phone = input.phone ? normalisePhone(input.phone) : null;
   if (input.phone && !phone) fields.phone = "Enter a Ghana mobile number, such as 024 123 4567, or leave it empty.";
   if (input.cadreId && !(await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId, active: true }, select: { id: true } }))) fields.cadreId = "Choose a cadre from the list.";
+  // An in-charge is only ever someone the administrator listed. Their ward and rank come from the list, not from the form.
+  const listed = await prisma.wardInCharge.findFirst({ where: { facilityId, nameKey: nameKey(input.fullName), claimedStaffId: null } });
+  if (listed) {
+    input.departmentId = listed.departmentId;
+    input.departmentText = null;
+    input.position = listed.rank;
+  }
   const dept = input.departmentId ? await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true, kind: true } }) : null;
   if (input.departmentId && !dept) fields.departmentId = "Choose a department from the list.";
   const byWard = WARD_FACILITY_TYPES.includes(code.facility.facilityType);
@@ -106,7 +125,7 @@ joinRouter.post("/register", async (req, res) => {
       input.departmentText = null;
     }
   }
-  const asInCharge = byWard && input.asInCharge && dept?.kind === "WARD";
+  const asInCharge = Boolean(listed);
   const problem = checkPassword(input.password, input.email);
   if (problem) fields.password = problem;
   if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields });
@@ -149,8 +168,17 @@ joinRouter.post("/register", async (req, res) => {
     await tx.userProfile.create({
       data: { userEmail: input.email, passwordHash, role: "STAFF", scopeType: "FACILITY", scopeId: facilityId, facilityId, staffId: s.id, active: !waits, privacyNoticeVersionAccepted: notice.version },
     });
+    if (listed) {
+      // Two people with the same name cannot both take the place on the list.
+      const taken = await tx.wardInCharge.updateMany({ where: { id: listed.id, claimedStaffId: null }, data: { claimedStaffId: s.id } });
+      if (taken.count === 0) throw new Error("in_charge_taken");
+    }
     return s;
+  }).catch((e) => {
+    if (e instanceof Error && e.message === "in_charge_taken") return "taken" as const;
+    throw e;
   });
+  if (staff === "taken") return res.status(409).json({ error: "in_charge_taken", message: "Someone has already signed up with that name. Ask the administrator." });
   if (!staff) return res.status(404).json(BAD_CODE);
 
   await writeAuditLog({

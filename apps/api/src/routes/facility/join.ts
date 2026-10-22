@@ -2,6 +2,7 @@
 // administrator's alone. In a hospital, a ward's in-charge also approves the
 // staff who chose their ward; in-charges themselves are approved only by the
 // administrator, because approval gives them that ward's rosters.
+import { WARD_FACILITY_TYPES } from "./rosters.js";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -97,10 +98,11 @@ joinAdminRouter.post("/approve", allowRoles(...READ_ROLES), async (req, res) => 
   const people = await prisma.staff.findMany({ where: { id: { in: input.staffIds }, facilityId, status: "PENDING", joinedVia: "CODE", ...scope.where } });
   if (people.length === 0) return res.status(404).json({ error: "not_found" });
   const name = await facilityName(facilityId);
+  const byWard = WARD_FACILITY_TYPES.includes((await prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { facilityType: true } })).facilityType);
   for (const p of people) {
     const inCharge = p.requestedInCharge && input.asInCharge !== false;
     const wardId = input.departmentId !== undefined ? input.departmentId || null : p.departmentId;
-    if (inCharge && !wardId) return res.status(400).json({ error: "invalid_input", message: `Choose the ward ${p.fullName} is in charge of.` });
+    if (inCharge && !wardId && byWard) return res.status(400).json({ error: "invalid_input", message: `Choose the ward ${p.fullName} is in charge of.` });
     const position = input.position !== undefined ? input.position : p.position;
     await prisma.$transaction(async (tx) => {
       await tx.staff.update({

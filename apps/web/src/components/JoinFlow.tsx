@@ -12,7 +12,7 @@ interface Facility {
   facilityName: string;
   cadres: { id: string; name: string }[];
   departments: { id: string; name: string; kind?: "WARD" | "SUPPORT" | "OFFICE" }[];
-  /** Hospitals roster by ward: everyone names their ward, and says if they are its in-charge. */
+  /** Hospitals roster by ward: everyone names their ward. */
   byWard?: boolean;
 }
 type Step = "code" | "details" | "done";
@@ -38,6 +38,19 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const [agreed, setAgreed] = useState(false);
   const [result, setResult] = useState<{ status: "pending" | "active" } | null>(null);
+  // Set when the name typed is on the administrator's in-charge list: the ward and rank then come from the list.
+  const [listed, setListed] = useState<{ rank: string; ward: string | null; departmentId: string | null } | null>(null);
+
+  async function checkName() {
+    const name = form.fullName.trim();
+    if (name.length < 3) return setListed(null);
+    try {
+      const r = await api.get<{ listed: boolean; rank?: string; ward?: string | null; departmentId?: string | null }>(`/api/public/join/${encodeURIComponent(code.trim())}/in-charge?name=${encodeURIComponent(name)}`);
+      setListed(r.listed ? { rank: r.rank ?? "", ward: r.ward ?? null, departmentId: r.departmentId ?? null } : null);
+    } catch {
+      setListed(null);
+    }
+  }
 
   async function open(c: string) {
     const clean = encodeURIComponent(c.trim());
@@ -76,7 +89,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
       .finally(() => setChecking(false));
   }, [initialCode]);
 
-  // In a hospital, "I am registering as" picks ward staff, a ward in-charge, or a unit such as Security or Drivers.
+  // In a hospital, "I am registering as" picks ward staff or a unit such as Security or Drivers.
   const unitId = form.as.startsWith("unit:") ? form.as.slice(5) : null;
   const wardList = facility?.byWard ? facility.departments.filter((d) => (d.kind ?? "WARD") === "WARD") : facility?.departments ?? [];
   const units = facility?.byWard ? facility.departments.filter((d) => d.kind && d.kind !== "WARD") : [];
@@ -103,7 +116,6 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
         cadreText: !unitId && form.cadre === OTHER ? form.cadreText : null,
         departmentId: unitId ?? (form.department && form.department !== OTHER ? form.department : null),
         departmentText: !unitId && form.department === OTHER ? form.departmentText : null,
-        asInCharge: Boolean(facility?.byWard) && form.as === "incharge",
         leaveGrade: form.grade,
       });
       setResult(res);
@@ -138,17 +150,21 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
       <PublicCard title={`Join ${facility.facilityName}`} wide>
         <form onSubmit={finish} noValidate className="space-y-4">
           {facility.byWard && (
-            <Field label="I am registering as" hint={form.as === "incharge" ? "The administrator approves in-charges." : undefined}>
+            <Field label="I am registering as">
               {(a) => (
                 <Select {...a} value={form.as} onChange={(e) => set("as", e.target.value)}>
                   <option value="staff">Ward staff</option>
-                  <option value="incharge">Ward in-charge</option>
                   {units.map((d) => <option key={d.id} value={`unit:${d.id}`}>{d.name.replace(/(er)s$/i, "$1")}</option>)}
                 </Select>
               )}
             </Field>
           )}
-          <Field label="Full name" error={fields.fullName}>{(a) => <Input {...a} autoComplete="name" value={form.fullName} onChange={(e) => set("fullName", e.target.value)} />}</Field>
+          <Field label="Full name" error={fields.fullName}>{(a) => <Input {...a} autoComplete="name" value={form.fullName} onChange={(e) => { set("fullName", e.target.value); setListed(null); }} onBlur={checkName} />}</Field>
+          {listed && (
+            <Notice tone="success">
+              Your administrator has listed you as {listed.rank}{listed.ward ? `, in charge of ${listed.ward}` : ""}. Your ward and rank are set for you. The administrator approves your account.
+            </Notice>
+          )}
           <Field label="Email" error={fields.email} hint="You sign in with this.">{(a) => <Input {...a} type="email" autoComplete="email" value={form.email} onChange={(e) => set("email", e.target.value)} />}</Field>
           <Field label="Password" error={fields.password} hint="At least 12 characters.">{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} />}</Field>
           <Field label="Confirm password" error={fields.confirm}>{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.confirm} onChange={(e) => set("confirm", e.target.value)} />}</Field>
@@ -176,6 +192,9 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
             )}
           </Field>
           {form.cadre === OTHER && <Field label="Your cadre">{(a) => <Input {...a} value={form.cadreText} onChange={(e) => set("cadreText", e.target.value)} />}</Field>}
+          {listed ? (
+            <Field label="Ward and rank">{(a) => <Input {...a} readOnly value={[listed.ward, listed.rank].filter(Boolean).join(", ")} />}</Field>
+          ) : (
           <Field label={facility.byWard ? "Ward" : "Department or ward"} optional={!facility.byWard} error={fields.departmentId}>
             {(a) => (
               <Select {...a} value={form.department} onChange={(e) => set("department", e.target.value)}>
@@ -185,7 +204,8 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
               </Select>
             )}
           </Field>
-          {form.department === OTHER && <Field label="Your department or ward">{(a) => <Input {...a} value={form.departmentText} onChange={(e) => set("departmentText", e.target.value)} />}</Field>}
+          )}
+          {!listed && form.department === OTHER && <Field label="Your department or ward">{(a) => <Input {...a} value={form.departmentText} onChange={(e) => set("departmentText", e.target.value)} />}</Field>}
           </>)}
           <div>
             <h2 className="text-base font-semibold">Privacy notice</h2>
@@ -212,7 +232,7 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
           <p className="mt-4"><Link href="/login" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">Go to sign in</Link></p>
         </>
       ) : (
-        <p className="text-[var(--muted)]">{facility?.byWard && form.as !== "staff" ? (form.as === "incharge" ? "The administrator has been told and will approve you as in-charge." : "The administrator has been told and will approve your account.") : "Your in-charge has been told and will approve your account."} Once they do, sign in with {form.email} and the password you chose.</p>
+        <p className="text-[var(--muted)]">{listed ? "The administrator has been told and will approve you as in-charge." : facility?.byWard && form.as !== "staff" ? "The administrator has been told and will approve your account." : "Your in-charge has been told and will approve your account."} Once they do, sign in with {form.email} and the password you chose.</p>
       )}
     </PublicCard>
   );

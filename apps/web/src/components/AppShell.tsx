@@ -72,11 +72,12 @@ export function useOptionalFacility() {
 
 const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
 
-const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string; wards?: boolean }[] = [
+const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string; wards?: boolean; listed?: boolean }[] = [
   { href: "/dashboard", label: "Dashboard", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/transfers", label: "Ward transfers", roles: READ_ROLES, wards: true },
+  { href: "/in-charges", label: "In-charges", roles: ["FACILITY_ADMIN"], listed: true },
   { href: "/today", label: "Today", roles: ["STAFF"] },
   { href: "/my-duties", label: "Duties", roles: [...READ_ROLES, "STAFF"], section: "duties" },
   { href: "/leave", label: "Leave", roles: [...READ_ROLES, "STAFF"], section: "leave" },
@@ -144,7 +145,7 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
   const pathname = usePathname();
   const fac = useOptionalFacility();
   const flags = fac?.flags;
-  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard));
+  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE"].includes(fac?.facility.facilityType ?? "")));
   if (items.length === 0) return null;
   const sec = sectionFor(pathname)?.section.id;
   return (

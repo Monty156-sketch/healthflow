@@ -393,6 +393,7 @@ model Facility {
   staffRestrictions   StaffRestriction[]
   dayOffRequests      DayOffRequest[]
   wardTransfers       WardTransfer[]
+  wardInCharges       WardInCharge[]
   leaveRequests       LeaveRequest[]
   publicHolidays      PublicHoliday[]
   attendance          Attendance[]
@@ -467,6 +468,7 @@ model Department {
   managers UserProfile[]
   transfersOut WardTransfer[] @relation("TransferFrom")
   transfersIn  WardTransfer[] @relation("TransferTo")
+  inCharges    WardInCharge[]
 
   @@index([facilityId])
 }
@@ -1545,4 +1547,23 @@ model ClockEvent {
 
   @@index([facilityId, at])
   @@index([staffId, at])
+}
+
+/// Who the administrator has named as an in-charge: name, rank and ward. A person who signs up with this name gets the ward and rank filled in, and cannot choose them.
+model WardInCharge {
+  id             String      @id @default(cuid())
+  facilityId     String
+  facility       Facility    @relation(fields: [facilityId], references: [id])
+  fullName       String
+  /// The name in lower case with single spaces, for matching at sign-up.
+  nameKey        String
+  rank           String
+  /// Null for a facility without wards, such as a clinic.
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  /// Set when someone has signed up as this in-charge.
+  claimedStaffId String?     @unique
+  createdAt      DateTime    @default(now())
+
+  @@unique([facilityId, nameKey])
 }
