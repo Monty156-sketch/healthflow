@@ -61,6 +61,11 @@ describe("hospital registration with in-charges", () => {
     // Claiming to be an in-charge without being on the list does nothing.
     await pub("/api/public/join/register", reg(code, "rival@h.test", { cadreId: nurse.id, departmentId: maternity.id, asInCharge: true }));
     expect((await prisma.staff.findFirstOrThrow({ where: { email: "rival@h.test" } })).requestedInCharge).toBe(false);
+    // The ward's own in-charge is told about ward staff, not the administrator; a ward with no in-charge goes to the administrator.
+    const told = async (title: string) => (await prisma.notification.findMany({ where: { type: "join_pending", title: { contains: title } } })).map((n) => n.recipientEmail).sort();
+    expect(await told("ama")).toEqual(["sister@h.test"]);
+    expect((await told("kofi")).length).toBe(1);
+    expect((await told("kofi"))[0]).not.toBe("sister@h.test");
     const ward = as(p);
     const waiting = ((await ward.get("/api/facility/join/pending")).body.pending as { id: string; fullName: string }[]).sort((a, b) => a.fullName.localeCompare(b.fullName));
     expect(waiting.map((w) => w.fullName)).toEqual(["ama", "rival"]);
