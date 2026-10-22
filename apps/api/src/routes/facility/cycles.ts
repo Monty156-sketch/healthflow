@@ -62,7 +62,7 @@ async function ensureSeeded(facilityId: string) {
         name: s.name,
         consecutiveDuties: s.n,
         offDaysRequired: s.m,
-        enforcement: "PREFER",
+        enforcement: "BLOCK",
         priority: priority++,
         nextShiftAfterRestId: s.after,
         blockShiftPatternIds: s.pattern,

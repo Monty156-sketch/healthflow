@@ -37,13 +37,13 @@ describe("duty cycle rules", () => {
     expect(bad.body.fields.nextShiftAfterRestId).toBeTruthy();
   });
 
-  it("seeds the two starting rules, all preferring, with the right counting shifts", async () => {
+  it("seeds the two starting rules, all enforced, with the right counting shifts", async () => {
     const { api, midwife } = await setup();
     expect((await api.get("/api/facility/cycles")).body.rules).toHaveLength(0);
     const { a, m, n } = await shiftsNeedingMidwives(api, midwife.id);
     const { rules } = (await api.get("/api/facility/cycles")).body;
     expect(rules.map((r: { name: string }) => r.name)).toEqual(["4 nights on, 3 off", "4 days on, 2 off"]);
-    expect(rules.every((r: { enforcement: string }) => r.enforcement === "PREFER")).toBe(true);
+    expect(rules.every((r: { enforcement: string }) => r.enforcement === "BLOCK")).toBe(true);
     expect(rules[0].countingShiftIds).toEqual([n.id]);
     expect(rules[1].countingShiftIds.sort()).toEqual([a.id, m.id].sort());
     expect(rules.map((r: { priority: number }) => r.priority)).toEqual([1, 2]);
