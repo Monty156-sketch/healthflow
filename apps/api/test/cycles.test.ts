@@ -80,7 +80,7 @@ describe("duty cycle rules", () => {
     const ok = await api.patch(`/api/facility/cycles/${rule.id}`, { ...body, confirmBlock: true });
     expect(ok.status).toBe(200);
     expect(ok.body.rule.enforcement).toBe("BLOCK");
-    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "cycle_rule_updated" } });
+    const audit = await prisma.auditLog.findFirst({ where: { facilityId: facility.id, action: "cycle_rule_updated" }, orderBy: { createdAt: "desc" } });
     expect(audit?.summary).toBe(
       'Kofi Bawa changed the duty cycle rule "4 nights on, 3 off" from after 4 consecutive duties, 3 days off, preferred to after 4 consecutive duties, 3 days off, enforced.'
     );
