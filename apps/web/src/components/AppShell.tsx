@@ -13,7 +13,7 @@ import { ROLE, showDate } from "@/lib/format";
 import { Button, Loading, LoadError, Notice } from "@/components/ui";
 import { getSupport, setSupport } from "@/lib/supportSession";
 import { SectionTabs } from "@/components/SectionTabs";
-import { sectionFor } from "@/lib/sections";
+import { SECTIONS, sectionFor } from "@/lib/sections";
 import { PlatformNotices } from "@/components/PlatformNotices";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 
@@ -141,7 +141,55 @@ function HeaderActions({ role }: { role: string }) {
   );
 }
 
+/** The console's pages, grouped by what they are for. */
+const CONSOLE_GROUPS: { title: string; hrefs: string[] }[] = [
+  { title: "Overview", hrefs: ["/platform"] },
+  { title: "Facilities", hrefs: ["/platform/registrations", "/platform/facilities", "/platform/trials", "/platform/districts"] },
+  { title: "Money", hrefs: ["/platform/renewals", "/platform/payments", "/platform/billing"] },
+  { title: "Support", hrefs: ["/platform/support", "/platform/errors", "/system-health", "/platform/activity"] },
+  { title: "Settings", hrefs: ["/platform/users", "/platform/announcements", "/platform/flags", "/platform/legal"] },
+];
+
+function ConsoleLinks({ onNavigate }: { onNavigate?: () => void }) {
+  const pathname = usePathname();
+  const tabs = SECTIONS.find((s) => s.id === "platform")!.tabs;
+  const current = sectionFor(pathname)?.current;
+  return (
+    <div className="space-y-4">
+      {CONSOLE_GROUPS.map((g) => (
+        <div key={g.title}>
+          <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">{g.title}</p>
+          <ul className="space-y-0.5">
+            {g.hrefs.map((h) => {
+              const t = tabs.find((x) => x.href === h);
+              if (!t) return null;
+              const on = h === current;
+              return (
+                <li key={h}>
+                  <Link
+                    href={h}
+                    onClick={onNavigate}
+                    aria-current={on ? "page" : undefined}
+                    className={`flex min-h-10 items-center rounded-[var(--radius)] px-3 text-[15px] ${on ? "bg-[var(--accent-soft)] font-medium text-[var(--accent-text)]" : "text-[var(--foreground)] hover:bg-[var(--accent-soft)]"}`}
+                    style={on ? { boxShadow: "inset 3px 0 0 var(--accent)" } : undefined}
+                  >
+                    {t.label}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
+  return role === "PLATFORM_ADMIN" ? <ConsoleLinks onNavigate={onNavigate} /> : <FacilityLinks role={role} onNavigate={onNavigate} />;
+}
+
+function FacilityLinks({ role, onNavigate }: { role: string; onNavigate?: () => void }) {
   const pathname = usePathname();
   const fac = useOptionalFacility();
   const flags = fac?.flags;

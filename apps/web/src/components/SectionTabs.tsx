@@ -11,6 +11,8 @@ export function SectionTabs({ role }: { role: string }) {
   const flags = useOptionalFacility()?.flags;
   const hit = sectionFor(pathname);
   if (!hit) return null;
+  // The platform console lists its pages down the left side instead.
+  if (hit.section.id === "platform") return null;
   const tabs = hit.section.tabs.filter((t) => t.roles.includes(role) && !(t.flag && flags?.[t.flag] === false));
   if (tabs.length < 2) return null;
   return (
