@@ -27,17 +27,25 @@ interface Cell {
 
 const SHOWN = 40;
 
+const CYCLE_HINT = new Set(["C2", "C3", "C4", "C5", "C8"]);
+
 function FindingList({
   title,
   items,
   nameOf,
   onOverride,
+  onOverrideStaffing,
 }: {
   title: string;
   items: RosterFinding[];
   nameOf: (id: string | null) => string;
   onOverride?: (id: string, reason: string) => Promise<string | null>;
+  onOverrideStaffing?: (reason: string) => Promise<string | null>;
 }) {
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkReason, setBulkReason] = useState("");
+  const [bulkProblem, setBulkProblem] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [all, setAll] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
@@ -46,11 +54,42 @@ function FindingList({
   if (!items.length) return null;
   const shown = all ? items : items.slice(0, SHOWN);
   const block = items[0].severity === "BLOCK";
+  const gaps = items.filter((f) => f.ruleCode === "C11" && f.status === "OPEN").length;
   return (
     <section aria-label={title}>
       <h3 className="mb-2 text-[15px] font-semibold">
         {title} <span className="figures font-normal text-[var(--muted)]">({items.length})</span>
       </h3>
+      {onOverrideStaffing && gaps > 1 && (
+        <div className="mb-3 max-w-xl space-y-2">
+          {!bulkOpen ? (
+            <Button variant="secondary" onClick={() => { setBulkOpen(true); setBulkReason(""); setBulkProblem(null); }}>
+              Accept all {gaps} staffing gaps
+            </Button>
+          ) : (
+            <>
+              <Field label={`Why can these ${gaps} gaps stand`} hint="One reason, kept on the roster and in the audit log for each gap." error={bulkProblem ?? undefined}>
+                {(a) => <Textarea {...a} value={bulkReason} onChange={(e) => setBulkReason(e.target.value)} />}
+              </Field>
+              <div className="flex gap-2">
+                <Button
+                  disabled={bulkBusy || bulkReason.trim().length === 0}
+                  onClick={async () => {
+                    setBulkBusy(true);
+                    const err = await onOverrideStaffing(bulkReason);
+                    setBulkBusy(false);
+                    if (err) setBulkProblem(err);
+                    else setBulkOpen(false);
+                  }}
+                >
+                  {bulkBusy ? "Saving…" : `Accept ${gaps} gaps`}
+                </Button>
+                <Button variant="secondary" onClick={() => setBulkOpen(false)}>Cancel</Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
       <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
         {shown.map((f) => (
           <li key={f.id} className="flex gap-3 px-4 py-3 text-[15px]">
@@ -64,6 +103,8 @@ function FindingList({
                 {f.staffId ? `, ${nameOf(f.staffId)}` : ""}
                 {f.date ? `, ${showDate(f.date)}` : ""}
               </span>
+              {CYCLE_HINT.has(f.ruleCode) && <span className="block text-sm text-[var(--muted)]">This can come from a duty cycle. Change the cycle on the Duty cycles page, or accept it with a reason.</span>}
+              {f.ruleCode === "C11" && <span className="block text-sm text-[var(--muted)]">The duty cycles leave this shift short. More staff or a lower minimum closes it.</span>}
               {onOverride && openId !== f.id && (
                 <span className="mt-1 block">
                   <Button variant="quiet" onClick={() => { setOpenId(f.id); setReason(""); setProblem(null); }}>
@@ -259,6 +300,17 @@ export default function RosterPage() {
   async function override(findingId: string, reason: string): Promise<string | null> {
     try {
       await api.post(`/api/facility/rosters/${id}/findings/${findingId}/override`, { reason });
+      reload();
+      return null;
+    } catch (err) {
+      const body = err instanceof ApiError ? (err.body as { message?: string; fields?: Record<string, string> }) : undefined;
+      return body?.fields?.reason ?? body?.message ?? "That did not save. Try again.";
+    }
+  }
+
+  async function overrideStaffing(reason: string): Promise<string | null> {
+    try {
+      await api.post(`/api/facility/rosters/${id}/findings/override-staffing`, { reason });
       reload();
       return null;
     } catch (err) {
@@ -619,7 +671,7 @@ export default function RosterPage() {
               <Notice tone="success">No findings. Every rule is met.</Notice>
             ) : (
               <>
-                <FindingList title="Blocking" items={blocking} nameOf={nameOf} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} />
+                <FindingList title="Blocking" items={blocking} nameOf={nameOf} onOverride={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? override : undefined} onOverrideStaffing={isAdmin && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW") ? overrideStaffing : undefined} />
                 <FindingList title="Warnings" items={warnings} nameOf={nameOf} />
               </>
             )}

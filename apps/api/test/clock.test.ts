@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
 import { insideArea, metresBetween } from "../src/lib/geofence.js";
 
@@ -60,5 +60,25 @@ describe("clocking in and out", () => {
     expect((await nurse.post("/api/facility/me/clock", { kind: "IN", ...here })).status).toBe(201);
     const rec = await prisma.attendance.findFirstOrThrow({ where: { staffId: staff.id } });
     expect(["PRESENT", "LATE"]).toContain(rec.status);
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("marks a night nurse who clocks in after midnight against last evening's night duty", async () => {
+    // The clock is set first so the sign-in tokens are issued at the same moment the test runs in.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(Date.UTC(2026, 10, 11, 0, 40)));
+    const { facility, admin, nurse } = await setup();
+    await admin.put("/api/facility/geofence", { lat: 10.06, lng: -2.5, radiusM: 150 });
+    const staff = await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, fullName: "Ama Dery" } });
+    const night = await prisma.shift.create({ data: { facilityId: facility.id, name: "Night", code: "N", startTime: "20:00", endTime: "08:00", isOvernight: true, durationHours: 12, minStaff: 1 } });
+    const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: 11, year: 2026, status: "PUBLISHED" } });
+    const evening = new Date(Date.UTC(2026, 10, 10));
+    await prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: staff.id, shiftId: night.id, dutyDate: evening } });
+    expect((await nurse.post("/api/facility/me/clock", { kind: "IN", ...here })).status).toBe(201);
+    const rec = await prisma.attendance.findFirstOrThrow({ where: { staffId: staff.id } });
+    expect(rec.dutyDate.toISOString().slice(0, 10)).toBe("2026-11-10");
+    expect(rec.status).toBe("LATE");
+    expect(rec.minutesLate).toBe(280);
   });
 });

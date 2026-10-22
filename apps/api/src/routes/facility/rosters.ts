@@ -713,6 +713,29 @@ rostersRouter.put("/:id/cell", allowRoles(...ROSTER_ROLES), async (req, res) => 
 
 // ------------------------------------------------------------- overriding a finding
 
+// One reason for every open staffing gap ("needs 2, has 1"), so a roster that is short by design is not accepted one line at a time.
+rostersRouter.post("/:id/findings/override-staffing", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ reason: z.string().trim().min(10, "Give a reason of at least a few words.").max(500) }), req.body, res);
+  if (!input) return;
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!EDITABLE.includes(roster.status)) return res.status(409).json({ error: "roster_locked", message: "Reopen the roster before overriding a finding." });
+  const done = await prisma.complianceFinding.updateMany({
+    where: { rosterId: roster.id, ruleCode: "C11", severity: "BLOCK", status: "OPEN" },
+    data: { status: "OVERRIDDEN", overrideReason: input.reason, overrideBy: who.email, overrideAt: new Date() },
+  });
+  if (done.count === 0) return res.status(409).json({ error: "not_open", message: "There are no open staffing gaps to accept." });
+  const open = await prisma.complianceFinding.count({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
+  await prisma.roster.update({ where: { id: roster.id }, data: { hasUnresolvedConflicts: open > 0 } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_finding_overridden", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} accepted ${done.count} staffing ${done.count === 1 ? "gap" : "gaps"} in the ${monthName(roster)} roster. Reason: ${input.reason}`,
+    reason: input.reason,
+  });
+  res.json({ accepted: done.count, summary: await summaryOf(roster.id) });
+});
+
 rostersRouter.post("/:id/findings/:findingId/override", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const who = caller(req);
   const input = parseOr400(z.object({ reason: z.string().trim().min(10, "Give a reason of at least a few words.").max(500) }), req.body, res);

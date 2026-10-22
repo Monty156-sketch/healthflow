@@ -109,6 +109,21 @@ describe("review, approval and publishing", () => {
     expect((await api.post(`/api/facility/rosters/${id}/status`, { action: "approve" })).status).toBe(200);
   });
 
+  it("accepts every open staffing gap at once with one reason, and nothing else", async () => {
+    const { api, id } = await setup();
+    const day = (n: number) => new Date(Date.UTC(2026, 10, n));
+    await prisma.rosterAssignment.deleteMany({ where: { rosterId: id, dutyDate: { in: [day(10), day(11), day(12)] } } });
+    await api.post(`/api/facility/rosters/${id}/validate`);
+    const openGaps = async () => (await api.get(`/api/facility/rosters/${id}`)).body.findings.filter((f: { ruleCode: string; status: string }) => f.ruleCode === "C11" && f.status === "OPEN");
+    expect((await openGaps()).length).toBeGreaterThan(1);
+    expect((await api.post(`/api/facility/rosters/${id}/findings/override-staffing`, { reason: "short" })).status).toBe(400);
+    const done = await api.post(`/api/facility/rosters/${id}/findings/override-staffing`, { reason: "The facility has too few staff for these days" });
+    expect(done.status).toBe(200);
+    expect(done.body.accepted).toBeGreaterThan(1);
+    expect(await openGaps()).toHaveLength(0);
+    expect((await api.post(`/api/facility/rosters/${id}/findings/override-staffing`, { reason: "The facility has too few staff for these days" })).status).toBe(409);
+  });
+
   it("lets only a facility admin approve, and keeps other facilities out", async () => {
     const { api, id, facility } = await setup();
     await api.post(`/api/facility/rosters/${id}/status`, { action: "submit" });
