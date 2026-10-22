@@ -31,10 +31,20 @@ export default function ContactPage() {
             <a href="tel:+233554571800" className={A}>
               055 457 1800
             </a>
+            {" ("}
+            <a href="https://wa.me/233554571800" target="_blank" rel="noopener noreferrer" className={A}>
+              WhatsApp
+            </a>
+            {")"}
             {", "}
             <a href="tel:+233246187422" className={A}>
               024 618 7422
             </a>
+            {" ("}
+            <a href="https://wa.me/233246187422" target="_blank" rel="noopener noreferrer" className={A}>
+              WhatsApp
+            </a>
+            {")"}
           </dd>
         </div>
         <div className="grid gap-1 px-4 py-3 sm:grid-cols-[10rem_1fr]">
