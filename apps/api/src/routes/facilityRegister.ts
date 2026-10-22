@@ -87,7 +87,10 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   const facility = await prisma.facility.create({
     data: { name: body.facilityName, facilityType: body.facilityType, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "TRIAL" },
   });
-  await seedChosen(facility.id, body.departments, body.cadres);
+  // A health centre rosters by unit, so it always has the three, whatever was ticked.
+  const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Midwives", "Public Health"] : [];
+  const have = new Set(body.departments.map((d) => d.trim().toLowerCase()));
+  await seedChosen(facility.id, [...body.departments, ...units.filter((u) => !have.has(u.toLowerCase()))], body.cadres);
   const trialEnds = new Date(Date.now() + 30 * 86_400_000);
   if (plan) {
     await prisma.subscription.create({ data: { facilityId: facility.id, planId: plan.id, status: "TRIAL", trialEndsAt: trialEnds, currentPeriodStart: new Date(), currentPeriodEnd: trialEnds } });
