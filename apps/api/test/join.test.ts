@@ -111,7 +111,7 @@ describe("a facility registering itself", () => {
     expect(res.body.code).toMatch(/^HF-[2-9A-HJKMNP-Z]{6}$/);
     const facility = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" } });
     expect(facility.status).toBe("TRIAL");
-    expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Maternity", "Outpatient"]);
+    expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Clinical Nurses", "Maternity", "Midwives", "Outpatient", "Public Health"]);
     expect(await prisma.cadre.count({ where: { facilityId: facility.id } })).toBe(3);
     expect(res.body.enrolmentToken).toBeTruthy();
     expect(await prisma.privacyNotice.count({ where: { facilityId: facility.id, publishedAt: { not: null } } })).toBe(1);
