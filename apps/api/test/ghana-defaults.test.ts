@@ -13,14 +13,14 @@ describe("Ghana Health Service cadre defaults", () => {
       expect(cadreDefaults(n)).toEqual({ onRoster: true, weekdaysOnly: true, takesNights: false });
     }
   });
-  it("keeps medical officers, accountants and administrators off the duty roster", () => {
-    for (const n of ["Medical Officer", "Accountant", "Administrator"]) expect(cadreDefaults(n).onRoster).toBe(false);
+  it("keeps medical officers and administrators off the duty roster", () => {
+    for (const n of ["Medical Officer", "Administrator"]) expect(cadreDefaults(n).onRoster).toBe(false);
   });
   it("gives security, drivers and orderlies nights", () => {
     for (const n of ["Security", "Driver", "Orderly"]) expect(cadreDefaults(n)).toEqual({ onRoster: true, weekdaysOnly: false, takesNights: true });
   });
   it("closes exactly the departments the facilities named at night", () => {
-    for (const d of ["Accounts", "Administration", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Public Health", "Radiology", "Stores"]) expect(defaultRunsNights(d)).toBe(false);
+    for (const d of ["Administration", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Public Health", "Radiology", "Stores"]) expect(defaultRunsNights(d)).toBe(false);
     for (const d of ["Outpatient", "Maternity", "Emergency", "Laboratory", "Clinical Nurses", "Midwives"]) expect(defaultRunsNights(d)).toBe(true);
   });
   it("puts a nurse, midwife or public health cadre in their unit", () => {

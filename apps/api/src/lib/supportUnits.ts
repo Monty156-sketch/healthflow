@@ -1,5 +1,5 @@
 // Hospitals have staff outside the wards: security, drivers and cleaners, who
-// are rostered by the administrator, and accounts and administration, who are
+// are rostered by the administrator, and administration, who are
 // not rostered. Each gets a unit so staff can register into it. Added once;
 // a unit the facility renamed away or switched off is not added again.
 import { prisma } from "./prisma.js";
@@ -9,7 +9,6 @@ const UNITS = [
   { name: "Security", kind: "SUPPORT", runsNights: true },
   { name: "Drivers", kind: "SUPPORT", runsNights: true },
   { name: "Cleaners", kind: "SUPPORT", runsNights: false },
-  { name: "Accounts", kind: "OFFICE", runsNights: false },
   { name: "Administration", kind: "OFFICE", runsNights: false },
 ] as const;
 
