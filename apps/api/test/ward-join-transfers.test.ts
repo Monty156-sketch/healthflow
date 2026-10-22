@@ -31,11 +31,24 @@ describe("hospital registration with in-charges", () => {
     expect((await request(app).get(`/api/public/join/${code}`).set("X-Forwarded-For", freshIp())).body.byWard).toBe(true);
     expect((await pub("/api/public/join/register", reg(code, "nobody@h.test", { cadreId: nurse.id }))).body.fields.departmentId).toBeTruthy();
 
-    // Approval is off for staff, but an in-charge always waits.
-    const ic = await pub("/api/public/join/register", reg(code, "sister@h.test", { cadreId: nurse.id, departmentId: maternity.id, asInCharge: true }));
+    // The administrator lists the in-charge with a rank and ward. Signing up with that name fills both in.
+    expect((await api.post("/api/facility/in-charges", { fullName: "Sister", rank: "Principal Nursing Officer", departmentId: surgery.id })).status).toBe(201);
+    const listedRow = (await api.get("/api/facility/in-charges")).body.inCharges[0] as { id: string };
+    expect((await api.post("/api/facility/in-charges", { fullName: "  SISTER ", rank: "Nursing Officer" })).status).toBe(400);
+    expect((await api.patch(`/api/facility/in-charges/${listedRow.id}`, { fullName: "Sister", rank: "Principal Nursing Officer", departmentId: maternity.id })).status).toBe(200);
+    const probe = (name: string) => request(app).get(`/api/public/join/${code}/in-charge`).query({ name }).set("X-Forwarded-For", freshIp());
+    expect((await probe("sister")).body).toMatchObject({ listed: true, rank: "Principal Nursing Officer", ward: "Maternity" });
+    expect((await probe("Somebody Else")).body).toEqual({ listed: false });
+
+    // Approval is off for staff, but an in-charge always waits. The ward they send is ignored; the list decides.
+    const ic = await pub("/api/public/join/register", reg(code, "sister@h.test", { cadreId: nurse.id, departmentId: surgery.id }));
     expect(ic.body.status).toBe("pending");
     const sister = await prisma.staff.findFirstOrThrow({ where: { email: "sister@h.test" } });
-    expect(sister.requestedInCharge).toBe(true);
+    expect(sister).toMatchObject({ requestedInCharge: true, departmentId: maternity.id, position: "Principal Nursing Officer" });
+    expect((await probe("sister")).body).toEqual({ listed: false });
+    const second = await pub("/api/public/join/register", reg(code, "sister@elsewhere.test", { fullName: "Sister", cadreId: nurse.id, departmentId: maternity.id }));
+    expect((await prisma.staff.findFirstOrThrow({ where: { email: "sister@elsewhere.test" } })).requestedInCharge).toBe(false);
+    expect(second.status).toBe(201);
     expect((await api.post("/api/facility/join/approve", { staffIds: [sister.id] })).body.approved).toBe(1);
     const p = await profileOf("sister@h.test");
     expect(p).toMatchObject({ role: "ROSTER_MANAGER", departmentId: maternity.id, active: true });
@@ -45,24 +58,21 @@ describe("hospital registration with in-charges", () => {
     await api.put("/api/facility/join/code", { requiresApproval: true, active: true });
     await pub("/api/public/join/register", reg(code, "ama@h.test", { cadreId: nurse.id, departmentId: maternity.id }));
     await pub("/api/public/join/register", reg(code, "kofi@h.test", { cadreId: nurse.id, departmentId: surgery.id }));
+    // Claiming to be an in-charge without being on the list does nothing.
     await pub("/api/public/join/register", reg(code, "rival@h.test", { cadreId: nurse.id, departmentId: maternity.id, asInCharge: true }));
+    expect((await prisma.staff.findFirstOrThrow({ where: { email: "rival@h.test" } })).requestedInCharge).toBe(false);
     const ward = as(p);
-    const waiting = (await ward.get("/api/facility/join/pending")).body.pending as { id: string; fullName: string }[];
-    expect(waiting.map((w) => w.fullName)).toEqual(["ama"]);
+    const waiting = ((await ward.get("/api/facility/join/pending")).body.pending as { id: string; fullName: string }[]).sort((a, b) => a.fullName.localeCompare(b.fullName));
+    expect(waiting.map((w) => w.fullName)).toEqual(["ama", "rival"]);
     const kofi = await prisma.staff.findFirstOrThrow({ where: { email: "kofi@h.test" } });
     expect((await ward.post("/api/facility/join/approve", { staffIds: [kofi.id] })).status).toBe(404);
     expect((await ward.post("/api/facility/join/approve", { staffIds: [waiting[0].id], departmentId: surgery.id })).status).toBe(403);
     expect((await ward.post("/api/facility/join/approve", { staffIds: [waiting[0].id] })).body.approved).toBe(1);
     expect((await ward.get("/api/facility/join/code")).status).toBe(403);
 
-    // The admin can let a would-be in-charge in as ordinary staff.
-    const rival = await prisma.staff.findFirstOrThrow({ where: { email: "rival@h.test" } });
-    await api.post("/api/facility/join/approve", { staffIds: [rival.id], asInCharge: false });
-    expect((await profileOf("rival@h.test")).role).toBe("STAFF");
-
     // The in-charge's staff list is their ward.
     const names = ((await ward.get("/api/facility/staff")).body.staff as { fullName: string }[]).map((s) => s.fullName).sort();
-    expect(names).toEqual(["ama", "rival", "sister"]);
+    expect(names).toEqual(["ama", "rival", "sister", "sister"]);
     expect((await ward.get(`/api/facility/staff/${kofi.id}`)).status).toBe(404);
   });
 });
