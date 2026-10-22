@@ -5,13 +5,23 @@
 import { demandOn, hasDemand } from "../engine/demand.js";
 import { Router, type Request } from "express";
 import { prisma } from "../lib/prisma.js";
-import { auditDistrictRead, grantedFor, readingUnder, type Granted } from "../lib/district.js";
+import { auditDistrictRead, grantedFor, readingUnder, suspendedFor, type Granted } from "../lib/district.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireDistrictOfficer } from "../middleware/districtAccess.js";
 import { sayDay } from "../engine/time.js";
 
 export const districtRouter = Router();
 districtRouter.use(requireAuth, requireDistrictOfficer);
+
+// Every screen's "reading" note also names the facilities that are suspended, with the reason, so their absence is explained.
+districtRouter.use(async (req, res, next) => {
+  try {
+    const suspended = await suspendedFor(req.district!.districtId);
+    const send = res.json.bind(res);
+    res.json = (body: unknown) => send(body && typeof body === "object" && "reading" in body ? { ...(body as object), reading: { ...(body as { reading: object }).reading, suspended } } : body);
+    next();
+  } catch (e) { next(e); }
+});
 
 const DAY = 86_400_000;
 const today = () => Math.floor(Date.now() / DAY);
@@ -325,9 +335,9 @@ districtRouter.get("/profile", async (req, res) => {
 districtRouter.get("/facilities", async (req, res) => {
   const districtId = req.district!.districtId;
   const [facilities, grants] = await Promise.all([
-    prisma.facility.findMany({ where: { districtId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, facilityType: true, createdAt: true } }),
+    prisma.facility.findMany({ where: { districtId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, facilityType: true, createdAt: true, status: true, accessNote: true } }),
     prisma.districtGrant.findMany({ where: { districtId, status: "ACTIVE" }, select: { facilityId: true } }),
   ]);
   const granted = new Set(grants.map((g) => g.facilityId));
-  res.json({ facilities: facilities.map((f) => ({ id: f.id, name: f.name, type: f.facilityType, joinedAt: f.createdAt, grantedAccess: granted.has(f.id) })) });
+  res.json({ facilities: facilities.map((f) => ({ id: f.id, name: f.name, type: f.facilityType, joinedAt: f.createdAt, grantedAccess: granted.has(f.id) && f.status !== "SUSPENDED", suspended: f.status === "SUSPENDED", suspendedReason: f.status === "SUSPENDED" ? f.accessNote : null })) });
 });
