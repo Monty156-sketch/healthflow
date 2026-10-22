@@ -145,7 +145,7 @@ function NavLinks({ role, onNavigate }: { role: string; onNavigate?: () => void 
   const pathname = usePathname();
   const fac = useOptionalFacility();
   const flags = fac?.flags;
-  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE"].includes(fac?.facility.facilityType ?? "")));
+  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"].includes(fac?.facility.facilityType ?? "")));
   if (items.length === 0) return null;
   const sec = sectionFor(pathname)?.section.id;
   return (
