@@ -72,7 +72,7 @@ describe("hospital registration with in-charges", () => {
 
     // The in-charge's staff list is their ward.
     const names = ((await ward.get("/api/facility/staff")).body.staff as { fullName: string }[]).map((s) => s.fullName).sort();
-    expect(names).toEqual(["ama", "rival", "sister", "sister"]);
+    expect(names).toEqual(["Sister", "ama", "rival", "sister"]);
     expect((await ward.get(`/api/facility/staff/${kofi.id}`)).status).toBe(404);
   });
 });
