@@ -123,7 +123,74 @@ districtRouter.get("/dashboard", async (req, res) => {
   const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const publishedNext = await prisma.roster.findMany({ where: { facilityId: { in: ids }, year: next.getUTCFullYear(), month: next.getUTCMonth() + 1, status: "PUBLISHED" }, select: { facilityId: true } });
   const notPublished = granted.filter((g) => !publishedNext.some((r) => r.facilityId === g.facilityId)).map((g) => g.name);
-  res.json({ reading: readingUnder(granted, "COVERAGE"), facilitiesGranted: granted.length, staffOnDutyNow: onDutyNow, shortDaysNext24Hours: unfilled, nextMonthNotPublished: notPublished });
+  // One row per facility so the overview can be read as a comparison, worst first.
+  const rows = await Promise.all(granted.map(async (g) => {
+    const days = await coverageFor(g.facilityId, d0, 7);
+    return {
+      facilityId: g.facilityId, name: g.name,
+      shortDays: days.filter((d) => d.state === "SHORT" || d.state === "CADRE").length,
+      noRosterDays: days.filter((d) => d.state === "NO_ROSTER").length,
+      nextMonthPublished: publishedNext.some((r) => r.facilityId === g.facilityId),
+    };
+  }));
+  rows.sort((a, b) => b.shortDays - a.shortDays || b.noRosterDays - a.noRosterDays || a.name.localeCompare(b.name));
+  res.json({ reading: readingUnder(granted, "COVERAGE"), facilitiesGranted: granted.length, staffOnDutyNow: onDutyNow, shortDaysNext24Hours: unfilled, nextMonthNotPublished: notPublished, facilities: rows });
+});
+
+// ------------------------------------------------------------- attendance completeness and compliance
+
+/** The last three calendar months, newest first. */
+function lastMonths(n = 3) {
+  const now = new Date();
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+  });
+}
+
+/** How much of each published roster has attendance recorded. Completeness only: never who was absent. */
+districtRouter.get("/attendance", async (req, res) => {
+  const granted = await read(req, "ATTENDANCE", "attendance completeness");
+  const months = lastMonths();
+  const rosters = await prisma.roster.findMany({
+    where: { facilityId: { in: granted.map((g) => g.facilityId) }, status: "PUBLISHED", OR: months },
+    select: { facilityId: true, year: true, month: true, attendanceCompleteness: true },
+  });
+  res.json({
+    reading: readingUnder(granted, "ATTENDANCE"),
+    months: months.map((m) => ({ ...m, label: new Date(Date.UTC(m.year, m.month - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }) })),
+    facilities: granted.map((g) => ({
+      facilityId: g.facilityId, name: g.name,
+      months: months.map((m) => {
+        const r = rosters.find((x) => x.facilityId === g.facilityId && x.year === m.year && x.month === m.month);
+        return { published: Boolean(r), percent: r?.attendanceCompleteness == null ? null : Math.round(r.attendanceCompleteness * 100) };
+      }),
+    })),
+  });
+});
+
+/** Counts of open findings on each published roster. Rule codes and counts only, no names. */
+districtRouter.get("/compliance", async (req, res) => {
+  const granted = await read(req, "COMPLIANCE", "roster compliance");
+  const months = lastMonths(2);
+  const rosters = await prisma.roster.findMany({
+    where: { facilityId: { in: granted.map((g) => g.facilityId) }, status: "PUBLISHED", OR: months },
+    select: { id: true, facilityId: true, year: true, month: true },
+  });
+  const findings = await prisma.complianceFinding.groupBy({ by: ["rosterId", "severity", "status"], where: { rosterId: { in: rosters.map((r) => r.id) } }, _count: { _all: true } });
+  res.json({
+    reading: readingUnder(granted, "COMPLIANCE"),
+    months: months.map((m) => ({ ...m, label: new Date(Date.UTC(m.year, m.month - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" }) })),
+    facilities: granted.map((g) => ({
+      facilityId: g.facilityId, name: g.name,
+      months: months.map((m) => {
+        const ids = rosters.filter((r) => r.facilityId === g.facilityId && r.year === m.year && r.month === m.month).map((r) => r.id);
+        if (ids.length === 0) return { published: false, blockingOpen: 0, warningsOpen: 0, overridden: 0 };
+        const n = (pred: (x: (typeof findings)[number]) => boolean) => findings.filter((x) => ids.includes(x.rosterId) && pred(x)).reduce((t, x) => t + x._count._all, 0);
+        return { published: true, blockingOpen: n((x) => x.severity === "BLOCK" && x.status === "OPEN"), warningsOpen: n((x) => x.severity === "WARN" && x.status === "OPEN"), overridden: n((x) => x.status === "OVERRIDDEN") };
+      }),
+    })),
+  });
 });
 
 // ------------------------------------------------------------- leave concentration

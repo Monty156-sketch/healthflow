@@ -114,3 +114,29 @@ describe("platform side", () => {
     expect((await api.post(`/api/platform/districts/${d.id}/officers`, { email: "officer@lawra.example" })).status).toBe(409);
   });
 });
+
+describe("attendance and compliance screens", () => {
+  it("show only what the facility granted and expose counts, never names", async () => {
+    const { officer, admin, granted } = await setup();
+    const api = as(officer);
+    expect((await api.get("/api/district/attendance")).body.facilities).toHaveLength(0);
+    expect((await api.get("/api/district/compliance")).body.facilities).toHaveLength(0);
+    await as(admin).put("/api/facility/directorate", { scopes: ["ATTENDANCE"] });
+    const a = (await api.get("/api/district/attendance")).body;
+    expect(a.facilities.map((f: { name: string }) => f.name)).toEqual([granted.name]);
+    expect(a.months).toHaveLength(3);
+    expect(a.facilities[0].months[0]).toEqual({ published: false, percent: null });
+    expect((await api.get("/api/district/compliance")).body.facilities).toHaveLength(0);
+    await as(admin).put("/api/facility/directorate", { scopes: ["COMPLIANCE"] });
+    const c = (await api.get("/api/district/compliance")).body;
+    expect(c.facilities[0].months[0]).toEqual({ published: false, blockingOpen: 0, warningsOpen: 0, overridden: 0 });
+  });
+
+  it("lists each facility on the overview, worst first", async () => {
+    const { officer, admin } = await setup();
+    await as(admin).put("/api/facility/directorate", { scopes: ["COVERAGE"] });
+    const d = (await as(officer).get("/api/district/dashboard")).body;
+    expect(d.facilities).toHaveLength(1);
+    expect(d.facilities[0]).toMatchObject({ shortDays: 0, nextMonthPublished: false });
+  });
+});

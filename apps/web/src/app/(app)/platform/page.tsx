@@ -11,6 +11,8 @@ interface Dash {
   errors24h: number;
   activeFacilities: number;
   mrrGhs: number;
+  trials: { onTrial: number; endingThisWeek: number; expired: number };
+  rostersPublishedThisMonth: number;
   newestFacilities: { id: string; name: string; district: string | null; status: string; createdAt: string }[];
   recentErrors: { id: string; description: string; screen: string | null; status: string; createdAt: string; facility: string | null }[];
 }
@@ -38,6 +40,8 @@ export default function ConsolePage() {
         <Count href="/platform/facilities?health=AT_RISK" label="Facilities at risk" value={String(data.atRisk)} note={data.atRisk ? "Telephone them" : "None"} tone={data.atRisk ? "block" : undefined} />
         <Count href="/platform/billing" label="Overdue invoices" value={String(data.invoices.overdue)} note={`${cedi(data.invoices.outstandingGhs)} outstanding`} tone={data.invoices.overdue ? "warning" : undefined} />
         <Count href="/system-health" label="Errors in the last 24 hours" value={String(data.errors24h)} />
+        <Count href="/platform/trials" label="Facilities on trial" value={String(data.trials.onTrial)} note={data.trials.expired ? `${data.trials.expired} past the end date` : data.trials.endingThisWeek ? `${data.trials.endingThisWeek} ending this week` : "None ending this week"} tone={data.trials.expired ? "block" : data.trials.endingThisWeek ? "warning" : undefined} />
+        <Count href="/platform/facilities" label="Rosters published this month" value={String(data.rostersPublishedThisMonth)} />
         <Count href="/platform/billing" label="Active facilities" value={String(data.activeFacilities)} note={`Monthly recurring revenue ${cedi(data.mrrGhs)}`} />
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
