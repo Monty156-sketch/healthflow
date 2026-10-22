@@ -49,3 +49,28 @@ describe("facilities and their health", () => {
     expect(body.usage.staffActive).toBe(1);
   });
 });
+
+describe("trials and activity", () => {
+  it("lists trials soonest first and counts them on the dashboard", async () => {
+    const api = await platform();
+    const a = await makeFacility("Late Clinic");
+    const b = await makeFacility("Soon Clinic");
+    await prisma.facility.update({ where: { id: a.id }, data: { status: "TRIAL", trialEndsAt: new Date(Date.now() + 20 * 86_400_000) } });
+    await prisma.facility.update({ where: { id: b.id }, data: { status: "TRIAL", trialEndsAt: new Date(Date.now() + 3 * 86_400_000) } });
+    const t = (await api.get("/api/platform/trials")).body.trials;
+    expect(t.map((x: { name: string }) => x.name)).toEqual(["Soon Clinic", "Late Clinic"]);
+    expect(t[0].daysLeft).toBe(3);
+    const d = (await api.get("/api/platform/dashboard")).body;
+    expect(d.trials).toEqual({ onTrial: 2, endingThisWeek: 1, expired: 0 });
+  });
+
+  it("shows platform actions only, newest first", async () => {
+    const api = await platform();
+    const f = await makeFacility("Audited Clinic");
+    await prisma.auditLog.create({ data: { facilityId: null, actorEmail: "ops@pstech.test", action: "platform_test", entityType: "Facility", summary: "Did a thing." } });
+    await prisma.auditLog.create({ data: { facilityId: f.id, actorEmail: "x@y.test", action: "roster_deleted", entityType: "Roster", summary: "Facility event." } });
+    const r = (await api.get("/api/platform/activity")).body;
+    expect(r.entries.map((e: { summary: string }) => e.summary)).toEqual(["Did a thing."]);
+    expect(r.next).toBeNull();
+  });
+});

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useResource } from "@/lib/useApi";
 import { DistrictReading, type Reading } from "@/components/DistrictReading";
-import { Loading, LoadError, Notice, PageHeader, Panel } from "@/components/ui";
+import { Loading, LoadError, Notice, PageHeader, Panel, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
 
 interface Dash {
   reading: Reading;
@@ -11,6 +11,7 @@ interface Dash {
   staffOnDutyNow: number;
   shortDaysNext24Hours: number;
   nextMonthNotPublished: string[];
+  facilities: { facilityId: string; name: string; shortDays: number; noRosterDays: number; nextMonthPublished: boolean }[];
 }
 
 function Figure({ label, value }: { label: string; value: number }) {
@@ -39,20 +40,35 @@ export default function DistrictDashboard() {
             <Figure label="Staff on duty now" value={data.staffOnDutyNow} />
             <Figure label="Facility days short of staff in the next 24 hours" value={data.shortDaysNext24Hours} />
           </div>
-          <Panel title="Next month&apos;s roster not yet published">
-            {data.nextMonthNotPublished.length === 0 ? (
-              <p className="text-[15px]">Every facility has published next month&apos;s roster.</p>
-            ) : (
-              <ul className="list-disc pl-5 text-[15px]">
-                {data.nextMonthNotPublished.map((n) => (
-                  <li key={n}>{n}</li>
-                ))}
-              </ul>
-            )}
+          <Panel title="Facilities, those needing attention first">
+            <TableScroll label="Facilities compared">
+              <table className="w-full min-w-[36rem] border-collapse text-[15px]">
+                <thead>
+                  <tr>
+                    <th scope="col" className={TH}>Facility</th>
+                    <th scope="col" className={TH}>Next 7 days</th>
+                    <th scope="col" className={TH}>Next month&apos;s roster</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.facilities.map((f) => (
+                    <tr key={f.facilityId}>
+                      <th scope="row" className={`${TD} text-left font-medium`}>{f.name}</th>
+                      <td className={TD}>
+                        {f.shortDays > 0 ? <StatusBadge tone="block">{f.shortDays} {f.shortDays === 1 ? "day" : "days"} short</StatusBadge> : f.noRosterDays > 0 ? <StatusBadge tone="neutral">{f.noRosterDays} without a roster</StatusBadge> : <StatusBadge tone="success">Covered</StatusBadge>}
+                      </td>
+                      <td className={TD}>{f.nextMonthPublished ? <StatusBadge tone="success">Published</StatusBadge> : <StatusBadge tone="warning">Not published</StatusBadge>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableScroll>
           </Panel>
-          <p className="mt-6 text-[15px]">
-            <Link href="/district/coverage" className="text-[var(--accent-text)] underline-offset-2 hover:underline">Open the coverage monitor</Link>
-          </p>
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[15px]">
+            {[["/district/coverage", "Coverage monitor"], ["/district/establishment", "Establishment"], ["/district/attendance", "Attendance"], ["/district/compliance", "Compliance"], ["/district/reports", "Report pack"]].map(([h, l]) => (
+              <li key={h}><Link href={h} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{l}</Link></li>
+            ))}
+          </ul>
         </>
       )}
     </>

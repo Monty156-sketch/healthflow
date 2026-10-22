@@ -40,16 +40,64 @@ consoleRouter.get("/dashboard", async (_req, res) => {
     prisma.errorReport.findMany({ orderBy: { createdAt: "desc" }, take: 5, select: { id: true, description: true, screen: true, status: true, createdAt: true, facility: { select: { name: true } } } }),
     adoptionFor(),
   ]);
+  const [trialing, publishedThisMonth] = await Promise.all([
+    prisma.facility.findMany({ where: { active: true, status: "TRIAL" }, select: { trialEndsAt: true } }),
+    prisma.roster.count({ where: { status: "PUBLISHED", year: new Date().getUTCFullYear(), month: new Date().getUTCMonth() + 1 } }),
+  ]);
+  const inWeek = now + 7 * 24 * HOUR;
   const atRisk = [...adoption.values()].filter((a) => a.health === "AT_RISK").length;
   res.json({
     invoices: { overdue: overdue.length, outstandingGhs: overdue.reduce((n, i) => n + i.totalGhs, 0) },
     atRisk,
     errors24h: errors24,
     activeFacilities: facilities,
+    trials: {
+      onTrial: trialing.length,
+      endingThisWeek: trialing.filter((t) => t.trialEndsAt && t.trialEndsAt.getTime() >= now && t.trialEndsAt.getTime() <= inWeek).length,
+      expired: trialing.filter((t) => t.trialEndsAt && t.trialEndsAt.getTime() < now).length,
+    },
+    rostersPublishedThisMonth: publishedThisMonth,
     mrrGhs: subs.reduce((n, s) => n + s.plan.monthlyPriceGhs, 0),
     newestFacilities: newest.map((f) => ({ id: f.id, name: f.name, district: f.district?.name ?? null, status: f.status, createdAt: f.createdAt })),
     recentErrors: recentErrors.map((e) => ({ id: e.id, description: e.description.slice(0, 140), screen: e.screen, status: e.status, createdAt: e.createdAt, facility: e.facility?.name ?? null })),
   });
+});
+
+// ------------------------------------------------------------- trials and registrations
+
+/** Facilities on a trial, soonest to end first, so a call can be made before one lapses. */
+consoleRouter.get("/trials", async (_req, res) => {
+  const now = Date.now();
+  const rows = await prisma.facility.findMany({
+    where: { active: true, status: "TRIAL" },
+    select: { id: true, name: true, facilityType: true, createdAt: true, trialEndsAt: true, district: { select: { name: true } } },
+  });
+  const ids = rows.map((f) => f.id);
+  const adoption = await adoptionFor(ids);
+  const out = rows.map((f) => {
+    const a = adoption.get(f.id);
+    const daysLeft = f.trialEndsAt ? Math.ceil((f.trialEndsAt.getTime() - now) / (24 * HOUR)) : null;
+    return {
+      id: f.id, name: f.name, type: f.facilityType, district: f.district?.name ?? null, registeredAt: f.createdAt, trialEndsAt: f.trialEndsAt, daysLeft,
+      staff: a?.staffActive ?? 0, accounts: a?.accountsActive ?? 0, lastSignInAt: a?.lastSignInAt ?? null, lastRosterPublishedAt: a?.lastRosterPublishedAt ?? null,
+    };
+  }).sort((a, b) => (a.daysLeft ?? 9999) - (b.daysLeft ?? 9999));
+  res.json({ trials: out });
+});
+
+// ------------------------------------------------------------- activity
+
+/** The platform's own log: what PS Tech staff did, newest first. Facility logs are not read here. */
+consoleRouter.get("/activity", async (req, res) => {
+  const before = typeof req.query.before === "string" ? new Date(req.query.before) : null;
+  const rows = await prisma.auditLog.findMany({
+    where: { facilityId: null, action: { startsWith: "platform_" }, ...(before && !Number.isNaN(before.getTime()) ? { createdAt: { lt: before } } : {}) },
+    orderBy: { createdAt: "desc" }, take: 51,
+    select: { id: true, actorEmail: true, action: true, entityType: true, summary: true, createdAt: true },
+  });
+  const more = rows.length > 50;
+  const page = rows.slice(0, 50);
+  res.json({ entries: page, next: more ? page[page.length - 1].createdAt : null });
 });
 
 // ------------------------------------------------------------- facilities
