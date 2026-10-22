@@ -124,6 +124,23 @@ describe("review, approval and publishing", () => {
     expect((await api.post(`/api/facility/rosters/${id}/findings/override-staffing`, { reason: "The facility has too few staff for these days" })).status).toBe(409);
   });
 
+  it("deletes a generated roster with its duties, but never an approved or published one", async () => {
+    const { api, id, facility } = await setup();
+    const spare = (await api.post("/api/facility/rosters", { year: 2026, month: 12 })).body.roster.id as string;
+    expect((await api.delete(`/api/facility/rosters/${spare}`)).status).toBe(200);
+    expect(await prisma.roster.count({ where: { id: spare } })).toBe(0);
+    expect(await prisma.rosterAssignment.count({ where: { rosterId: id } })).toBeGreaterThan(0);
+    expect((await api.delete(`/api/facility/rosters/${id}`)).status).toBe(200);
+    expect(await prisma.rosterAssignment.count({ where: { rosterId: id } })).toBe(0);
+    expect(await prisma.complianceFinding.count({ where: { rosterId: id } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { facilityId: facility.id, action: "roster_deleted" } })).toBe(2);
+    const kept = await prisma.roster.create({ data: { facilityId: facility.id, month: 1, year: 2027, status: "PUBLISHED" } });
+    const refused = await api.delete(`/api/facility/rosters/${kept.id}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toMatch(/published/);
+    expect(await prisma.roster.count({ where: { id: kept.id } })).toBe(1);
+  });
+
   it("lets only a facility admin approve, and keeps other facilities out", async () => {
     const { api, id, facility } = await setup();
     await api.post(`/api/facility/rosters/${id}/status`, { action: "submit" });

@@ -125,7 +125,7 @@ describe("support units and the staff record", () => {
     const { facility, api, code, nurse } = await hospital();
     const units = (await request(app).get(`/api/public/join/${code}`).set("X-Forwarded-For", freshIp())).body.departments as { id: string; name: string; kind: string }[];
     const security = units.find((u) => u.name === "Security")!;
-    const accounts = units.find((u) => u.name === "Accounts")!;
+    const accounts = units.find((u) => u.name === "Administration")!;
     expect(security.kind).toBe("SUPPORT");
     expect(accounts.kind).toBe("OFFICE");
     // Asking to be in-charge of a support unit just registers them; the administrator runs it.

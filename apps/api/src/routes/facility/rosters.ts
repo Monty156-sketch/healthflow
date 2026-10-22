@@ -519,6 +519,30 @@ rostersRouter.get("/:id/excel", allowRoles(...READ_ROLES), async (req, res) => {
 
 // ------------------------------------------------------------- generate and validate
 
+// A draft, generated or in-review roster that is not wanted can be deleted. An approved or published one cannot.
+rostersRouter.delete("/:id", allowRoles(...ROSTER_ROLES), async (req, res) => {
+  const who = caller(req);
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  if (!roster) return res.status(404).json({ error: "not_found" });
+  if (!["DRAFT", "GENERATED", "UNDER_REVIEW"].includes(roster.status)) {
+    return res.status(409).json({ error: "roster_locked", message: `The ${monthName(roster)} roster is ${roster.status === "PUBLISHED" ? "published" : roster.status === "APPROVED" ? "approved" : "archived"}, so it cannot be deleted.` });
+  }
+  const [attendance, swaps] = await Promise.all([prisma.attendance.count({ where: { rosterId: roster.id } }), prisma.dutySwap.count({ where: { rosterId: roster.id } })]);
+  if (attendance || swaps) return res.status(409).json({ error: "in_use", message: "This roster already has attendance or swap requests, so it cannot be deleted." });
+  const duties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
+  await prisma.$transaction([
+    prisma.complianceFinding.deleteMany({ where: { rosterId: roster.id } }),
+    prisma.rosterVersionSnapshot.deleteMany({ where: { rosterId: roster.id } }),
+    prisma.rosterAssignment.deleteMany({ where: { rosterId: roster.id } }),
+    prisma.roster.delete({ where: { id: roster.id } }),
+  ]);
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "roster_deleted", entityType: "Roster", entityId: roster.id,
+    summary: `${who.displayName} deleted the ${roster.status.toLowerCase().replace("_", " ")} ${monthName(roster)} roster (${duties} ${duties === 1 ? "duty" : "duties"}).`,
+  });
+  res.json({ deleted: true });
+});
+
 rostersRouter.post("/:id/generate", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const who = caller(req);
   const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });

@@ -3,7 +3,7 @@
 import { WardDemand } from "@/components/WardDemand";
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useFacility } from "@/components/AppShell";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -169,6 +169,8 @@ export default function RosterPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [xlsBusy, setXlsBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const router = useRouter();
   const [problem, setProblem] = useState<string | null>(null);
   const [shortfalls, setShortfalls] = useState<{ list: Shortfall[]; more: number } | null>(null);
   const [editing, setEditing] = useState<{ staffId: string; date: string; preset?: { shiftId: string; conflict: CellConflict } } | null>(null);
@@ -430,12 +432,50 @@ export default function RosterPage() {
                 {busy ? "Generating…" : generated ? "Generate again" : "Generate roster"}
               </Button>
             )}
+            {canRoster && ["DRAFT", "GENERATED", "UNDER_REVIEW"].includes(roster.status) && !deleting && (
+              <Button variant="secondary" onClick={() => setDeleting(true)} disabled={busy}>
+                Delete roster
+              </Button>
+            )}
           </span>
         }
       />
       <p className="mb-3 hidden text-sm print:block">
         {facility.facility.name}. {STATUS_WORD[roster.status]}, version {roster.version}.
       </p>
+
+      {deleting && (
+        <div className="mb-4">
+          <Notice
+            tone="warning"
+            action={
+              <span className="flex gap-2">
+                <Button
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await api.delete(`/api/facility/rosters/${id}`);
+                      router.push("/roster");
+                    } catch (err) {
+                      setFlow(err instanceof ApiError ? ((err.body as { message?: string })?.message ?? "That did not work.") : "That did not work. Check your connection and try again.");
+                      setDeleting(false);
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Delete it
+                </Button>
+                <Button variant="secondary" onClick={() => setDeleting(false)}>
+                  Keep it
+                </Button>
+              </span>
+            }
+          >
+            This deletes the {MONTHS[roster.month - 1]} {roster.year} roster{roster.department ? ` for ${roster.department}` : ""} and every duty in it. It cannot be undone. A published roster cannot be deleted.
+          </Notice>
+        </div>
+      )}
 
       {confirming && (
         <div className="mb-4">

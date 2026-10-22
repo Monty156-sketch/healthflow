@@ -29,11 +29,11 @@ export const leadsByGrade = (position: string | null | undefined) =>
   /(senior|principal|chief|in[- ]?charge|nurse manager|matron|sister|deputy director|head of|supervisor)/i.test(position ?? "");
 
 /** The departments that do not run night duty, as the Ghana Health Service facilities have them. Every other department runs nights. */
-const NO_NIGHT_DEPARTMENTS = ["accounts", "administration", "antenatal and postnatal", "child welfare", "dental", "eye", "physiotherapy", "public health", "radiology", "stores"];
+const NO_NIGHT_DEPARTMENTS = ["administration", "antenatal and postnatal", "child welfare", "dental", "eye", "physiotherapy", "public health", "radiology", "stores"];
 export const defaultRunsNights = (department: string) => !NO_NIGHT_DEPARTMENTS.includes(department.trim().toLowerCase());
 
-export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
-export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Accounts", "Stores", "Transport", "Mortuary", "Support Services"];
+export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Administrator", "Driver", "Security", "Cleaner"];
+export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Administration", "Stores", "Transport", "Mortuary", "Support Services"];
 /** The units a health centre rosters by, plus the support units. */
 const UNIT_NAMES = ["Clinical Nurses", "Midwives", "Security", "Drivers", "Cleaners"];
 

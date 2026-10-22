@@ -17,9 +17,9 @@ import { INVITATION_DAYS } from "../routes/invitations.js";
 
 const CHPS_CADRES = ["Community Health Officer", "Community Health Nurse", "Midwife", "Health Assistant", "Cleaner"];
 const CHPS_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Public Health"];
-const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Accountant", "Administrator", "Driver", "Security", "Cleaner"];
-const CLINIC_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Accounts", "Administration", "Support Services"];
-const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Accounts", "Administration", "Support Services"];
+const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Administrator", "Driver", "Security", "Cleaner"];
+const CLINIC_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Administration", "Support Services"];
+const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Administration", "Support Services"];
 
 /**
  * The cadres and departments a facility of this type is offered at registration.
