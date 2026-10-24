@@ -13,6 +13,19 @@ export const authAttemptLimiter = rateLimit({
   message: { error: "too_many_attempts", retryAfterMinutes: 60 },
 });
 
+// Sign-in: only failed attempts count, so a clinic sharing one network is
+// not locked out by its own successful logins. Per-account lockout still
+// stops guessing against a single user.
+export const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => clientIp(req),
+  message: { error: "too_many_attempts", retryAfterMinutes: 15 },
+});
+
 // Looser limit for authenticated, routine API traffic.
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

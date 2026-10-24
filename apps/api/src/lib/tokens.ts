@@ -34,13 +34,13 @@ export interface AccessTokenPayload {
 export function signAccessToken(payload: AccessTokenPayload): string {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET is not set");
-  return jwt.sign(payload, secret, { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m` });
+  return jwt.sign(payload, secret, { expiresIn: `${ACCESS_TOKEN_TTL_MINUTES}m`, algorithm: "HS256" });
 }
 
 export function verifyAccessToken(token: string): AccessTokenPayload {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret) throw new Error("JWT_ACCESS_SECRET is not set");
-  return jwt.verify(token, secret) as AccessTokenPayload;
+  return jwt.verify(token, secret, { algorithms: ["HS256"] }) as AccessTokenPayload;
 }
 
 export async function issueRefreshToken(params: {

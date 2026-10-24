@@ -66,12 +66,12 @@ export function verifyResetToken(
 // ------------------------------------------------------------- MFA enrolment at sign-in
 
 export function makeEnrolmentToken(userId: string): string {
-  return jwt.sign({ purpose: "mfa_enrolment" }, derivedKey("mfa-enrolment"), { subject: userId, expiresIn: "10m" });
+  return jwt.sign({ purpose: "mfa_enrolment" }, derivedKey("mfa-enrolment"), { subject: userId, expiresIn: "10m", algorithm: "HS256" });
 }
 
 export function readEnrolmentToken(token: string): string | null {
   try {
-    const payload = jwt.verify(token, derivedKey("mfa-enrolment")) as jwt.JwtPayload;
+    const payload = jwt.verify(token, derivedKey("mfa-enrolment"), { algorithms: ["HS256"] }) as jwt.JwtPayload;
     return payload.purpose === "mfa_enrolment" && typeof payload.sub === "string" ? payload.sub : null;
   } catch {
     return null;
