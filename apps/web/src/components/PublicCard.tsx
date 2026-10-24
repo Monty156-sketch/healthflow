@@ -9,7 +9,7 @@ export function PublicCard({ title, children, wide }: { title: string; children:
       <div className="on-ink grid-paper h-44 px-4 pt-8 sm:h-52">
         <Link href="/" className="mx-auto flex w-full max-w-lg items-center gap-2.5 text-lg font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" width={30} height={30} />
+          <img src="/logo-sm.png" alt="" width={40} height={40} />
           HealthFlow
         </Link>
       </div>

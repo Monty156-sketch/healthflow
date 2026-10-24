@@ -20,7 +20,7 @@ export function PublicNav() {
       <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-2 sm:px-5">
         <Link href="/" className="mr-auto flex min-h-11 items-center gap-2 font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" width={26} height={26} />
+          <img src="/logo-sm.png" alt="" width={36} height={36} />
           HealthFlow
         </Link>
         <nav aria-label="Main" className="hidden items-center gap-1 md:flex">

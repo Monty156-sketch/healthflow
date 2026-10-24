@@ -255,7 +255,7 @@ function Brand({ area }: { area: Area }) {
   return (
     <Link href={href} className="flex min-h-11 items-center gap-2.5 font-semibold">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/favicon.svg" alt="" width={26} height={26} />
+      <img src="/logo-sm.png" alt="" width={34} height={34} />
       <span className="leading-tight">
         HealthFlow
         {area !== "facility" && <span className="block text-[13px] font-normal text-[var(--muted)]">{area === "platform" ? "Platform console" : "District directorate"}</span>}

@@ -75,6 +75,8 @@ export default function LandingPage() {
         <section className="on-ink grid-paper" aria-labelledby="hero">
           <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 py-14 sm:px-5 sm:py-20 lg:grid-cols-[5fr_6fr]">
             <div className="min-w-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="HealthFlow GH" width={112} height={112} className="mb-6 h-24 w-24 sm:h-28 sm:w-28" />
               <h1 id="hero" className="text-4xl leading-[1.08] font-semibold sm:text-5xl">
                 Fair duty rosters, built on your own rules.
               </h1>
