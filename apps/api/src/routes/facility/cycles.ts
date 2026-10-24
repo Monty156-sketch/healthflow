@@ -42,7 +42,7 @@ function present(r: RuleRow) {
 }
 
 /** Which of the two starting rules a facility gets depends on the shifts it has. */
-async function ensureSeeded(facilityId: string) {
+export async function ensureCycleRules(facilityId: string) {
   if ((await prisma.dutyCycleRule.count({ where: { facilityId } })) > 0) return;
   // Once a rule has been deleted the facility has chosen its own set; never put the presets back.
   if (await prisma.auditLog.findFirst({ where: { facilityId, action: "cycle_rule_deleted" }, select: { id: true } })) return;
@@ -74,7 +74,7 @@ async function ensureSeeded(facilityId: string) {
 
 cyclesRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId } = caller(req);
-  await ensureSeeded(facilityId);
+  await ensureCycleRules;
   const [rules, shifts, cadres, departments] = await Promise.all([
     loadRules(facilityId),
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true, isOvernight: true } }),
@@ -326,7 +326,7 @@ cyclesRouter.get("/capacity", allowRoles(...READ_ROLES), async (req, res) => {
   const [y, m] = month.split("-").map(Number);
   const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
 
-  await ensureSeeded(facilityId);
+  await ensureCycleRules;
   const [rules, shifts, cadres, staff] = await Promise.all([
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true } }),
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true } }),
