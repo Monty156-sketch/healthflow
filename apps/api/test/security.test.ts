@@ -21,11 +21,10 @@ describe("token hardening", () => {
 });
 
 describe("login rate limit", () => {
-  it("allows more than five failed tries an hour from one network, then stops", async () => {
+  it("allows ten failed tries per 15 minutes from one network, then stops", async () => {
     const ip = freshIp();
     const go = () => request(app).post("/api/auth/login").set("X-Forwarded-For", ip).send({ email: "nobody@x.gh", password: PASSWORD });
-    for (let i = 0; i < 6; i++) expect((await go()).status).toBe(401);
-    for (let i = 0; i < 24; i++) await go();
+    for (let i = 0; i < 10; i++) expect((await go()).status).toBe(401);
     expect((await go()).status).toBe(429);
   }, 60000);
 });

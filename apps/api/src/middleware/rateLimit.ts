@@ -18,7 +18,7 @@ export const authAttemptLimiter = rateLimit({
 // stops guessing against a single user.
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 30,
+  limit: 10,
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
