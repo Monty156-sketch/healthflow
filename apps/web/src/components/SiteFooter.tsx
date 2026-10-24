@@ -24,7 +24,7 @@ export function SiteFooter() {
       <div className="mx-auto max-w-5xl">
         <div className="grid gap-x-8 gap-y-8 grid-cols-2 lg:grid-cols-4">
           <div className="col-span-2 lg:col-span-1">
-            <p className="text-lg font-semibold text-[var(--foreground)]">HealthFlow</p>
+            <p className="flex items-center gap-2 text-lg font-semibold text-[var(--foreground)]">{/* eslint-disable-next-line @next/next/no-img-element */}<img src="/logo-sm.png" alt="" width={36} height={36} />HealthFlow</p>
             <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-[var(--muted)]">Fair duty rosters for every ward and every facility in Ghana.</p>
           </div>
           <nav aria-label="Product">

@@ -19,9 +19,6 @@ export const metadata: Metadata = {
   title: "HealthFlow",
   description:
     "HealthFlow builds your monthly staff roster from your own shifts and rules, checks it against Ghana's Labour Act before it is published, and prints the A4 sheet your staff already recognise.",
-  icons: {
-    icon: "/favicon.svg",
-  },
 };
 
 export const viewport: Viewport = { themeColor: "#0a2f2c", width: "device-width", initialScale: 1 };

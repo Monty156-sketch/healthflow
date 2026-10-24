@@ -175,10 +175,12 @@ export function SignInScreen({ audience }: { audience: Audience }) {
       <div className="on-ink grid-paper flex flex-col justify-between gap-10 px-6 py-8 sm:px-10 lg:py-12">
         <Link href="/" className="flex items-center gap-2.5 text-lg font-semibold">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/favicon.svg" alt="" width={30} height={30} />
+          <img src="/logo-sm.png" alt="" width={40} height={40} />
           HealthFlow
           {copy.tag && <span className="text-[13px] font-normal text-[var(--muted)]">{copy.tag}</span>}
         </Link>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="HealthFlow GH" width={240} height={240} className="mx-auto hidden h-auto w-48 lg:block xl:w-60" />
         <div className="max-w-md">
           <p className="text-2xl leading-snug font-semibold sm:text-3xl">{copy.line}</p>
           <p className="mt-3 hidden leading-relaxed text-[var(--muted)] sm:block">{copy.body}</p>
