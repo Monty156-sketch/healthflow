@@ -26,7 +26,7 @@ import {
 } from "../lib/mfa.js";
 import { decryptSecret, encryptSecret, sha256 } from "../lib/crypto.js";
 import { writeAuditLog } from "../lib/audit.js";
-import { authAttemptLimiter } from "../middleware/rateLimit.js";
+import { authAttemptLimiter, loginLimiter } from "../middleware/rateLimit.js";
 import { clientIp } from "../lib/clientIp.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
@@ -153,7 +153,7 @@ const doorFor = (role: string) => (role === "PLATFORM_ADMIN" ? "platform" : role
  * is issued until both pass. A role that requires two-step sign-in but has
  * none set up gets a 10-minute enrolment token instead of a session.
  */
-authRouter.post("/login", authAttemptLimiter, async (req, res) => {
+authRouter.post("/login", loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
   const { password, totp, recoveryCode, audience } = parsed.data;
@@ -166,7 +166,11 @@ authRouter.post("/login", authAttemptLimiter, async (req, res) => {
 
   const user = await prisma.userProfile.findUnique({ where: { userEmail: email } });
   // The same answer whether or not the account exists.
-  if (!user) return res.status(401).json({ error: "invalid_credentials" });
+  if (!user) {
+    // Do the same hashing work so response time does not reveal which emails exist.
+    await verifyPassword(await dummyHash(), password);
+    return res.status(401).json({ error: "invalid_credentials" });
+  }
 
   if (user.lockedUntil && user.lockedUntil > new Date()) {
     return res.status(423).json({ error: "account_locked", lockedUntil: user.lockedUntil });
@@ -421,6 +425,9 @@ authRouter.post("/logout-everywhere", requireAuth, requireLiveUser, async (req, 
 });
 
 // ------------------------------------------------------------- password reset
+
+let dummy: Promise<string> | null = null;
+const dummyHash = () => (dummy ??= hashPassword("not-a-real-account-password"));
 
 const forgotSchema = z.object({ email: z.string().trim().email() });
 
