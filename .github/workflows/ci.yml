@@ -120,7 +120,7 @@ jobs:
         run: |
           npx wrangler dev --port 8787 --local --var API_ORIGIN:http://localhost:4000 --var PROXY_SHARED_SECRET:ci-proxy-secret > worker.log 2>&1 &
           for i in $(seq 1 40); do curl -sf localhost:8787/login > /dev/null && break; sleep 3; done
-          curl -sf localhost:8787/login > /dev/null
+          curl -sf localhost:8787/login > /dev/null || { echo "--- worker.log ---"; tail -60 worker.log; curl -si localhost:8787/login | head -20; exit 1; }
 
       - name: Install the browser
         working-directory: apps/web
