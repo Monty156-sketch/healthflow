@@ -86,7 +86,7 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/reports/fairness", label: "Why this duty", roles: ["STAFF"] },
   { href: "/my-data", label: "My data", roles: ["STAFF"] },
   { href: "/attendance", label: "Attendance", roles: READ_ROLES, section: "attendance" },
-  { href: "/my-reports", label: "Reports I sent", roles: [...READ_ROLES, "STAFF"] },
+  { href: "/my-reports", label: "Reports I sent", roles: ["STAFF"], section: "settings" },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/duty-patterns", label: "Duty patterns", roles: READ_ROLES },
   { href: "/rules", label: "Compliance rules", roles: ["ROSTER_MANAGER", "SUPERVISOR"], section: "settings" },

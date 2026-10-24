@@ -335,7 +335,7 @@ export function Panel({
 export function TableScroll({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div
-      className="relative overflow-x-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]"
+      className="print-grid relative overflow-x-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]"
       role="region"
       aria-label={label}
       tabIndex={0}
