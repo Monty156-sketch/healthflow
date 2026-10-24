@@ -2,6 +2,7 @@
 
 import { ClockCard } from "@/components/ClockCard";
 import Link from "next/link";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useFacility, useOptionalFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS, showDate, showDateTime } from "@/lib/format";
@@ -310,12 +311,12 @@ function Units({ d }: { d: Dash }) {
       {units.length === 0 ? (
         <p className="text-sm text-[var(--muted)]">No wards or units are set up yet.</p>
       ) : (
-        <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Carousel label="Rosters by unit">
           {units.map((u) => {
             const st = u.status ? ROSTER_STATUS[u.status] : null;
             const short = u.cover.filter((c) => c.scheduled < c.needed);
             return (
-              <li key={u.id} className="flex flex-col rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+              <li key={u.id} className="flex w-[17.5rem] shrink-0 snap-start flex-col rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 sm:w-80">
                 <div className="flex items-start justify-between gap-2">
                   <p className="font-semibold">{u.name}</p>
                   {st ? <StatusBadge tone={st.tone}>{st.label}</StatusBadge> : <StatusBadge tone="neutral">No roster</StatusBadge>}
@@ -348,9 +349,50 @@ function Units({ d }: { d: Dash }) {
               </li>
             );
           })}
-        </ul>
+        </Carousel>
       )}
     </Panel>
+  );
+}
+
+/**
+ * A row of cards that drifts along by itself, one card every few seconds,
+ * and loops back to the start. It stops while the pointer or keyboard focus
+ * is on it, and never moves for people who ask their device for less motion.
+ * The arrows and a plain swipe or scroll always work.
+ */
+function Carousel({ label, children }: { label: string; children: ReactNode }) {
+  const ref = useRef<HTMLUListElement>(null);
+  const [paused, setPaused] = useState(false);
+  const step = (dir: 1 | -1) => {
+    const el = ref.current;
+    if (!el) return;
+    const card = el.firstElementChild as HTMLElement | null;
+    const w = (card?.offsetWidth ?? 300) + 16;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    if (dir === 1 && atEnd) el.scrollTo({ left: 0, behavior: "smooth" });
+    else el.scrollBy({ left: dir * w, behavior: "smooth" });
+  };
+  useEffect(() => {
+    if (paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => step(1), 4500);
+    return () => clearInterval(t);
+  }, [paused]);
+  const arrow = "flex size-11 items-center justify-center rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--accent-soft)]";
+  return (
+    <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onFocus={() => setPaused(true)} onBlur={() => setPaused(false)} onTouchStart={() => setPaused(true)}>
+      <ul ref={ref} aria-label={label} tabIndex={0} className="-mx-1 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-1 pb-3">
+        {children}
+      </ul>
+      <div className="mt-1 flex justify-end gap-2">
+        <button type="button" onClick={() => step(-1)} className={arrow} aria-label="Previous units">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+        </button>
+        <button type="button" onClick={() => step(1)} className={arrow} aria-label="Next units">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+        </button>
+      </div>
+    </div>
   );
 }
 

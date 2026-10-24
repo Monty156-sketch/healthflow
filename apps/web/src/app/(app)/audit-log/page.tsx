@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
 import { showDateTime } from "@/lib/format";
+import { PrintButton } from "@/components/PrintButton";
 import {
   Button,
   EmptyState,
@@ -60,7 +61,7 @@ function SupportHistory() {
 }
 
 export default function AuditLogPage() {
-  const { isAdmin } = useFacility();
+  const { isAdmin, facility } = useFacility();
   const [search, setSearch] = useState("");
   const [q, setQ] = useState("");
   const [entityType, setEntityType] = useState("");
@@ -96,10 +97,16 @@ export default function AuditLogPage() {
       <PageHeader
         title="Audit log"
         description="Every change, who made it and when. Entries cannot be edited."
+        actions={<PrintButton label="Print this page" />}
       />
-      <SupportHistory />
+      <p className="mb-4 hidden text-sm print:block">
+        {facility.name}. Printed {showDateTime(new Date().toISOString())}.
+        {(q || entityType || from || to) && ` Filtered${q ? ` by "${q}"` : ""}${entityType ? `, ${TYPES[entityType]}` : ""}${from ? `, from ${from}` : ""}${to ? `, to ${to}` : ""}.`}
+        {data ? ` Page ${page} of ${pages}, ${data.total} ${data.total === 1 ? "entry" : "entries"} in all.` : ""}
+      </p>
+      <div className="no-print"><SupportHistory /></div>
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="no-print mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Search">
           {(a) => <Input {...a} type="search" placeholder="A name, or what changed" value={search} onChange={(e) => setSearch(e.target.value)} />}
         </Field>
@@ -179,7 +186,7 @@ export default function AuditLogPage() {
               </tbody>
             </table>
           </TableScroll>
-          <nav aria-label="Audit log pages" className="mt-4 flex flex-wrap items-center gap-3">
+          <nav aria-label="Audit log pages" className="no-print mt-4 flex flex-wrap items-center gap-3">
             <Button variant="secondary" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
               Newer
             </Button>
