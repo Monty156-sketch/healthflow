@@ -28,7 +28,7 @@ const present = (r: Row) => ({
 });
 
 /** A facility with night, afternoon and morning shifts starts with that order, once. */
-async function ensureSeeded(facilityId: string) {
+export async function ensureRotation(facilityId: string) {
   if ((await prisma.shiftRotation.count({ where: { facilityId } })) > 0) return;
   if (await prisma.auditLog.findFirst({ where: { facilityId, action: "rotation_deleted" }, select: { id: true } })) return;
   const shifts = await prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true, isOnCall: false } });
@@ -44,7 +44,7 @@ async function ensureSeeded(facilityId: string) {
 
 rotationsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId } = caller(req);
-  await ensureSeeded(facilityId);
+  await ensureRotation(facilityId);
   const [rotations, shifts, cadres, departments] = await Promise.all([
     load(facilityId),
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true, isOnCall: false }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true } }),

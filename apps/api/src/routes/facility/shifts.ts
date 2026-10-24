@@ -204,20 +204,24 @@ shiftsRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
   res.status(201).json({ shift: present(shift) });
 });
 
-/** Morning, Afternoon and Night as an editable starting point. */
-shiftsRouter.post("/starter", allowRoles(...ADMIN_ROLES), async (req, res) => {
-  const who = caller(req);
-  const have = await prisma.shift.count({ where: { facilityId: who.facilityId, countsAsDuty: true } });
-  if (have > 0) return res.status(409).json({ error: "already_has_shifts", message: "This facility already has shifts." });
-  // Starting minimums by facility type; the facility can change any of them.
-  const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } });
-  const [m, a, n] = starterMinimums(facility.facilityType);
+/** Morning, Afternoon and Night with starting minimums by facility type; the facility can change any of them. */
+export async function createStarterShifts(facilityId: string, facilityType: string) {
+  const [m, a, n] = starterMinimums(facilityType);
   const starters = [
     { name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", durationHours: 6, isOvernight: false, minStaff: m, colour: "#b56b12", sortOrder: 1 },
     { name: "Afternoon", code: "M", startTime: "14:00", endTime: "20:00", durationHours: 6, isOvernight: false, minStaff: a, colour: "#25619f", sortOrder: 2 },
     { name: "Night", code: "N", startTime: "20:00", endTime: "08:00", durationHours: 12, isOvernight: true, minStaff: n, colour: "#463a85", sortOrder: 3 },
   ];
-  await prisma.shift.createMany({ data: starters.map((s) => ({ ...s, facilityId: who.facilityId })) });
+  await prisma.shift.createMany({ data: starters.map((s) => ({ ...s, facilityId })) });
+}
+
+/** Morning, Afternoon and Night as an editable starting point. */
+shiftsRouter.post("/starter", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const have = await prisma.shift.count({ where: { facilityId: who.facilityId, countsAsDuty: true } });
+  if (have > 0) return res.status(409).json({ error: "already_has_shifts", message: "This facility already has shifts." });
+  const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } });
+  await createStarterShifts(who.facilityId, facility.facilityType);
   await writeAuditLog({
     facilityId: who.facilityId,
     actorEmail: who.email,

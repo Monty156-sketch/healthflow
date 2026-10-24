@@ -13,8 +13,7 @@ import { supportConsole } from "./platformSupport.js";
 import { accessConsole } from "./platformAccess.js";
 import { platformAudit } from "../lib/platformAudit.js";
 export { platformAudit };
-import { seedGroups, copyConfiguration, inviteFirstAdmin } from "../lib/facilitySetup.js";
-import { ensureRules } from "./facility/rules.js";
+import { seedGroups, copyConfiguration, inviteFirstAdmin, applyStandardSetup } from "../lib/facilitySetup.js";
 import { hashPassword } from "../lib/password.js";
 import { makeResetToken } from "../lib/signedTokens.js";
 import { appUrl, sendEmail } from "../lib/email.js";
@@ -277,7 +276,7 @@ consoleRouter.post("/facilities/:id/setup", async (req, res) => {
   if (await prisma.userProfile.findUnique({ where: { userEmail: input.adminEmail }, select: { id: true } })) return res.status(409).json({ error: "email_taken", message: "That email address already has an account." });
   if (await prisma.staff.findFirst({ where: { facilityId: f.id, email: { equals: input.adminEmail, mode: "insensitive" } }, select: { id: true } })) return res.status(409).json({ error: "already_invited", message: "That address is already on this facility's staff list." });
   const seeded = await seedGroups(f.id, f.facilityType);
-  const copied = input.copyFromFacilityId && input.copyFromFacilityId !== f.id ? await copyConfiguration(input.copyFromFacilityId, f.id) : (await ensureRules(f.id), null);
+  const copied = input.copyFromFacilityId && input.copyFromFacilityId !== f.id ? await copyConfiguration(input.copyFromFacilityId, f.id) : (await applyStandardSetup(f.id, f.facilityType), null);
   const invite = await inviteFirstAdmin(f.id, f.name, input.adminName, input.adminEmail);
   await platformAudit(req, "facility_setup", `${liveUser(req).displayName} set up ${f.name}: ${seeded.departments} departments and ${seeded.cadres} cadres added${copied ? `, ${copied.shifts} shifts copied` : ""}, and invited ${input.adminName} as administrator.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   res.status(201).json({ seeded, copied, url: invite.url, expiresAt: invite.expiresAt, emailed: invite.emailed, starterNotice: invite.starterNotice });

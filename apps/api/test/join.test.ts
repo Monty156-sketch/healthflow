@@ -128,6 +128,16 @@ describe("a facility registering itself", () => {
     expect(login.body.error).toBe("mfa_setup_required");
   });
 
+  it("starts every new facility with the standard shifts, cycles, rotation and rules", async () => {
+    expect((await pub.post("/api/public/register-facility", body())).status).toBe(201);
+    const f = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" } });
+    const shifts = await prisma.shift.findMany({ where: { facilityId: f.id }, orderBy: { sortOrder: "asc" } });
+    expect(shifts.map((x) => [x.code, x.startTime, x.endTime, x.minStaff])).toEqual([["A", "08:00", "14:00", 2], ["M", "14:00", "20:00", 1], ["N", "20:00", "08:00", 1]]);
+    expect((await prisma.dutyCycleRule.findMany({ where: { facilityId: f.id }, orderBy: { priority: "asc" } })).map((c) => [c.name, c.consecutiveDuties, c.offDaysRequired])).toEqual([["4 nights on, 3 off", 4, 3], ["4 days on, 2 off", 4, 2]]);
+    expect(await prisma.shiftRotation.count({ where: { facilityId: f.id } })).toBe(1);
+    expect((await prisma.constraintRule.findFirstOrThrow({ where: { facilityId: f.id, code: "C8" } })).thresholdValue).toBe(4);
+  });
+
   it("needs a plan when plans exist, holds a trial subscription on it, and files the facility under the chosen district", async () => {
     const plan = await prisma.plan.create({ data: { name: "Health centre", monthlyPriceGhs: 100, sortOrder: 1 } });
     const district = await prisma.district.create({ data: { name: "Nadowli-Kaleo", region: "Upper West" } });

@@ -12,6 +12,9 @@ import { noticeTemplate } from "../routes/facility/privacy.js";
 import { randomToken, sha256 } from "./crypto.js";
 import { appUrl, sendEmail } from "./email.js";
 import { INVITATION_DAYS } from "../routes/invitations.js";
+import { createStarterShifts } from "../routes/facility/shifts.js";
+import { ensureCycleRules } from "../routes/facility/cycles.js";
+import { ensureRotation } from "../routes/facility/rotations.js";
 
 /** Every cadre and department a health facility in Ghana is likely to have. Added to each facility, so staff imports are not turned away for a missing one. */
 
@@ -117,4 +120,19 @@ export async function inviteFirstAdmin(facilityId: string, facilityName: string,
     text: `PS Tech has set up ${facilityName} on HealthFlow and invited you as its administrator.\n\nOpen this link to create your account. It works for ${INVITATION_DAYS} days:\n${url}\n\nYou will choose a password and set up an authenticator app on your phone.\n\nIf you were not expecting this, you can ignore it.`,
   });
   return { url, expiresAt, emailed, starterNotice };
+}
+
+/**
+ * The standard set-up every new facility starts with, so its first roster is
+ * generated the same way every other facility's is: Morning, Afternoon and
+ * Night shifts with minimums for its type, the standard rules, the 4 nights
+ * on 3 off and 4 days on 2 off cycles, and the night, afternoon, morning
+ * rotation. Nothing here is locked: the administrator can change or delete any of it.
+ * A facility that already has shifts is left exactly as it is.
+ */
+export async function applyStandardSetup(facilityId: string, facilityType: string) {
+  await ensureRules(facilityId);
+  if ((await prisma.shift.count({ where: { facilityId } })) === 0) await createStarterShifts(facilityId, facilityType);
+  await ensureCycleRules(facilityId);
+  await ensureRotation(facilityId);
 }

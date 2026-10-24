@@ -14,9 +14,8 @@ import { appUrl, sendEmail } from "../lib/email.js";
 import { parseOr400 } from "../lib/validate.js";
 import { normalisePhone } from "../lib/sms.js";
 import { issueCode } from "../lib/accessCode.js";
-import { ensureStarterNotice, portfolioFor, seedChosen } from "../lib/facilitySetup.js";
+import { applyStandardSetup, ensureStarterNotice, portfolioFor, seedChosen } from "../lib/facilitySetup.js";
 import { makeEnrolmentToken } from "../lib/signedTokens.js";
-import { ensureRules } from "./facility/rules.js";
 import { writeAuditLog } from "../lib/audit.js";
 
 export const facilityRegisterRouter = Router();
@@ -103,7 +102,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   await seedChosen(facility.id, [...body.departments, ...units.filter((u) => !have.has(u.toLowerCase()))], body.cadres);
   // The 30 day trial starts when PS Tech approves the registration, not now.
   if (plan) await prisma.subscription.create({ data: { facilityId: facility.id, planId: plan.id, status: "TRIAL" } });
-  await ensureRules(facility.id);
+  await applyStandardSetup(facility.id, body.facilityType);
   const { notice } = await ensureStarterNotice(facility.id, facility.name);
   await prisma.$transaction(async (tx) => {
     const staff = await tx.staff.create({ data: { facilityId: facility.id, staffNo: "ADMIN-001", fullName: body.adminName, email: body.adminEmail, phone, status: "ACTIVE" } });
