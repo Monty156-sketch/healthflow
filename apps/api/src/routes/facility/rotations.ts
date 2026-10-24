@@ -44,7 +44,7 @@ export async function ensureRotation(facilityId: string) {
 
 rotationsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId } = caller(req);
-  await ensureRotation;
+  await ensureRotation(facilityId);
   const [rotations, shifts, cadres, departments] = await Promise.all([
     load(facilityId),
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true, active: true, isOnCall: false }, orderBy: { sortOrder: "asc" }, select: { id: true, code: true, name: true, colour: true } }),
