@@ -81,8 +81,7 @@ export function FacilityRegisterForm() {
 
   useEffect(() => {
     let live = true;
-    setDistrictId("");
-    if (!v.agency) { setDistricts(null); return () => { live = false; }; }
+    if (!v.agency) return () => { live = false; };
     api.get<{ districts: { id: string; name: string; region: string }[] }>(`/api/public/districts?agency=${v.agency}`).then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
     return () => { live = false; };
   }, [v.agency]);
@@ -231,7 +230,7 @@ export function FacilityRegisterForm() {
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Registered under" error={errors.agency} hint="Your district office is the one under the same agency.">
               {(a) => (
-                <Select {...a} value={v.agency} onChange={set("agency")}>
+                <Select {...a} value={v.agency} onChange={(e) => { setV({ ...v, agency: e.target.value }); setDistrictId(""); setDistricts(null); }}>
                   <option value="">Choose</option>
                   {AGENCIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
