@@ -1,7 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-const PAGES = ["/", "/pricing", "/security", "/terms", "/privacy", "/login", "/district/login", "/platform/login", "/district/register", "/join", "/register", "/help"];
+const PAGES = ["/", "/pricing", "/security", "/terms", "/privacy", "/login", "/district/login", "/platform/login", "/district/register", "/region/register", "/supervisors", "/join", "/register", "/help"];
 
 /** Collects what the browser complains about while a page loads. */
 function watch(page: Page) {
@@ -76,9 +76,17 @@ test.describe("the three sign-in doors", () => {
     await expect(page.getByRole("link", { name: /Join with your facility code/ })).toBeVisible();
     await page.goto("/district/login");
     await expect(page.getByLabel("Email")).toBeVisible();
-    await expect(page.getByRole("link", { name: /Register your district/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Register as a supervisor/ })).toBeVisible();
     await page.goto("/platform/login");
     await expect(page.getByLabel("Email")).toBeVisible();
+  });
+
+  test("the supervisors page offers the three ways in", async ({ page }) => {
+    await page.goto("/supervisors");
+    await expect(page.getByRole("heading", { name: "Regional office" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "District office" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Individual" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Register a hospital" })).toHaveAttribute("href", "/register");
   });
 
   test("a wrong password gives the same plain answer", async ({ page }) => {
