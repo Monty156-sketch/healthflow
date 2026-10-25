@@ -168,7 +168,7 @@ consoleRouter.get("/districts", async (_req, res) => {
   const unassigned = await prisma.facility.findMany({ where: { districtId: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
   res.json({
     districts: districts.map((d) => ({
-      id: d.id, name: d.name, region: d.region, status: d.status, registeredAt: d.registeredAt, declineReason: d.declineReason,
+      id: d.id, name: d.name, region: d.region, agency: d.agency, status: d.status, registeredAt: d.registeredAt, declineReason: d.declineReason,
       contact: { name: d.contactName, role: d.contactRole, email: d.contactEmail, phone: d.contactPhone, officeAddress: d.officeAddress },
       facilities: d.facilities, officers: officers.filter((o) => o.scopeId === d.id).map((o) => ({ id: o.id, email: o.userEmail, active: o.active, lastSignInAt: o.lastSignInAt })) })),
     unassigned,
@@ -176,7 +176,7 @@ consoleRouter.get("/districts", async (_req, res) => {
 });
 
 consoleRouter.post("/districts", async (req, res) => {
-  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(120), region: z.string().trim().min(2).max(120) }), req.body, res);
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(120), region: z.string().trim().min(2).max(120), agency: z.enum(["GHS", "CHAG"]).default("GHS") }), req.body, res);
   if (!input) return;
   const d = await prisma.district.create({ data: input });
   await platformAudit(req, "district_created", `${liveUser(req).displayName} created the district ${d.name}.`, { entityType: "District", entityId: d.id });
@@ -216,9 +216,11 @@ consoleRouter.post("/districts/:id/decline", async (req, res) => {
 consoleRouter.put("/facilities/:id/district", async (req, res) => {
   const input = parseOr400(z.object({ districtId: z.string().nullable() }), req.body, res);
   if (!input) return;
-  const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true } });
+  const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true, agency: true } });
   if (!f) return res.status(404).json({ error: "not_found" });
-  if (input.districtId && !(await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true } }))) return res.status(404).json({ error: "not_found" });
+  const target = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true, agency: true } }) : null;
+  if (input.districtId && !target) return res.status(404).json({ error: "not_found" });
+  if (target && target.agency !== f.agency) return res.status(409).json({ error: "agency_mismatch", message: `${f.name} is a ${f.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} facility and cannot be placed in a ${target.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} district.` });
   // Moving a facility ends what it granted to the old district.
   await prisma.districtGrant.updateMany({ where: { facilityId: f.id, status: "ACTIVE" }, data: { status: "REVOKED", revokedAt: new Date() } });
   await prisma.facility.update({ where: { id: f.id }, data: { districtId: input.districtId } });
@@ -255,10 +257,12 @@ consoleRouter.get("/setup-options", async (_req, res) => {
 
 /** Creates a facility directly, for one that did not arrive as an access request. */
 consoleRouter.post("/facilities", async (req, res) => {
-  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(160), facilityType: z.enum(FACILITY_TYPES), districtId: z.string().nullish(), region: z.string().trim().max(120).nullish() }), req.body, res);
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(160), facilityType: z.enum(FACILITY_TYPES), agency: z.enum(["GHS", "CHAG"]).optional(), districtId: z.string().nullish(), region: z.string().trim().max(120).nullish() }), req.body, res);
   if (!input) return;
   const district = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId } }) : null;
-  const f = await prisma.facility.create({ data: { name: input.name, facilityType: input.facilityType, districtId: district?.id ?? null, region: input.region ?? district?.region ?? null, status: "TRIAL" } });
+  const agency = input.agency ?? district?.agency ?? "GHS";
+  if (district && district.agency !== agency) return res.status(400).json({ error: "agency_mismatch", message: "That district is under the other agency." });
+  const f = await prisma.facility.create({ data: { name: input.name, facilityType: input.facilityType, agency, districtId: district?.id ?? null, region: input.region ?? district?.region ?? null, status: "TRIAL" } });
   await platformAudit(req, "facility_created", `${liveUser(req).displayName} created ${f.name}. It starts as a trial, with no staff and no administrator yet.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   res.status(201).json({ facilityId: f.id });
 });

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ButtonLink } from "@/components/ui";
 import { PublicNav } from "@/components/PublicNav";
 import { RosterExample } from "@/components/RosterExample";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "HealthFlow | Fair duty rosters for Ghana's health facilities",
@@ -65,9 +66,18 @@ const LD = {
   ],
 };
 
+const JSON_LD = JSON.stringify({
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", name: "PS Tech", url: SITE_URL, logo: `${SITE_URL}/logo.png`, address: { "@type": "PostalAddress", addressLocality: "Wa", addressRegion: "Upper West Region", addressCountry: "GH" }, telephone: "+233554571800" },
+    { "@type": "SoftwareApplication", name: SITE_NAME, url: SITE_URL, applicationCategory: "BusinessApplication", operatingSystem: "Web", description: SITE_DESCRIPTION, inLanguage: "en-GH", publisher: { "@type": "Organization", name: "PS Tech" }, areaServed: { "@type": "Country", name: "Ghana" } },
+  ],
+}).replace(/</g, "\\u003c");
+
 export default function LandingPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON_LD }} />
       <PublicNav />
       <main id="main">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(LD) }} />

@@ -3,6 +3,7 @@ import { Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const publicSans = Public_Sans({
   variable: "--font-public",
@@ -16,9 +17,17 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HealthFlow",
-  description:
-    "HealthFlow builds your monthly staff roster from your own shifts and rules, checks it against Ghana's Labour Act before it is published, and prints the A4 sheet your staff already recognise.",
+  metadataBase: new URL(SITE_URL),
+  title: "HealthFlow | Duty rosters for Ghana's health facilities",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: ["duty roster Ghana", "hospital duty roster software", "nurses roster", "Ghana Health Service roster", "CHAG facilities", "health facility staff scheduling", "Labour Act compliance roster", "HealthFlow"],
+  authors: [{ name: "PS Tech", url: SITE_URL }],
+  creator: "PS Tech",
+  alternates: { canonical: "./" },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 } },
+  openGraph: { type: "website", siteName: SITE_NAME, locale: "en_GH", url: SITE_URL, title: "HealthFlow | Duty rosters for Ghana's health facilities", description: SITE_DESCRIPTION, images: [{ url: "/logo.png", width: 512, height: 512, alt: "HealthFlow" }] },
+  twitter: { card: "summary", title: "HealthFlow | Duty rosters for Ghana's health facilities", description: SITE_DESCRIPTION, images: ["/logo.png"] },
 };
 
 export const viewport: Viewport = { themeColor: "#0a2f2c", width: "device-width", initialScale: 1 };

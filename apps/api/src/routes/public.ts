@@ -55,14 +55,16 @@ publicRouter.get("/legal/:slug", async (req, res) => {
 // ------------------------------------------------------------- the district directory
 
 /** Districts a facility can choose when it asks for access. Only approved ones. */
-publicRouter.get("/districts", async (_req, res) => {
-  const districts = await prisma.district.findMany({ where: { status: "ACTIVE", active: true }, orderBy: [{ region: "asc" }, { name: "asc" }], select: { id: true, name: true, region: true } });
+publicRouter.get("/districts", async (req, res) => {
+  const agency = req.query.agency === "CHAG" ? "CHAG" : req.query.agency === "GHS" ? "GHS" : undefined;
+  const districts = await prisma.district.findMany({ where: { status: "ACTIVE", active: true, ...(agency ? { agency } : {}) }, orderBy: [{ region: "asc" }, { name: "asc" }], select: { id: true, name: true, region: true, agency: true } });
   res.json({ districts });
 });
 
 const districtInput = z.object({
   name: z.string().trim().min(2, "Enter the district name.").max(120),
   region: z.string().trim().min(2, "Enter the region.").max(120),
+  agency: z.enum(["GHS", "CHAG"], { message: "Choose Ghana Health Service or CHAG." }).default("GHS"),
   contactName: z.string().trim().min(2, "Enter the officer's name.").max(120),
   contactRole: z.string().trim().max(120).optional(),
   contactEmail: z.string().trim().toLowerCase().email("Enter an email address for the officer.").max(200),
@@ -86,7 +88,7 @@ publicRouter.post("/districts/register", limiter, async (req, res) => {
     return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address for the district." });
   }
   const same = await prisma.district.findFirst({
-    where: { name: { equals: input.name, mode: "insensitive" }, region: { equals: input.region, mode: "insensitive" }, status: { not: "DECLINED" } },
+    where: { name: { equals: input.name, mode: "insensitive" }, region: { equals: input.region, mode: "insensitive" }, agency: input.agency, status: { not: "DECLINED" } },
     select: { id: true },
   });
   if (same) return res.status(409).json({ error: "district_exists", message: "This district is already registered. If you are its officer, sign in. Otherwise call us on 055 457 1800." });
@@ -95,7 +97,7 @@ publicRouter.post("/districts/register", limiter, async (req, res) => {
   const district = await prisma.$transaction(async (tx) => {
     const d = await tx.district.create({
       data: {
-        name: input.name, region: input.region, status: "PENDING", active: false, registeredAt: new Date(),
+        name: input.name, region: input.region, agency: input.agency, status: "PENDING", active: false, registeredAt: new Date(),
         contactName: input.contactName, contactRole: input.contactRole || null, contactEmail: input.contactEmail,
         contactPhone: input.contactPhone || null, officeAddress: input.officeAddress || null,
       },

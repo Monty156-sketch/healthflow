@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Button, Field, Input, Notice } from "@/components/ui";
+import { Button, Field, Input, Notice, Select } from "@/components/ui";
+import { AGENCIES } from "@/lib/agency";
 
-const EMPTY = { name: "", region: "", contactName: "", contactRole: "", contactEmail: "", contactPhone: "", officeAddress: "", password: "", confirm: "" };
+const EMPTY = { agency: "", name: "", region: "", contactName: "", contactRole: "", contactEmail: "", contactPhone: "", officeAddress: "", password: "", confirm: "" };
 
 /** A district directorate registers itself. It is checked before it goes live. */
 export function DistrictRegisterForm() {
@@ -20,6 +21,10 @@ export function DistrictRegisterForm() {
     e.preventDefault();
     setProblem(null);
     setErrors({});
+    if (!v.agency) {
+      setErrors({ agency: "Choose Ghana Health Service or CHAG." });
+      return;
+    }
     if (v.password !== v.confirm) {
       setErrors({ confirm: "The two passwords do not match." });
       return;
@@ -52,6 +57,15 @@ export function DistrictRegisterForm() {
   return (
     <form onSubmit={submit} className="space-y-4" noValidate>
       <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Registered under" error={errors.agency} hint="You will monitor the facilities that register under the same agency.">
+          {(a) => (
+            <Select {...a} value={v.agency} onChange={set("agency")} required>
+              <option value="">Choose</option>
+              {AGENCIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </Select>
+          )}
+        </Field>
+        <span className="hidden sm:block" />
         <Field label="District" error={errors.name}>{(a) => <Input {...a} value={v.name} onChange={set("name")} required />}</Field>
         <Field label="Region" error={errors.region}>{(a) => <Input {...a} value={v.region} onChange={set("region")} required />}</Field>
         <Field label="Officer's name" error={errors.contactName}>{(a) => <Input {...a} value={v.contactName} onChange={set("contactName")} autoComplete="name" required />}</Field>

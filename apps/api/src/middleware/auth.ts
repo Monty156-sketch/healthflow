@@ -53,8 +53,9 @@ export async function resolveFacilityScope(
   if (auth.scopeType === "PLATFORM") return [];
 
   if (auth.scopeType === "DISTRICT") {
+    const agency = auth.scopeId ? (await prisma.district.findUnique({ where: { id: auth.scopeId }, select: { agency: true } }))?.agency : undefined;
     const grants = await prisma.districtGrant.findMany({
-      where: { districtId: auth.scopeId ?? undefined, status: "ACTIVE" },
+      where: { districtId: auth.scopeId ?? undefined, status: "ACTIVE", ...(agency ? { facility: { agency } } : {}) },
       select: { facilityId: true },
     });
     return grants.map((g) => g.facilityId);

@@ -27,7 +27,7 @@ accessConsole.get("/registrations", async (_req, res) => {
     where: { status: { in: ["PENDING", "DECLINED"] } },
     orderBy: { createdAt: "asc" },
     select: {
-      id: true, name: true, facilityType: true, region: true, status: true, accessNote: true, createdAt: true,
+      id: true, name: true, facilityType: true, agency: true, region: true, status: true, accessNote: true, createdAt: true,
       district: { select: { name: true } }, subscription: { select: { plan: { select: { name: true } } } },
       _count: { select: { departments: true, cadres: true } },
     },
@@ -35,7 +35,7 @@ accessConsole.get("/registrations", async (_req, res) => {
   const out = await Promise.all(rows.map(async (f) => {
     const a = await adminOf(f.id);
     return {
-      id: f.id, name: f.name, type: f.facilityType, region: f.region, district: f.district?.name ?? null, status: f.status, note: f.accessNote, registeredAt: f.createdAt,
+      id: f.id, name: f.name, type: f.facilityType, agency: f.agency, region: f.region, district: f.district?.name ?? null, status: f.status, note: f.accessNote, registeredAt: f.createdAt,
       plan: f.subscription?.plan.name ?? null, departments: f._count.departments, cadres: f._count.cadres,
       administrator: a ? { name: a.staff?.fullName ?? null, email: a.userEmail, phone: a.staff?.phone ?? null } : null,
     };

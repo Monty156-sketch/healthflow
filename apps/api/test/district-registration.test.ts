@@ -32,7 +32,7 @@ describe("a district registers itself", () => {
     const d = await prisma.district.findFirstOrThrow();
     const { user: admin } = await makeUser({ role: "PLATFORM_ADMIN" });
     expect((await as(admin).post(`/api/platform/districts/${d.id}/approve`)).status).toBe(200);
-    expect((await request(app).get("/api/public/districts")).body.districts).toEqual([{ id: d.id, name: "Wa West", region: "Upper West" }]);
+    expect((await request(app).get("/api/public/districts")).body.districts).toEqual([{ id: d.id, name: "Wa West", region: "Upper West", agency: "GHS" }]);
     const attempt = await login("dho@example.com", "district", reg.password);
     expect(attempt.body.error).not.toBe("district_pending");
     expect(attempt.body.error).not.toBe("wrong_door");
