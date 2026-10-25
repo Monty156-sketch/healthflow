@@ -1,6 +1,5 @@
 // Hospitals have staff outside the wards: security, drivers and cleaners, who
-// are rostered by the administrator, and administration, who are
-// not rostered. Each gets a unit so staff can register into it. Added once;
+// are rostered by the administrator. Each gets a unit so staff can register into it. Accountants and administrators do not run rosters, so they are not offered. Added once;
 // a unit the facility renamed away or switched off is not added again.
 import { prisma } from "./prisma.js";
 import { WARD_FACILITY_TYPES } from "../routes/facility/rosters.js";
@@ -9,7 +8,6 @@ const UNITS = [
   { name: "Security", kind: "SUPPORT", runsNights: true },
   { name: "Drivers", kind: "SUPPORT", runsNights: true },
   { name: "Cleaners", kind: "SUPPORT", runsNights: false },
-  { name: "Administration", kind: "OFFICE", runsNights: false },
 ] as const;
 
 export async function ensureSupportUnits(facilityId: string, facilityType?: string) {

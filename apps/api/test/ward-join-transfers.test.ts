@@ -136,13 +136,13 @@ describe("inter-ward transfers", () => {
 });
 
 describe("support units and the staff record", () => {
-  it("adds security, drivers, cleaners and offices; staff register into them; offices get no roster; support units start from nobody", async () => {
+  it("adds security, drivers and cleaners, and no administration unit; staff register into them; offices get no roster; support units start from nobody", async () => {
     const { facility, api, code, nurse } = await hospital();
     const units = (await request(app).get(`/api/public/join/${code}`).set("X-Forwarded-For", freshIp())).body.departments as { id: string; name: string; kind: string }[];
     const security = units.find((u) => u.name === "Security")!;
-    const accounts = units.find((u) => u.name === "Administration")!;
+    const accounts = await prisma.department.create({ data: { facilityId: facility.id, name: "Accounts office", kind: "OFFICE", runsNights: false } });
+    expect(units.some((u) => u.name === "Administration")).toBe(false);
     expect(security.kind).toBe("SUPPORT");
-    expect(accounts.kind).toBe("OFFICE");
     // Asking to be in-charge of a support unit just registers them; the administrator runs it.
     const guard = await pub("/api/public/join/register", reg(code, "guard@h.test", { departmentId: security.id, asInCharge: true }));
     expect(guard.body.status).toBe("active");
