@@ -430,10 +430,12 @@ model Facility {
   @@index([districtId])
 }
 
-/// Who runs the facility or directorate: the Ghana Health Service, or the Christian Health Association of Ghana.
+/// Who runs the facility or supervising office: Ghana Health Service, CHAG, the Ahmadiyya Muslim Mission Ghana, or a private owner.
 enum HealthAgency {
   GHS
   CHAG
+  AMMG
+  PRIVATE
 }
 
 enum DistrictStatus {

@@ -1,6 +1,7 @@
 // The public front door: the plans and districts a visitor can read, the legal
 // documents, and district registration. A facility registers itself in
 // facilityRegister.ts.
+import { AGENCY_CODES, AGENCY_MESSAGE } from "../lib/agency.js";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
@@ -56,7 +57,7 @@ publicRouter.get("/legal/:slug", async (req, res) => {
 
 /** Districts a facility can choose when it asks for access. Only approved ones. */
 publicRouter.get("/districts", async (req, res) => {
-  const agency = req.query.agency === "CHAG" ? "CHAG" : req.query.agency === "GHS" ? "GHS" : undefined;
+  const agency = AGENCY_CODES.find((a) => a === req.query.agency);
   const districts = await prisma.district.findMany({ where: { status: "ACTIVE", active: true, ...(agency ? { agency } : {}) }, orderBy: [{ region: "asc" }, { name: "asc" }], select: { id: true, name: true, region: true, agency: true } });
   res.json({ districts });
 });
@@ -64,7 +65,7 @@ publicRouter.get("/districts", async (req, res) => {
 const districtInput = z.object({
   name: z.string().trim().min(2, "Enter the district name.").max(120),
   region: z.string().trim().min(2, "Enter the region.").max(120),
-  agency: z.enum(["GHS", "CHAG"], { message: "Choose Ghana Health Service or CHAG." }).default("GHS"),
+  agency: z.enum(AGENCY_CODES, { message: AGENCY_MESSAGE }).default("GHS"),
   contactName: z.string().trim().min(2, "Enter the officer's name.").max(120),
   contactRole: z.string().trim().max(120).optional(),
   contactEmail: z.string().trim().toLowerCase().email("Enter an email address for the officer.").max(200),

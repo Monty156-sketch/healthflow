@@ -2,6 +2,7 @@
 // behind the platform-only guard. There is no delete anywhere in it: things
 // are deactivated, suspended, archived or written off. Anything that touches a
 // facility is also written to that facility's own audit log.
+import { AGENCY_CODES, agencyName } from "../lib/agency.js";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -176,7 +177,7 @@ consoleRouter.get("/districts", async (_req, res) => {
 });
 
 consoleRouter.post("/districts", async (req, res) => {
-  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(120), region: z.string().trim().min(2).max(120), agency: z.enum(["GHS", "CHAG"]).default("GHS") }), req.body, res);
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(120), region: z.string().trim().min(2).max(120), agency: z.enum(AGENCY_CODES).default("GHS") }), req.body, res);
   if (!input) return;
   const d = await prisma.district.create({ data: input });
   await platformAudit(req, "district_created", `${liveUser(req).displayName} created the district ${d.name}.`, { entityType: "District", entityId: d.id });
@@ -220,7 +221,7 @@ consoleRouter.put("/facilities/:id/district", async (req, res) => {
   if (!f) return res.status(404).json({ error: "not_found" });
   const target = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true, agency: true } }) : null;
   if (input.districtId && !target) return res.status(404).json({ error: "not_found" });
-  if (target && target.agency !== f.agency) return res.status(409).json({ error: "agency_mismatch", message: `${f.name} is a ${f.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} facility and cannot be placed in a ${target.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} district.` });
+  if (target && target.agency !== f.agency) return res.status(409).json({ error: "agency_mismatch", message: `${f.name} is a ${agencyName(f.agency)} facility and cannot be placed in a ${agencyName(target.agency)} district.` });
   // Moving a facility ends what it granted to the old district.
   await prisma.districtGrant.updateMany({ where: { facilityId: f.id, status: "ACTIVE" }, data: { status: "REVOKED", revokedAt: new Date() } });
   await prisma.facility.update({ where: { id: f.id }, data: { districtId: input.districtId } });
@@ -257,7 +258,7 @@ consoleRouter.get("/setup-options", async (_req, res) => {
 
 /** Creates a facility directly, for one that did not arrive as an access request. */
 consoleRouter.post("/facilities", async (req, res) => {
-  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(160), facilityType: z.enum(FACILITY_TYPES), agency: z.enum(["GHS", "CHAG"]).optional(), districtId: z.string().nullish(), region: z.string().trim().max(120).nullish() }), req.body, res);
+  const input = parseOr400(z.object({ name: z.string().trim().min(2).max(160), facilityType: z.enum(FACILITY_TYPES), agency: z.enum(AGENCY_CODES).optional(), districtId: z.string().nullish(), region: z.string().trim().max(120).nullish() }), req.body, res);
   if (!input) return;
   const district = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId } }) : null;
   const agency = input.agency ?? district?.agency ?? "GHS";

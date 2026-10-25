@@ -22,7 +22,7 @@ export function DistrictRegisterForm() {
     setProblem(null);
     setErrors({});
     if (!v.agency) {
-      setErrors({ agency: "Choose Ghana Health Service or CHAG." });
+      setErrors({ agency: "Choose who runs the district office." });
       return;
     }
     if (v.password !== v.confirm) {
