@@ -1,7 +1,10 @@
 import type { MetadataRoute } from "next";
-
-const BASE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://healthflow.example").replace(/\/+$/, "");
+import { SITE_URL } from "@/lib/site";
 
 export default function robots(): MetadataRoute.Robots {
-  return { rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/dashboard", "/platform", "/district"] }], sitemap: `${BASE}/sitemap.xml` };
+  return {
+    rules: [{ userAgent: "*", allow: "/", disallow: ["/api/", "/dashboard", "/platform", "/district/login", "/account", "/billing", "/roster", "/staff", "/settings"] }],
+    sitemap: `${SITE_URL}/sitemap.xml`,
+    host: SITE_URL,
+  };
 }

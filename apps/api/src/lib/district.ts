@@ -13,10 +13,16 @@ export interface Granted {
   scopes: DistrictScope[];
 }
 
+/** A district only ever sees facilities of its own agency: Ghana Health Service or CHAG. */
+export async function agencyOf(districtId: string) {
+  return (await prisma.district.findUnique({ where: { id: districtId }, select: { agency: true } }))?.agency ?? "GHS";
+}
+
 /** Facilities that have an active grant to this district which includes the scope. */
 export async function grantedFor(districtId: string, scope: DistrictScope): Promise<Granted[]> {
+  const agency = await agencyOf(districtId);
   const grants = await prisma.districtGrant.findMany({
-    where: { districtId, status: "ACTIVE", scopes: { has: scope }, facility: { active: true, status: { not: "SUSPENDED" } } },
+    where: { districtId, status: "ACTIVE", scopes: { has: scope }, facility: { active: true, agency, status: { not: "SUSPENDED" } } },
     include: { facility: { select: { name: true } } },
     orderBy: { facility: { name: "asc" } },
   });

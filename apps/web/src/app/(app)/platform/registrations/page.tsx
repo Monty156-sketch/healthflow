@@ -1,5 +1,6 @@
 "use client";
 
+import { agencyName } from "@/lib/agency";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -7,7 +8,7 @@ import { showDate } from "@/lib/format";
 import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, StatusBadge } from "@/components/ui";
 
 interface Row {
-  id: string; name: string; type: string; region: string | null; district: string | null; status: string; note: string | null; registeredAt: string;
+  id: string; name: string; type: string; agency: string; region: string | null; district: string | null; status: string; note: string | null; registeredAt: string;
   plan: string | null; departments: number; cadres: number; administrator: { name: string | null; email: string; phone: string | null } | null;
 }
 interface Data { pending: Row[]; declined: Row[] }
@@ -42,7 +43,7 @@ export default function RegistrationsPage() {
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="font-semibold">{r.name}</h3>
-          <p className="text-sm text-[var(--muted)]">{[words(r.type), r.district, r.region].filter(Boolean).join(" · ")}</p>
+          <p className="text-sm text-[var(--muted)]">{[words(r.type), agencyName(r.agency), r.district, r.region].filter(Boolean).join(" · ")}</p>
         </div>
         <StatusBadge tone={declined ? "block" : "warning"}>{declined ? "Declined" : `Registered ${showDate(r.registeredAt)}`}</StatusBadge>
       </div>

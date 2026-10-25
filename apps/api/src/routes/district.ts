@@ -5,7 +5,7 @@
 import { demandOn, hasDemand } from "../engine/demand.js";
 import { Router, type Request } from "express";
 import { prisma } from "../lib/prisma.js";
-import { auditDistrictRead, grantedFor, readingUnder, suspendedFor, type Granted } from "../lib/district.js";
+import { agencyOf, auditDistrictRead, grantedFor, readingUnder, suspendedFor, type Granted } from "../lib/district.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireDistrictOfficer } from "../middleware/districtAccess.js";
 import { sayDay } from "../engine/time.js";
@@ -334,8 +334,9 @@ districtRouter.get("/profile", async (req, res) => {
  */
 districtRouter.get("/facilities", async (req, res) => {
   const districtId = req.district!.districtId;
+  const agency = await agencyOf(districtId);
   const [facilities, grants] = await Promise.all([
-    prisma.facility.findMany({ where: { districtId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, facilityType: true, createdAt: true, status: true, accessNote: true } }),
+    prisma.facility.findMany({ where: { districtId, agency, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, facilityType: true, createdAt: true, status: true, accessNote: true } }),
     prisma.districtGrant.findMany({ where: { districtId, status: "ACTIVE" }, select: { facilityId: true } }),
   ]);
   const granted = new Set(grants.map((g) => g.facilityId));

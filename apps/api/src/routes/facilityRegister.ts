@@ -37,6 +37,7 @@ const input = z.object({
   region: z.string().trim().min(2, "Enter the region.").max(120),
   districtId: z.string().trim().max(60).optional(),
   districtText: z.string().trim().max(120).optional(),
+  agency: z.enum(["GHS", "CHAG"], { message: "Choose Ghana Health Service or CHAG." }).default("GHS"),
   adminName: z.string().trim().min(2, "Enter your name.").max(120),
   adminEmail: z.string().trim().toLowerCase().email("Enter an email address you can open.").max(200),
   adminPhone: z.string().trim().min(1, "Enter your phone number."),
@@ -91,10 +92,13 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   if (body.cadres.length === 0) return res.status(400).json({ error: "invalid_input", fields: { cadres: "Choose at least one cadre." } });
 
   const district = body.districtId ? await prisma.district.findFirst({ where: { id: body.districtId, status: "ACTIVE", active: true } }) : null;
+  if (district && district.agency !== body.agency) {
+    return res.status(400).json({ error: "invalid_input", fields: { districtId: `${district.name} is a ${district.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} district. Choose a district under ${body.agency === "CHAG" ? "CHAG" : "Ghana Health Service"}.` } });
+  }
   const passwordHash = await hashPassword(body.password);
 
   const facility = await prisma.facility.create({
-    data: { name: body.facilityName, facilityType: body.facilityType, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
+    data: { name: body.facilityName, facilityType: body.facilityType, agency: body.agency, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
   });
   // A health centre rosters by unit, so it always has the three, whatever was ticked.
   const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Midwives", "Public Health"] : [];

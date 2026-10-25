@@ -3,6 +3,7 @@
 // A facility registers itself in four steps: its details and the administrator's
 // account, a plan, the departments and cadres it works with, and then the staff
 // access code. The administrator finishes by setting up an authenticator app.
+import { AGENCIES } from "@/lib/agency";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -60,7 +61,7 @@ export function FacilityRegisterForm() {
   const router = useRouter();
   const { adoptSession } = useAuth();
   const [step, setStep] = useState<Step>(1);
-  const [v, setV] = useState({ facilityName: "", facilityType: "", region: "", districtText: "", adminName: "", adminEmail: "", adminPhone: "", password: "", confirm: "" });
+  const [v, setV] = useState({ agency: "", facilityName: "", facilityType: "", region: "", districtText: "", adminName: "", adminEmail: "", adminPhone: "", password: "", confirm: "" });
   const [districtId, setDistrictId] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [districts, setDistricts] = useState<{ id: string; name: string; region: string }[] | null>(null);
@@ -80,9 +81,11 @@ export function FacilityRegisterForm() {
 
   useEffect(() => {
     let live = true;
-    api.get<{ districts: { id: string; name: string; region: string }[] }>("/api/public/districts").then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
+    setDistrictId("");
+    if (!v.agency) { setDistricts(null); return () => { live = false; }; }
+    api.get<{ districts: { id: string; name: string; region: string }[] }>(`/api/public/districts?agency=${v.agency}`).then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
     return () => { live = false; };
-  }, []);
+  }, [v.agency]);
   // The departments and cadres on offer depend on the type of facility, so they are fetched again when the type changes.
   useEffect(() => {
     let live = true;
@@ -94,6 +97,7 @@ export function FacilityRegisterForm() {
 
   function next1() {
     const e: Record<string, string> = {};
+    if (!v.agency) e.agency = "Choose Ghana Health Service or CHAG.";
     if (!v.facilityName.trim()) e.facilityName = "Enter the facility name.";
     if (!v.facilityType) e.facilityType = "Choose the type of facility.";
     if (!v.region.trim()) e.region = "Enter the region.";
@@ -115,7 +119,7 @@ export function FacilityRegisterForm() {
     setBusy(true);
     try {
       const res = await api.post<Done>("/api/public/register-facility", {
-        facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtId: districtId && !other ? districtId : undefined,
+        agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtId: districtId && !other ? districtId : undefined,
         districtText: v.districtText || undefined, adminName: v.adminName, adminEmail: v.adminEmail, adminPhone: v.adminPhone, password: v.password, acceptedTerms: true,
         planId: planId || undefined, departments: departments ?? [], cadres: cadres ?? [],
       });
@@ -225,6 +229,15 @@ export function FacilityRegisterForm() {
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); next1(); }} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Registered under" error={errors.agency} hint="Your district office is the one under the same agency.">
+              {(a) => (
+                <Select {...a} value={v.agency} onChange={set("agency")}>
+                  <option value="">Choose</option>
+                  {AGENCIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </Select>
+              )}
+            </Field>
+            <span className="hidden sm:block" />
             <Field label="Facility name" error={errors.facilityName}>{(a) => <Input {...a} value={v.facilityName} onChange={set("facilityName")} autoComplete="organization" />}</Field>
             <Field label="Type of facility" error={errors.facilityType}>
               {(a) => (

@@ -345,6 +345,7 @@ model Facility {
   name                       String
   facilityType               FacilityType
   ghsFacilityCode            String?
+  agency                     HealthAgency   @default(GHS)
   districtId                 String?
   district                   District?      @relation(fields: [districtId], references: [id])
   subDistrict                String?
@@ -429,6 +430,12 @@ model Facility {
   @@index([districtId])
 }
 
+/// Who runs the facility or directorate: the Ghana Health Service, or the Christian Health Association of Ghana.
+enum HealthAgency {
+  GHS
+  CHAG
+}
+
 enum DistrictStatus {
   PENDING
   ACTIVE
@@ -441,6 +448,7 @@ model District {
   region    String
   code      String?  @unique
   active    Boolean  @default(true)
+  agency    HealthAgency @default(GHS)
   createdAt DateTime @default(now())
   /// A district that registers itself waits as PENDING until PS Tech approves it. Only ACTIVE districts can be chosen by a facility.
   status         DistrictStatus @default(ACTIVE)
