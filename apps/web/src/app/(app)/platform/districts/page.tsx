@@ -7,7 +7,7 @@ import { useResource } from "@/lib/useApi";
 import { Button, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select } from "@/components/ui";
 
 interface Data {
-  districts: { id: string; name: string; region: string; agency: string; status: "PENDING" | "ACTIVE" | "DECLINED"; registeredAt: string | null; declineReason: string | null; contact: { name: string | null; role: string | null; email: string | null; phone: string | null; officeAddress: string | null }; facilities: { id: string; name: string }[]; officers: { id: string; email: string; active: boolean }[] }[];
+  districts: { id: string; name: string; region: string; agency: string; level?: string; status: "PENDING" | "ACTIVE" | "DECLINED"; registeredAt: string | null; declineReason: string | null; contact: { name: string | null; role: string | null; email: string | null; phone: string | null; officeAddress: string | null }; facilities: { id: string; name: string }[]; officers: { id: string; email: string; active: boolean }[] }[];
   unassigned: { id: string; name: string }[];
 }
 
@@ -78,7 +78,7 @@ export default function DistrictsPage() {
       {data.districts.some((d) => d.status === "PENDING") && (
         <div className="mb-6 space-y-4">
           {data.districts.filter((d) => d.status === "PENDING").map((d) => (
-            <Panel key={d.id} title={`Awaiting approval: ${d.name}, ${d.region} (${agencyName(d.agency)})`} description={d.registeredAt ? `Registered ${new Date(d.registeredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.` : undefined}>
+            <Panel key={d.id} title={`Awaiting approval: ${d.level === "REGION" ? "regional office, " : ""}${d.name}, ${d.region} (${agencyName(d.agency)})`} description={d.registeredAt ? `Registered ${new Date(d.registeredAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.` : undefined}>
               <dl className="grid gap-x-6 gap-y-1 text-[15px] sm:grid-cols-[9rem_1fr]">
                 {([["Officer", [d.contact.name, d.contact.role].filter(Boolean).join(", ")], ["Email", d.contact.email], ["Telephone", d.contact.phone], ["Office", d.contact.officeAddress]] as [string, string | null][]).map(([k, val]) => (
                   <div key={k} className="contents"><dt className="text-[var(--muted)]">{k}</dt><dd>{val || "Not given"}</dd></div>
@@ -103,7 +103,7 @@ export default function DistrictsPage() {
       </Panel>
       <div className="mt-6 space-y-6">
         {data.districts.filter((d) => d.status !== "PENDING").map((d) => (
-          <Panel key={d.id} title={`${d.name}, ${d.region} (${agencyName(d.agency)})${d.status === "DECLINED" ? " (declined)" : ""}`} description={d.status === "DECLINED" && d.declineReason ? `Declined: ${d.declineReason}` : undefined}>
+          <Panel key={d.id} title={`${d.level === "REGION" ? "Regional office: " : ""}${d.name}, ${d.region} (${agencyName(d.agency)})${d.status === "DECLINED" ? " (declined)" : ""}`} description={d.status === "DECLINED" && d.declineReason ? `Declined: ${d.declineReason}` : undefined}>
             <h3 className="text-sm font-medium text-[var(--muted)]">Facilities</h3>
             {d.facilities.length === 0 ? <p className="text-[15px]">None placed yet.</p> : (
               <ul className="text-[15px]">

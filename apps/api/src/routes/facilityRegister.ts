@@ -92,7 +92,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   if (body.departments.length === 0) return res.status(400).json({ error: "invalid_input", fields: { departments: "Choose at least one department." } });
   if (body.cadres.length === 0) return res.status(400).json({ error: "invalid_input", fields: { cadres: "Choose at least one cadre." } });
 
-  const district = body.districtId ? await prisma.district.findFirst({ where: { id: body.districtId, status: "ACTIVE", active: true } }) : null;
+  const district = body.districtId ? await prisma.district.findFirst({ where: { id: body.districtId, level: "DISTRICT", status: "ACTIVE", active: true } }) : null;
   if (district && district.agency !== body.agency) {
     return res.status(400).json({ error: "invalid_input", fields: { districtId: `${district.name} is a ${agencyName(district.agency)} district. Choose a district under ${agencyName(body.agency)}.` } });
   }

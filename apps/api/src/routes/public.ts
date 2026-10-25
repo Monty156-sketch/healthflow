@@ -1,7 +1,7 @@
 // The public front door: the plans and districts a visitor can read, the legal
 // documents, and district registration. A facility registers itself in
 // facilityRegister.ts.
-import { AGENCY_CODES, AGENCY_MESSAGE } from "../lib/agency.js";
+import { AGENCY_CODES, AGENCY_MESSAGE, agencyName } from "../lib/agency.js";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
@@ -58,8 +58,15 @@ publicRouter.get("/legal/:slug", async (req, res) => {
 /** Districts a facility can choose when it asks for access. Only approved ones. */
 publicRouter.get("/districts", async (req, res) => {
   const agency = AGENCY_CODES.find((a) => a === req.query.agency);
-  const districts = await prisma.district.findMany({ where: { status: "ACTIVE", active: true, ...(agency ? { agency } : {}) }, orderBy: [{ region: "asc" }, { name: "asc" }], select: { id: true, name: true, region: true, agency: true } });
+  const districts = await prisma.district.findMany({ where: { status: "ACTIVE", active: true, level: "DISTRICT", ...(agency ? { agency } : {}) }, orderBy: [{ region: "asc" }, { name: "asc" }], select: { id: true, name: true, region: true, agency: true } });
   res.json({ districts });
+});
+
+/** The regional offices a district can report to. Only approved ones. */
+publicRouter.get("/regions", async (req, res) => {
+  const agency = AGENCY_CODES.find((a) => a === req.query.agency);
+  const regions = await prisma.district.findMany({ where: { status: "ACTIVE", active: true, level: "REGION", ...(agency ? { agency } : {}) }, orderBy: { region: "asc" }, select: { id: true, name: true, region: true, agency: true } });
+  res.json({ regions });
 });
 
 const districtInput = z.object({
@@ -71,6 +78,8 @@ const districtInput = z.object({
   contactEmail: z.string().trim().toLowerCase().email("Enter an email address for the officer.").max(200),
   contactPhone: z.string().trim().max(40).optional(),
   officeAddress: z.string().trim().max(300).optional(),
+  /** The regional office this district reports to. It approves the registration. */
+  regionOfficeId: z.string().trim().max(60).optional(),
   password: z.string().min(1, "Choose a password."),
   website: z.string().max(0).optional(),
 });
@@ -88,8 +97,11 @@ publicRouter.post("/districts/register", limiter, async (req, res) => {
   if (await prisma.userProfile.findUnique({ where: { userEmail: input.contactEmail }, select: { id: true } })) {
     return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address for the district." });
   }
+  const regionOffice = input.regionOfficeId ? await prisma.district.findFirst({ where: { id: input.regionOfficeId, level: "REGION", status: "ACTIVE", active: true } }) : null;
+  if (input.regionOfficeId && !regionOffice) return res.status(400).json({ error: "invalid_input", fields: { regionOfficeId: "Choose a regional office from the list." } });
+  if (regionOffice && regionOffice.agency !== input.agency) return res.status(400).json({ error: "invalid_input", fields: { regionOfficeId: `That regional office is under ${agencyName(regionOffice.agency)}. Choose one under ${agencyName(input.agency)}.` } });
   const same = await prisma.district.findFirst({
-    where: { name: { equals: input.name, mode: "insensitive" }, region: { equals: input.region, mode: "insensitive" }, agency: input.agency, status: { not: "DECLINED" } },
+    where: { name: { equals: input.name, mode: "insensitive" }, region: { equals: input.region, mode: "insensitive" }, agency: input.agency, level: "DISTRICT", status: { not: "DECLINED" } },
     select: { id: true },
   });
   if (same) return res.status(409).json({ error: "district_exists", message: "This district is already registered. If you are its officer, sign in. Otherwise call us on 055 457 1800." });
@@ -98,7 +110,7 @@ publicRouter.post("/districts/register", limiter, async (req, res) => {
   const district = await prisma.$transaction(async (tx) => {
     const d = await tx.district.create({
       data: {
-        name: input.name, region: input.region, agency: input.agency, status: "PENDING", active: false, registeredAt: new Date(),
+        name: input.name, region: regionOffice?.region ?? input.region, agency: input.agency, level: "DISTRICT", regionOfficeId: regionOffice?.id ?? null, status: "PENDING", active: false, registeredAt: new Date(),
         contactName: input.contactName, contactRole: input.contactRole || null, contactEmail: input.contactEmail,
         contactPhone: input.contactPhone || null, officeAddress: input.officeAddress || null,
       },
@@ -114,10 +126,71 @@ publicRouter.post("/districts/register", limiter, async (req, res) => {
       subject: `A district has registered: ${district.name}`,
       text: `${district.name}, ${district.region}\nOfficer: ${input.contactName}${input.contactRole ? `, ${input.contactRole}` : ""}\nEmail: ${input.contactEmail}\nPhone: ${input.contactPhone ?? "not given"}\nOffice: ${input.officeAddress ?? "not given"}\n\nApprove or decline it in the console: ${link}`,
     })),
+    ...(regionOffice?.contactEmail ? [sendEmail({
+      to: regionOffice.contactEmail,
+      subject: `A district asks to report to ${regionOffice.name}: ${district.name}`,
+      text: `${district.name} has registered on HealthFlow and chose ${regionOffice.name} as its regional office.\nOfficer: ${input.contactName}${input.contactRole ? `, ${input.contactRole}` : ""}\nEmail: ${input.contactEmail}\nPhone: ${input.contactPhone ?? "not given"}\n\nIt cannot sign in until you approve it. Review it here: ${appUrl("/district/districts")}`,
+    })] : []),
     sendEmail({
       to: input.contactEmail,
       subject: "We have your HealthFlow district registration",
-      text: `Dear ${input.contactName},\n\nThank you for registering ${district.name} on HealthFlow. We check each district before it goes live, usually within ${RESPONSE_HOURS} hours. You can sign in once it is approved. We will email you.\n\nIf it is urgent, call 055 457 1800 or 024 618 7422.\n\nPS Tech, Wa, Upper West Region, Ghana`,
+      text: `Dear ${input.contactName},\n\nThank you for registering ${district.name} on HealthFlow. ${regionOffice ? `Your regional office, ${regionOffice.name}, must approve ${district.name} first. ` : ""}We check each district before it goes live, usually within ${RESPONSE_HOURS} hours. You can sign in once it is approved. We will email you.\n\nIf it is urgent, call 055 457 1800 or 024 618 7422.\n\nPS Tech, Wa, Upper West Region, Ghana`,
+    }),
+  ]);
+  res.status(201).json({ ok: true, responseHours: RESPONSE_HOURS });
+});
+
+export const GHANA_REGIONS = ["Ahafo", "Ashanti", "Bono", "Bono East", "Central", "Eastern", "Greater Accra", "North East", "Northern", "Oti", "Savannah", "Upper East", "Upper West", "Volta", "Western", "Western North"] as const;
+
+const regionInput = z.object({
+  agency: z.enum(AGENCY_CODES, { message: AGENCY_MESSAGE }),
+  region: z.enum(GHANA_REGIONS, { message: "Choose the region." }),
+  contactName: z.string().trim().min(2, "Enter the officer's name.").max(120),
+  contactRole: z.string().trim().max(120).optional(),
+  contactEmail: z.string().trim().toLowerCase().email("Enter an email address for the officer.").max(200),
+  contactPhone: z.string().trim().max(40).optional(),
+  officeAddress: z.string().trim().max(300).optional(),
+  password: z.string().min(1, "Choose a password."),
+  website: z.string().max(0).optional(),
+});
+
+/**
+ * A regional office registers itself. It waits for PS Tech to approve it. Once
+ * approved, districts under the same agency can choose it, and it approves them.
+ */
+publicRouter.post("/regions/register", limiter, async (req, res) => {
+  const input = parseOr400(regionInput, req.body, res);
+  if (!input) return;
+  const problem = checkPassword(input.password, input.contactEmail);
+  if (problem) return res.status(400).json({ error: "invalid_input", fields: { password: problem } });
+  if (await prisma.userProfile.findUnique({ where: { userEmail: input.contactEmail }, select: { id: true } })) {
+    return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address for the regional office." });
+  }
+  const same = await prisma.district.findFirst({ where: { level: "REGION", region: input.region, agency: input.agency, status: { not: "DECLINED" } }, select: { id: true } });
+  if (same) return res.status(409).json({ error: "region_exists", message: `A regional office for ${input.region} under ${agencyName(input.agency)} is already registered. If you are its officer, sign in. Otherwise call us on 055 457 1800.` });
+
+  const passwordHash = await hashPassword(input.password);
+  const office = await prisma.$transaction(async (tx) => {
+    const d = await tx.district.create({
+      data: {
+        name: `${input.region} Region (${agencyName(input.agency).replace(/ \(.*\)$/, "")})`, region: input.region, agency: input.agency, level: "REGION", status: "PENDING", active: false, registeredAt: new Date(),
+        contactName: input.contactName, contactRole: input.contactRole || null, contactEmail: input.contactEmail,
+        contactPhone: input.contactPhone || null, officeAddress: input.officeAddress || null,
+      },
+    });
+    await tx.userProfile.create({ data: { userEmail: input.contactEmail, passwordHash, role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id, facilityId: null, active: false } });
+    return d;
+  });
+  await Promise.allSettled([
+    ...notifyList().map((to) => sendEmail({
+      to,
+      subject: `A regional office has registered: ${office.name}`,
+      text: `${office.name}\nAgency: ${agencyName(input.agency)}\nOfficer: ${input.contactName}${input.contactRole ? `, ${input.contactRole}` : ""}\nEmail: ${input.contactEmail}\nPhone: ${input.contactPhone ?? "not given"}\nOffice: ${input.officeAddress ?? "not given"}\n\nApprove or decline it in the console: ${appUrl("/platform/districts")}`,
+    })),
+    sendEmail({
+      to: input.contactEmail,
+      subject: "We have your HealthFlow regional registration",
+      text: `Dear ${input.contactName},\n\nThank you for registering the ${input.region} regional office on HealthFlow. We check each office before it goes live, usually within ${RESPONSE_HOURS} hours. You can sign in once it is approved. We will email you.\n\nIf it is urgent, call 055 457 1800 or 024 618 7422.\n\nPS Tech, Wa, Upper West Region, Ghana`,
     }),
   ]);
   res.status(201).json({ ok: true, responseHours: RESPONSE_HOURS });

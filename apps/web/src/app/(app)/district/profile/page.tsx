@@ -1,5 +1,6 @@
 "use client";
 
+import { agencyName } from "@/lib/agency";
 import { useResource } from "@/lib/useApi";
 import { Loading, LoadError, Notice, PageHeader, Panel } from "@/components/ui";
 
@@ -7,6 +8,8 @@ interface Profile {
   district: {
     name: string;
     region: string;
+    level: "DISTRICT" | "REGION";
+    agency: string;
     status: string;
     registeredAt: string | null;
     approvedAt: string | null;
@@ -22,7 +25,8 @@ export default function DistrictProfilePage() {
   if (!data) return <Loading label="Loading the district profile" />;
   const d = data.district;
   const rows: [string, string][] = [
-    ["District", d.name],
+    [d.level === "REGION" ? "Regional office" : "District", d.name],
+    ["Registered under", agencyName(d.agency)],
     ["Region", d.region],
     ["Registered", day(d.registeredAt)],
     ["Approved", day(d.approvedAt)],
@@ -33,7 +37,7 @@ export default function DistrictProfilePage() {
   ];
   return (
     <>
-      <PageHeader title="District profile" description="The details this district registered with." />
+      <PageHeader title="Office profile" description="The details this office registered with." />
       <Panel title={d.name}>
         <dl className="grid gap-x-6 gap-y-3 text-[15px] sm:grid-cols-[10rem_1fr]">
           {rows.map(([k, val]) => (

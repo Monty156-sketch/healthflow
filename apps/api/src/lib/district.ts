@@ -18,11 +18,24 @@ export async function agencyOf(districtId: string) {
   return (await prisma.district.findUnique({ where: { id: districtId }, select: { agency: true } }))?.agency ?? "GHS";
 }
 
+/**
+ * The districts whose facilities this office reads. A district reads its own.
+ * A regional office reads the approved districts that report to it, and only
+ * what their facilities have granted: the facility's consent is still the one
+ * gate, the region adds no way around it.
+ */
+export async function officesUnder(districtId: string): Promise<string[]> {
+  const d = await prisma.district.findUnique({ where: { id: districtId }, select: { level: true } });
+  if (d?.level !== "REGION") return [districtId];
+  const kids = await prisma.district.findMany({ where: { regionOfficeId: districtId, status: "ACTIVE", active: true }, select: { id: true } });
+  return kids.map((k) => k.id);
+}
+
 /** Facilities that have an active grant to this district which includes the scope. */
 export async function grantedFor(districtId: string, scope: DistrictScope): Promise<Granted[]> {
   const agency = await agencyOf(districtId);
   const grants = await prisma.districtGrant.findMany({
-    where: { districtId, status: "ACTIVE", scopes: { has: scope }, facility: { active: true, agency, status: { not: "SUSPENDED" } } },
+    where: { districtId: { in: await officesUnder(districtId) }, status: "ACTIVE", scopes: { has: scope }, facility: { active: true, agency, status: { not: "SUSPENDED" } } },
     include: { facility: { select: { name: true } } },
     orderBy: { facility: { name: "asc" } },
   });
@@ -33,7 +46,7 @@ export const SCOPE_WORD: Record<DistrictScope, string> = { COVERAGE: "coverage",
 
 /** Facilities in this district that PS Tech has suspended. Their data is not shown to the district; only the fact, and the reason. */
 export async function suspendedFor(districtId: string) {
-  const rows = await prisma.facility.findMany({ where: { districtId, active: true, status: "SUSPENDED" }, select: { id: true, name: true, accessNote: true }, orderBy: { name: "asc" } });
+  const rows = await prisma.facility.findMany({ where: { districtId: { in: await officesUnder(districtId) }, active: true, status: "SUSPENDED" }, select: { id: true, name: true, accessNote: true }, orderBy: { name: "asc" } });
   return rows.map((f) => ({ id: f.id, name: f.name, reason: f.accessNote }));
 }
 

@@ -3,6 +3,7 @@
 // anything outside that list. Filtering in the frontend is never access
 // control." — Part 2 of the build documentation, applied here as one
 // middleware so it cannot be forgotten on a new route.
+import { officesUnder } from "../lib/district.js";
 import type { NextFunction, Request, Response } from "express";
 import { verifyAccessToken, type AccessTokenPayload } from "../lib/tokens.js";
 import { prisma } from "../lib/prisma.js";
@@ -55,7 +56,7 @@ export async function resolveFacilityScope(
   if (auth.scopeType === "DISTRICT") {
     const agency = auth.scopeId ? (await prisma.district.findUnique({ where: { id: auth.scopeId }, select: { agency: true } }))?.agency : undefined;
     const grants = await prisma.districtGrant.findMany({
-      where: { districtId: auth.scopeId ?? undefined, status: "ACTIVE", ...(agency ? { facility: { agency } } : {}) },
+      where: { districtId: auth.scopeId ? { in: await officesUnder(auth.scopeId) } : undefined, status: "ACTIVE", ...(agency ? { facility: { agency } } : {}) },
       select: { facilityId: true },
     });
     return grants.map((g) => g.facilityId);

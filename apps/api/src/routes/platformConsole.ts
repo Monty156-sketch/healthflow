@@ -169,7 +169,7 @@ consoleRouter.get("/districts", async (_req, res) => {
   const unassigned = await prisma.facility.findMany({ where: { districtId: null, active: true }, select: { id: true, name: true }, orderBy: { name: "asc" } });
   res.json({
     districts: districts.map((d) => ({
-      id: d.id, name: d.name, region: d.region, agency: d.agency, status: d.status, registeredAt: d.registeredAt, declineReason: d.declineReason,
+      id: d.id, name: d.name, region: d.region, agency: d.agency, level: d.level, regionOfficeId: d.regionOfficeId, status: d.status, registeredAt: d.registeredAt, declineReason: d.declineReason,
       contact: { name: d.contactName, role: d.contactRole, email: d.contactEmail, phone: d.contactPhone, officeAddress: d.officeAddress },
       facilities: d.facilities, officers: officers.filter((o) => o.scopeId === d.id).map((o) => ({ id: o.id, email: o.userEmail, active: o.active, lastSignInAt: o.lastSignInAt })) })),
     unassigned,
@@ -219,8 +219,8 @@ consoleRouter.put("/facilities/:id/district", async (req, res) => {
   if (!input) return;
   const f = await prisma.facility.findUnique({ where: { id: String(req.params.id) }, select: { id: true, name: true, agency: true } });
   if (!f) return res.status(404).json({ error: "not_found" });
-  const target = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true, agency: true } }) : null;
-  if (input.districtId && !target) return res.status(404).json({ error: "not_found" });
+  const target = input.districtId ? await prisma.district.findUnique({ where: { id: input.districtId }, select: { id: true, agency: true, level: true } }) : null;
+  if (input.districtId && (!target || target.level !== "DISTRICT")) return res.status(404).json({ error: "not_found" });
   if (target && target.agency !== f.agency) return res.status(409).json({ error: "agency_mismatch", message: `${f.name} is a ${agencyName(f.agency)} facility and cannot be placed in a ${agencyName(target.agency)} district.` });
   // Moving a facility ends what it granted to the old district.
   await prisma.districtGrant.updateMany({ where: { facilityId: f.id, status: "ACTIVE" }, data: { status: "REVOKED", revokedAt: new Date() } });
@@ -250,7 +250,7 @@ const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC"
 
 consoleRouter.get("/setup-options", async (_req, res) => {
   const [districts, facilities] = await Promise.all([
-    prisma.district.findMany({ where: { active: true, status: "ACTIVE" }, orderBy: { name: "asc" }, select: { id: true, name: true, region: true } }),
+    prisma.district.findMany({ where: { active: true, status: "ACTIVE", level: "DISTRICT" }, orderBy: { name: "asc" }, select: { id: true, name: true, region: true } }),
     prisma.facility.findMany({ where: { active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
   res.json({ districts, facilities, types: FACILITY_TYPES });

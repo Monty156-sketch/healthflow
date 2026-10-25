@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 
-const PATHS: [string, number][] = [["", 1], ["/register", 0.9], ["/district/register", 0.7], ["/pricing", 0.8], ["/security", 0.6], ["/about", 0.6], ["/help", 0.6], ["/contact", 0.5], ["/status", 0.3], ["/changelog", 0.3], ["/terms", 0.2], ["/privacy", 0.2], ["/dpa", 0.2]];
+const PATHS: [string, number][] = [["", 1], ["/register", 0.9], ["/supervisors", 0.7], ["/district/register", 0.5], ["/region/register", 0.5], ["/pricing", 0.8], ["/security", 0.6], ["/about", 0.6], ["/help", 0.6], ["/contact", 0.5], ["/status", 0.3], ["/changelog", 0.3], ["/terms", 0.2], ["/privacy", 0.2], ["/dpa", 0.2]];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

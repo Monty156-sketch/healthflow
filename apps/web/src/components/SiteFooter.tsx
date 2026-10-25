@@ -7,7 +7,7 @@ const PRODUCT = [
   { href: "/#features", label: "Features" },
   { href: "/pricing", label: "Pricing" },
   { href: "/register", label: "Register your facility" },
-  { href: "/district/register", label: "Register a district" },
+  { href: "/supervisors", label: "Supervisors" },
   { href: "/about", label: "About" },
 ];
 const LEGAL = [

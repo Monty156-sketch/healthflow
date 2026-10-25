@@ -1,16 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { Button, Field, Input, Notice, Select } from "@/components/ui";
 import { AGENCIES } from "@/lib/agency";
 
-const EMPTY = { agency: "", name: "", region: "", contactName: "", contactRole: "", contactEmail: "", contactPhone: "", officeAddress: "", password: "", confirm: "" };
+const EMPTY = { agency: "", regionOfficeId: "", name: "", region: "", contactName: "", contactRole: "", contactEmail: "", contactPhone: "", officeAddress: "", password: "", confirm: "" };
 
 /** A district directorate registers itself. It is checked before it goes live. */
 export function DistrictRegisterForm() {
   const [v, setV] = useState(EMPTY);
+  const [regions, setRegions] = useState<{ id: string; name: string; region: string }[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    if (!v.agency) return () => { live = false; };
+    api.get<{ regions: { id: string; name: string; region: string }[] }>(`/api/public/regions?agency=${v.agency}`).then((r) => live && setRegions(r.regions)).catch(() => live && setRegions([]));
+    return () => { live = false; };
+  }, [v.agency]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,8 +55,8 @@ export function DistrictRegisterForm() {
     return (
       <Notice tone="success">
         <strong className="block">Your district is registered.</strong>
-        We check each district before it goes live, usually within {hours} hours. We will email {v.contactEmail} when it is approved, and you can then sign in at{" "}
-        <Link href="/district/login" className="underline">/district/login</Link>. Facilities can choose your district once it is approved.
+        {v.regionOfficeId ? "Your regional office must approve it first. " : ""}We check each district before it goes live, usually within {hours} hours. We will email {v.contactEmail} when it is approved, and you can then sign in at{" "}
+        <Link href="/district/login" className="underline">the supervisor sign-in</Link>. Facilities can choose your district once it is approved.
       </Notice>
     );
   }
@@ -59,13 +66,22 @@ export function DistrictRegisterForm() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Registered under" error={errors.agency} hint="You will monitor the facilities that register under the same agency.">
           {(a) => (
-            <Select {...a} value={v.agency} onChange={set("agency")} required>
+            <Select {...a} value={v.agency} onChange={(e) => { setV({ ...v, agency: e.target.value, regionOfficeId: "" }); setRegions(null); }} required>
               <option value="">Choose</option>
               {AGENCIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </Select>
           )}
         </Field>
-        <span className="hidden sm:block" />
+        {regions && regions.length > 0 ? (
+          <Field label="Regional office" error={errors.regionOfficeId} hint="The regional office approves your registration and can see what your facilities share.">
+            {(a) => (
+              <Select {...a} value={v.regionOfficeId} onChange={(e) => { const r = regions.find((x) => x.id === e.target.value); setV({ ...v, regionOfficeId: e.target.value, region: r ? r.region : v.region }); }}>
+                <option value="">My region is not registered yet</option>
+                {regions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </Select>
+            )}
+          </Field>
+        ) : <span className="hidden sm:block" />}
         <Field label="District" error={errors.name}>{(a) => <Input {...a} value={v.name} onChange={set("name")} required />}</Field>
         <Field label="Region" error={errors.region}>{(a) => <Input {...a} value={v.region} onChange={set("region")} required />}</Field>
         <Field label="Officer's name" error={errors.contactName}>{(a) => <Input {...a} value={v.contactName} onChange={set("contactName")} autoComplete="name" required />}</Field>
