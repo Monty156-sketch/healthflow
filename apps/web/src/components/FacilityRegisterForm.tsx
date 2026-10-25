@@ -96,7 +96,7 @@ export function FacilityRegisterForm() {
 
   function next1() {
     const e: Record<string, string> = {};
-    if (!v.agency) e.agency = "Choose Ghana Health Service or CHAG.";
+    if (!v.agency) e.agency = "Choose who runs the facility.";
     if (!v.facilityName.trim()) e.facilityName = "Enter the facility name.";
     if (!v.facilityType) e.facilityType = "Choose the type of facility.";
     if (!v.region.trim()) e.region = "Enter the region.";
@@ -228,7 +228,7 @@ export function FacilityRegisterForm() {
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); next1(); }} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Registered under" error={errors.agency} hint="Your district office is the one under the same agency.">
+            <Field label="Registered under" error={errors.agency} hint="Your supervising office is the one under the same agency.">
               {(a) => (
                 <Select {...a} value={v.agency} onChange={(e) => { setV({ ...v, agency: e.target.value }); setDistrictId(""); setDistricts(null); }}>
                   <option value="">Choose</option>

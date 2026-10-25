@@ -3,6 +3,7 @@
 // and a staff access code ready to give out. It starts as a trial. Nothing is
 // shared with a district until the facility grants that access itself, and the
 // platform can suspend a facility that should not be here.
+import { AGENCY_CODES, AGENCY_MESSAGE, agencyName } from "../lib/agency.js";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
@@ -37,7 +38,7 @@ const input = z.object({
   region: z.string().trim().min(2, "Enter the region.").max(120),
   districtId: z.string().trim().max(60).optional(),
   districtText: z.string().trim().max(120).optional(),
-  agency: z.enum(["GHS", "CHAG"], { message: "Choose Ghana Health Service or CHAG." }).default("GHS"),
+  agency: z.enum(AGENCY_CODES, { message: AGENCY_MESSAGE }).default("GHS"),
   adminName: z.string().trim().min(2, "Enter your name.").max(120),
   adminEmail: z.string().trim().toLowerCase().email("Enter an email address you can open.").max(200),
   adminPhone: z.string().trim().min(1, "Enter your phone number."),
@@ -93,7 +94,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
 
   const district = body.districtId ? await prisma.district.findFirst({ where: { id: body.districtId, status: "ACTIVE", active: true } }) : null;
   if (district && district.agency !== body.agency) {
-    return res.status(400).json({ error: "invalid_input", fields: { districtId: `${district.name} is a ${district.agency === "CHAG" ? "CHAG" : "Ghana Health Service"} district. Choose a district under ${body.agency === "CHAG" ? "CHAG" : "Ghana Health Service"}.` } });
+    return res.status(400).json({ error: "invalid_input", fields: { districtId: `${district.name} is a ${agencyName(district.agency)} district. Choose a district under ${agencyName(body.agency)}.` } });
   }
   const passwordHash = await hashPassword(body.password);
 

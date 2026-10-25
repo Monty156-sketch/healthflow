@@ -23,6 +23,13 @@ describe("Ghana Health Service and CHAG", () => {
     expect((await prisma.facility.findFirstOrThrow({ where: { name: "St Mary Clinic" } })).agency).toBe("CHAG");
   });
 
+  it("also takes the Ahmadiyya Muslim Mission and private facilities", async () => {
+    expect((await pub("/api/public/register-facility", reg({ agency: "AMMG", facilityName: "AMMG Hospital", adminEmail: "a@ammg.test" }))).status).toBe(201);
+    expect((await pub("/api/public/register-facility", reg({ agency: "PRIVATE", facilityName: "Grace Hospital", adminEmail: "g@private.test" }))).status).toBe(201);
+    expect((await pub("/api/public/register-facility", reg({ agency: "OTHER", facilityName: "Nope", adminEmail: "n@x.test" }))).status).toBe(400);
+    expect((await prisma.facility.findMany({ where: { name: { in: ["AMMG Hospital", "Grace Hospital"] } }, orderBy: { name: "asc" } })).map((f) => f.agency)).toEqual(["AMMG", "PRIVATE"]);
+  });
+
   it("lists only the districts of the agency asked for", async () => {
     await prisma.district.create({ data: { name: "Wa", region: "Upper West", agency: "GHS" } });
     await prisma.district.create({ data: { name: "Wa CHAG", region: "Upper West", agency: "CHAG" } });
