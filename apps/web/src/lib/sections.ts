@@ -8,6 +8,8 @@ export interface Tab {
   roles: string[];
   /** Hidden while this feature flag exists and is off for the facility. */
   flag?: string;
+  /** Shown only to supervising offices of this level. */
+  level?: "REGION";
 }
 
 export interface Section {
@@ -87,13 +89,14 @@ export const SECTIONS: Section[] = [
     tabs: [
       { href: "/district", label: "Overview", roles: DISTRICT },
       { href: "/district/facilities", label: "Facilities", roles: DISTRICT },
+      { href: "/district/districts", label: "Districts", roles: DISTRICT, level: "REGION" },
       { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
       { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
       { href: "/district/attendance", label: "Attendance", roles: DISTRICT },
       { href: "/district/compliance", label: "Compliance", roles: DISTRICT },
       { href: "/district/leave", label: "Leave concentration", roles: DISTRICT },
       { href: "/district/reports", label: "Report pack", roles: DISTRICT },
-      { href: "/district/profile", label: "District profile", roles: DISTRICT },
+      { href: "/district/profile", label: "Office profile", roles: DISTRICT },
     ],
   },
 ];

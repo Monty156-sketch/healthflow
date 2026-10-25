@@ -12,6 +12,7 @@ import { invitationRouter } from "./routes/invitations.js";
 import { errorReportRouter, platformRouter, recordServerError } from "./routes/errors.js";
 import { internalRouter } from "./routes/internal.js";
 import { districtRouter } from "./routes/district.js";
+import { regionRouter } from "./routes/regionOffice.js";
 import { publicRouter } from "./routes/public.js";
 import { joinRouter } from "./routes/join.js";
 import { facilityRegisterRouter } from "./routes/facilityRegister.js";
@@ -53,6 +54,7 @@ export function createApp() {
   app.use("/api/public/join", joinRouter);
   app.use("/api/public/register-facility", facilityRegisterRouter);
   app.use("/api/public", publicRouter);
+  app.use("/api/region", regionRouter);
   app.use("/api/district", districtRouter);
   app.use("/api/internal", internalRouter);
   app.use("/api/webhooks", webhookRouter);

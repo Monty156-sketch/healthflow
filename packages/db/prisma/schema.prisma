@@ -438,6 +438,12 @@ enum HealthAgency {
   PRIVATE
 }
 
+/// A supervising office is either a district or the regional office above districts.
+enum SupervisorLevel {
+  DISTRICT
+  REGION
+}
+
 enum DistrictStatus {
   PENDING
   ACTIVE
@@ -451,6 +457,11 @@ model District {
   code      String?  @unique
   active    Boolean  @default(true)
   agency    HealthAgency @default(GHS)
+  level     SupervisorLevel @default(DISTRICT)
+  /// For a district: the regional office it reports to. That office approves its registration and sees what its facilities have shared.
+  regionOfficeId String?
+  regionOffice   District?  @relation("RegionDistricts", fields: [regionOfficeId], references: [id])
+  districtsUnder District[] @relation("RegionDistricts")
   createdAt DateTime @default(now())
   /// A district that registers itself waits as PENDING until PS Tech approves it. Only ACTIVE districts can be chosen by a facility.
   status         DistrictStatus @default(ACTIVE)
@@ -465,6 +476,8 @@ model District {
 
   facilities     Facility[]
   districtGrants DistrictGrant[]
+
+  @@index([regionOfficeId])
 }
 
 model Department {

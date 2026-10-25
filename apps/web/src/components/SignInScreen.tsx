@@ -34,7 +34,7 @@ export type Audience = "facility" | "district" | "platform";
 const HOME: Record<Audience, string> = { facility: "/dashboard", district: "/district", platform: "/platform" };
 const homeFor = (role: string): string => (role === "PLATFORM_ADMIN" ? HOME.platform : role === "DISTRICT_OFFICER" ? HOME.district : HOME.facility);
 
-const DOOR_NAME: Record<string, string> = { "/login": "the facility sign-in", "/district/login": "the district sign-in", "/platform/login": "the platform sign-in" };
+const DOOR_NAME: Record<string, string> = { "/login": "the facility sign-in", "/district/login": "the supervisor sign-in", "/platform/login": "the platform sign-in" };
 
 function messageFor(err: unknown): string {
   if (!(err instanceof ApiError)) return "No connection. Check your internet and try again.";
@@ -50,9 +50,9 @@ function messageFor(err: unknown): string {
     case "account_pending":
       return "Your in-charge has not approved your account yet. You will get a text message when it is approved.";
     case "district_pending":
-      return "Your district registration is waiting for approval. We will email you as soon as it is approved.";
+      return "Your registration is waiting for approval. We will email you as soon as it is approved.";
     case "district_declined":
-      return "This district registration was not approved. Call 055 457 1800 to talk to us.";
+      return "This registration was not approved. Call 055 457 1800 to talk to us.";
     case "wrong_door": {
       const to = (err.body as { goTo?: string } | undefined)?.goTo ?? "/login";
       return `This account does not sign in on this page. Use ${DOOR_NAME[to] ?? "the right sign-in"} at ${to}.`;
@@ -72,10 +72,10 @@ const COPY: Record<Audience, { title: string; line: string; body: string; tag: s
     tag: null,
   },
   district: {
-    title: "District sign-in",
-    line: "See staffing across your district.",
-    body: "Coverage, establishment and leave for the facilities that have chosen to share them with your directorate. Read only, and only what each facility has granted.",
-    tag: "District directorate",
+    title: "Supervisor sign-in",
+    line: "See staffing across your district or region.",
+    body: "Coverage, establishment and leave for the facilities that have chosen to share them with your office. Read only, and only what each facility has granted.",
+    tag: "Supervisors",
   },
   platform: {
     title: "Platform sign-in",
@@ -275,9 +275,9 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                   </Link>
                   {audience === "district" && (
                     <p className="mt-2 border-t border-[var(--border)] pt-3 text-[var(--muted)]">
-                      Is your district new to HealthFlow?{" "}
-                      <Link href="/district/register" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
-                        Register your district
+                      New to HealthFlow?{" "}
+                      <Link href="/supervisors" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
+                        Register as a supervisor
                       </Link>
                     </p>
                   )}
@@ -295,9 +295,9 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                   )}
                   {audience === "facility" && (
                     <p className="mt-2 border-t border-[var(--border)] pt-3 text-[var(--muted)]">
-                      District officer?{" "}
-                      <Link href="/district/login" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
-                        Sign in here
+                      Regional or district supervisor?{" "}
+                      <Link href="/supervisors" className="inline-flex min-h-11 items-center text-[var(--accent-text)] underline underline-offset-4">
+                        Supervisors
                       </Link>
                     </p>
                   )}

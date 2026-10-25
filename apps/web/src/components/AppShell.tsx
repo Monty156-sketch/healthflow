@@ -258,7 +258,7 @@ function Brand({ area }: { area: Area }) {
       <img src="/logo-sm.png" alt="" width={34} height={34} />
       <span className="leading-tight">
         HealthFlow
-        {area !== "facility" && <span className="block text-[13px] font-normal text-[var(--muted)]">{area === "platform" ? "Platform console" : "District directorate"}</span>}
+        {area !== "facility" && <span className="block text-[13px] font-normal text-[var(--muted)]">{area === "platform" ? "Platform console" : "Supervising office"}</span>}
       </span>
     </Link>
   );
