@@ -11,6 +11,16 @@ import { consoleRouter } from "./platformConsole.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
 import { jobStatus } from "../lib/scheduler.js";
+import { sendEmail } from "../lib/email.js";
+
+// One alert email per ten minutes at most, so a failing route cannot flood the inbox.
+let lastAlert = 0;
+function alertOwner(screen: string, message: string) {
+  if (process.env.NODE_ENV === "test" || Date.now() - lastAlert < 10 * 60 * 1000) return;
+  lastAlert = Date.now();
+  const to = (process.env.ACCESS_REQUEST_NOTIFY ?? "muslimfroko05@gmail.com").split(",").map((s) => s.trim()).filter(Boolean);
+  for (const t of to) void sendEmail({ to: t, subject: "HealthFlow server error", text: `A request failed on the server.\n${screen}\n${message}\n\nDetails are on the System health screen in the platform console.` }).catch(() => {});
+}
 
 /** Keeps the technical context small and free of anything that looks like a secret. */
 function safeContext(value: unknown): Prisma.InputJsonValue | undefined {
@@ -39,6 +49,8 @@ export async function recordServerError(req: Request, err: Error) {
     });
   } catch {
     // Recording the error must never cause another one.
+  } finally {
+    alertOwner(`${req.method} ${req.baseUrl}${req.route?.path ?? req.path}`, (err.message || "Unknown error").slice(0, 200));
   }
 }
 

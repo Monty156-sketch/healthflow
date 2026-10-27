@@ -51,7 +51,7 @@ function ResetForm() {
       <>
         <Notice tone="warning">
           {status === "expired"
-            ? "This link has expired. Links work for 60 minutes."
+            ? "This link has expired. Links work for 30 minutes."
             : "This link is not valid. It may already have been used, or it was copied incompletely."}
         </Notice>
         <p className="mt-4 text-sm">

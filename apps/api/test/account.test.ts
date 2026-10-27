@@ -228,7 +228,7 @@ describe("password reset", () => {
     const issued = await as(admin).post(`/api/facility/staff/${staff!.id}/reset-link`);
     expect(issued.status).toBe(200);
     expect((await latestAudit(facility.id))?.summary).toBe(
-      "Kofi Bawa issued a password reset link for Abena Dery, valid for 60 minutes."
+      "Kofi Bawa issued a password reset link for Abena Dery, valid for 30 minutes."
     );
     const token = decodeURIComponent(new URL(issued.body.url).searchParams.get("token")!);
 

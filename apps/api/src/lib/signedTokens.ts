@@ -1,6 +1,6 @@
 // Short-lived tokens that need no database table.
 //
-// Password reset (60 minutes, single use): the signature covers the
+// Password reset (30 minutes, single use): the signature covers the
 // account's current password hash, so the link stops working the moment the
 // password changes. Using it once changes the password, which spends it.
 //
@@ -28,7 +28,7 @@ function derivedKey(purpose: string): Buffer {
 
 // ------------------------------------------------------------- password reset
 
-export const RESET_LINK_MINUTES = 60;
+export const RESET_LINK_MINUTES = 30;
 
 function resetSignature(userId: string, expires: number, passwordHash: string): string {
   return crypto
