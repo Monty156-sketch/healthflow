@@ -67,17 +67,16 @@ describe("entitlements", () => {
     expect(rows.find((r) => r.name === "Esi Naa")).toMatchObject({ daysEntitled: 21, remaining: 21 });
   });
 
-  it("lists Partial leave beside annual leave, with no default days of its own", async () => {
-    const { api, people } = await setup();
+  it("takes Partial leave out of the annual days, with no entitlement of its own", async () => {
+    const { facility, api, people } = await setup();
     await prisma.staff.update({ where: { id: people[0].id }, data: { leaveGrade: "SENIOR" } });
     const first = (await api.get("/api/facility/entitlements?year=2026")).body;
-    const part = first.types.find((t: { code: string }) => t.code === "PART");
-    expect(part).toBeTruthy();
-    const rows = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${part.id}`)).body.rows as { name: string; defaultDays: number | null; remaining: number | null; configured: boolean }[];
-    expect(rows.find((r) => r.name === "Ama Dery")).toMatchObject({ defaultDays: null, remaining: null, configured: false });
-    await api.post("/api/facility/entitlements/set-all", { year: 2026, leaveTypeId: part.id, daysEntitled: 5 });
-    const after = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${part.id}`)).body.rows as { name: string; remaining: number }[];
-    expect(after.find((r) => r.name === "Ama Dery")?.remaining).toBe(5);
+    expect(first.types.map((t: { code: string }) => t.code)).not.toContain("PART");
+    const part = await prisma.leaveType.findFirstOrThrow({ where: { facilityId: facility.id, code: "PART" } });
+    const day = (d: string) => new Date(`${d}T00:00:00Z`);
+    await prisma.leaveRequest.create({ data: { facilityId: facility.id, staffId: people[0].id, leaveTypeId: part.id, startDate: day("2026-03-02"), endDate: day("2026-03-03"), daysDeducted: 2, status: "APPROVED" } });
+    const rows = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${first.leaveTypeId}`)).body.rows as { name: string; taken: number; remaining: number | null }[];
+    expect(rows.find((r) => r.name === "Ama Dery")).toMatchObject({ taken: 2, remaining: 34 });
   });
 
   it("gives senior staff 36 working days and junior staff 28 until a figure is set by hand", async () => {

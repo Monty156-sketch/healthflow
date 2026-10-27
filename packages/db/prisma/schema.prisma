@@ -560,7 +560,7 @@ model Staff {
   excludedFromNights   Boolean          @default(false)
   /// In-charges: weekday mornings only, outside the duty cycles.
   morningOnly          Boolean          @default(false)
-  willingForExtraDuties Boolean         @default(false)
+  willingForExtraDuties Boolean         @default(true)
   exclusionReason      String?          // operational only — never a medical reason
   maxDutiesPerWeek     Int              @default(0) // 0 = no limit
   /// Can take charge of a shift (senior, or named by the in-charge).

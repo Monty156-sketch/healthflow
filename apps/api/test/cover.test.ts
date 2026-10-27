@@ -127,6 +127,7 @@ describe("cover for an absence", () => {
   it("adds a little to someone who has said they are willing to cover extra duties", async () => {
     const { api, people, duty } = await setup();
     const score = async () => (await api.get(`/api/facility/cover/options?assignmentId=${duty.id}`)).body.options.find((o: { name: string }) => o.name === "Yaw Boah");
+    await prisma.staff.update({ where: { id: people[2].id }, data: { willingForExtraDuties: false } });
     const before = await score();
     await prisma.staff.update({ where: { id: people[2].id }, data: { willingForExtraDuties: true } });
     const after = await score();

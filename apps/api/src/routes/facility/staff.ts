@@ -53,7 +53,7 @@ const staffInput = z
     excludedFromNights: z.boolean().default(false),
     morningOnly: z.boolean().optional(),
     smsOptOut: z.boolean().optional(),
-    willingForExtraDuties: z.boolean().default(false),
+    willingForExtraDuties: z.boolean().default(true),
     exclusionReason: optionalText(200, "Reason"),
     maxDutiesPerWeek: z
       .number({ invalid_type_error: "Maximum duties per week must be a number." })

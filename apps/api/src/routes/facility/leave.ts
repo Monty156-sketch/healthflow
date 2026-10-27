@@ -39,7 +39,7 @@ const SEED: { code: string; name: string; colour: string; counts: boolean; paid:
   { code: "OA", name: "Official assignment", colour: "#1f7a4d", counts: false, paid: true },
   { code: "U", name: "Unpaid", colour: "#77878a", counts: false, paid: false },
   { code: "PERM", name: "Permission", colour: "#8c6d1f", counts: false, paid: true, short: true, debt: true },
-  { code: "PART", name: "Partial leave", colour: "#4f7a5a", counts: true, paid: true },
+  { code: "PART", name: "Partial leave", colour: "#4f7a5a", counts: false, paid: true },
 ];
 
 export async function ensureLeaveTypes(facilityId: string) {
@@ -152,19 +152,24 @@ async function impactOf(facilityId: string, staffId: string, startDay: number, e
 
 async function balanceOf(facilityId: string, staffId: string, leaveTypeId: string, year: number) {
   const type = await prisma.leaveType.findFirst({ where: { id: leaveTypeId, facilityId } });
-  if (!type?.countsAgainstEntitlement) return null;
-  const ent = await prisma.leaveEntitlement.findUnique({ where: { staffId_leaveTypeId_leaveYear: { staffId, leaveTypeId, leaveYear: year } } });
+  const partial = type?.code === "PART";
+  if (!type || (!type.countsAgainstEntitlement && !partial)) return null;
+  // Partial leave comes out of the annual days: one balance, shared by annual and partial leave.
+  const annual = partial || type.code === "L" ? await prisma.leaveType.findFirst({ where: { facilityId, code: "L" }, select: { id: true } }) : null;
+  const pool = partial || type.code === "L" ? [...new Set([leaveTypeId, ...(annual ? [annual.id] : []), ...((await prisma.leaveType.findMany({ where: { facilityId, code: "PART" }, select: { id: true } })).map((t) => t.id))])] : [leaveTypeId];
+  const entitlementTypeId = partial && annual ? annual.id : leaveTypeId;
+  const ent = await prisma.leaveEntitlement.findUnique({ where: { staffId_leaveTypeId_leaveYear: { staffId, leaveTypeId: entitlementTypeId, leaveYear: year } } });
   const taken = await prisma.leaveRequest.aggregate({
-    where: { facilityId, staffId, leaveTypeId, status: "APPROVED", startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+    where: { facilityId, staffId, leaveTypeId: { in: pool }, status: "APPROVED", startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
     _sum: { daysDeducted: true },
   });
   const pending = await prisma.leaveRequest.aggregate({
-    where: { facilityId, staffId, leaveTypeId, status: "SUBMITTED", startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
+    where: { facilityId, staffId, leaveTypeId: { in: pool }, status: "SUBMITTED", startDate: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } },
     _sum: { daysDeducted: true },
   });
   // With no figure set for the year, the person's grade gives the days (senior 36, junior 28).
   const grade = ent ? null : (await prisma.staff.findFirst({ where: { id: staffId, facilityId }, select: { leaveGrade: true } }))?.leaveGrade;
-  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : type.code === "PART" ? null : defaultAnnualDays(grade);
+  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : defaultAnnualDays(grade);
   return { configured: entitled !== null, entitled, taken: taken._sum.daysDeducted ?? 0, pending: pending._sum.daysDeducted ?? 0, remaining: entitled === null ? null : entitled - (taken._sum.daysDeducted ?? 0) };
 }
 
