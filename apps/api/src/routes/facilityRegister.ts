@@ -115,7 +115,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   });
   if (!facility) return res.status(409).json({ error: "email_taken", message: "That email address, or that facility, was registered a moment ago. Sign in, or check the details and try again." });
   // A health centre rosters by unit, so it always has the three, whatever was ticked.
-  const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Midwives", "Public Health"] : [];
+  const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Maternity", "Public Health"] : [];
   const have = new Set(body.departments.map((d) => d.trim().toLowerCase()));
   await seedChosen(facility.id, [...body.departments, ...units.filter((u) => !have.has(u.toLowerCase()))], body.cadres);
   // The 30 day trial starts when PS Tech approves the registration, not now.
