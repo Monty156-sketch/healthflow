@@ -35,7 +35,7 @@ export const defaultRunsNights = (department: string) => !NO_NIGHT_DEPARTMENTS.i
 export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Driver", "Security", "Cleaner"];
 export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Stores", "Transport", "Mortuary", "Support Services"];
 /** The units a health centre rosters by, plus the support units. */
-const UNIT_NAMES = ["Clinical Nurses", "Maternity", "Midwives", "Security", "Drivers", "Cleaners"];
+const UNIT_NAMES = ["OPD", "Clinical Nurses", "Maternity", "Midwives", "Security", "Drivers", "Cleaners"];
 
 /** The standard cadres and departments carry fixed night and office-hour settings. Ones the facility adds itself are free to change. */
 export const isStandardCadre = (name: string) => STANDARD_CADRES.some((c) => c.toLowerCase() === name.trim().toLowerCase());
@@ -45,15 +45,15 @@ export const isStandardDepartment = (name: string) => [...STANDARD_DEPARTMENTS, 
 export function unitForCadre(cadre: string | null | undefined): { name: string; runsNights: boolean } | null {
   const c = cadre ?? "";
   if (/midwi/i.test(c)) return { name: "Maternity", runsNights: true };
-  if (/(^nurse$|enrolled nurse|staff nurse|registered|general nurse)/i.test(c.trim())) return { name: "Clinical Nurses", runsNights: true };
+  if (/(^nurse$|enrolled nurse|staff nurse|registered|general nurse)/i.test(c.trim())) return { name: "OPD", runsNights: true };
   if (/(community health|public health|disease control)/i.test(c)) return { name: "Public Health", runsNights: false };
   return null;
 }
 
-/** What a unit starts needing on its morning, afternoon and night shifts. Clinical nurses 2/1/1, midwives 1/1/1, public health nothing until its figure is agreed, any other unit the morning only. */
+/** What a unit starts needing on its morning, afternoon and night shifts. OPD 2/1/1, maternity 1/1/1, public health nothing until its figure is agreed, any other unit the morning only. */
 export function unitMinimums(unit: string): [number, number, number] {
   const u = unit.trim().toLowerCase();
-  if (u === "clinical nurses") return [2, 1, 1];
+  if (u === "opd" || u === "clinical nurses") return [2, 1, 1];
   if (u === "maternity" || u === "midwives") return [1, 1, 1];
   // Public health has no agreed figure yet, so it starts empty for the in-charge to set. Change this line when it is agreed.
   if (u === "public health") return [0, 0, 0];

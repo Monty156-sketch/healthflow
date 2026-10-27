@@ -24,13 +24,14 @@ describe("Ghana Health Service cadre defaults", () => {
     for (const d of ["Outpatient", "Maternity", "Emergency", "Laboratory", "Clinical Nurses", "Midwives"]) expect(defaultRunsNights(d)).toBe(true);
   });
   it("puts a nurse, midwife or public health cadre in their unit", () => {
-    expect(unitForCadre("Enrolled Nurse")?.name).toBe("Clinical Nurses");
-    expect(unitForCadre("Nurse")?.name).toBe("Clinical Nurses");
+    expect(unitForCadre("Enrolled Nurse")?.name).toBe("OPD");
+    expect(unitForCadre("Nurse")?.name).toBe("OPD");
     expect(unitForCadre("Midwife")?.name).toBe("Maternity");
     expect(unitForCadre("Community Health Nurse")?.name).toBe("Public Health");
     expect(unitForCadre("Pharmacist")).toBeNull();
   });
   it("starts clinical nurses at 2/1/1, midwives at 1/1/1, any other unit at the morning only", () => {
+    expect(unitMinimums("OPD")).toEqual([2, 1, 1]);
     expect(unitMinimums("Clinical Nurses")).toEqual([2, 1, 1]);
     expect(unitMinimums("Maternity")).toEqual([1, 1, 1]);
     expect(unitMinimums("Midwives")).toEqual([1, 1, 1]);
@@ -68,10 +69,11 @@ describe("what each type of facility is offered at registration", () => {
     expect(hospital.cadres).toContain("Specialist");
     expect(portfolioFor("POLYCLINIC")).toEqual(hospital);
     // Only a health centre is offered the roster units.
-    expect(centre.departments).toContain("Clinical Nurses");
+    expect(centre.departments).toContain("OPD");
+    expect(centre.departments).not.toContain("Clinical Nurses");
     expect(centre.departments).toContain("Maternity");
     expect(centre.departments).not.toContain("Midwives");
-    expect(chps.departments).not.toContain("Clinical Nurses");
-    expect(portfolioFor("CLINIC").departments).not.toContain("Clinical Nurses");
+    expect(chps.departments).not.toContain("OPD");
+    expect(portfolioFor("CLINIC").departments).not.toContain("OPD");
   });
 });

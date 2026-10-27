@@ -112,7 +112,7 @@ describe("a facility registering itself", () => {
     const facility = await prisma.facility.findFirstOrThrow({ where: { name: "Kaleo Health Centre" } });
     expect(facility.status).toBe("PENDING");
     expect(facility.trialEndsAt).toBeNull();
-    expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Clinical Nurses", "Maternity", "Outpatient", "Public Health"]);
+    expect((await prisma.department.findMany({ where: { facilityId: facility.id } })).map((d) => d.name).sort()).toEqual(["Maternity", "OPD", "Outpatient", "Public Health"]);
     expect(await prisma.cadre.count({ where: { facilityId: facility.id } })).toBe(3);
     expect(res.body.enrolmentToken).toBeTruthy();
     expect(await prisma.privacyNotice.count({ where: { facilityId: facility.id, publishedAt: { not: null } } })).toBe(1);

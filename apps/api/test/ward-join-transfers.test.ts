@@ -209,7 +209,7 @@ describe("a health centre rosters by unit", () => {
     const [m, a, n] = [await mk("Morning", "M", "07:00", "14:00", 7), await mk("Afternoon", "A", "14:00", "20:00", 6), await mk("Night", "N", "20:00", "07:00", 11, true)];
     const nurse = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Enrolled Nurse" } });
     const midwife = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Midwife" } });
-    const units = await Promise.all(["Clinical Nurses", "Maternity"].map((name) => prisma.department.create({ data: { facilityId: facility.id, name } })));
+    const units = await Promise.all(["OPD", "Maternity"].map((name) => prisma.department.create({ data: { facilityId: facility.id, name } })));
     return { facility, api, code, nurse, midwife, units, shifts: { m, a, n } };
   }
 
@@ -218,7 +218,7 @@ describe("a health centre rosters by unit", () => {
     await pub("/api/public/join/register", reg(code, "esi@c.test", { cadreId: nurse.id }));
     await pub("/api/public/join/register", reg(code, "abu@c.test", { cadreId: midwife.id }));
     const where = async (email: string) => (await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email }, include: { department: true } })).department?.name;
-    expect(await where("esi@c.test")).toBe("Clinical Nurses");
+    expect(await where("esi@c.test")).toBe("OPD");
     expect(await where("abu@c.test")).toBe("Maternity");
   });
 

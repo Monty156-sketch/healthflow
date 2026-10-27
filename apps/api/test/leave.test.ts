@@ -26,8 +26,8 @@ describe("leave", () => {
   it("seeds the nine leave types once", async () => {
     const { api } = await setup();
     const r = await api.get("/api/facility/leave/types");
-    expect(r.body.types.map((t: { code: string }) => t.code)).toEqual(["L", "S", "SK", "MAT", "PAT", "COM", "OA", "U", "PERM"]);
-    expect((await api.get("/api/facility/leave/types")).body.types).toHaveLength(9);
+    expect(r.body.types.map((t: { code: string }) => t.code)).toEqual(["L", "S", "SK", "MAT", "PAT", "COM", "OA", "U", "PERM", "PART"]);
+    expect((await api.get("/api/facility/leave/types")).body.types).toHaveLength(10);
   });
 
   it("a staff member asks for their own leave and the days are counted by the type's basis", async () => {
