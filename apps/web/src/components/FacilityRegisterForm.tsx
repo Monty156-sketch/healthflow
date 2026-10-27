@@ -4,6 +4,7 @@
 // account, a plan, the departments and cadres it works with, and then the staff
 // access code. The administrator finishes by setting up an authenticator app.
 import { AGENCIES } from "@/lib/agency";
+import { directoryFacilities, GHANA_DISTRICTS, GHANA_REGION_NAMES } from "@healthflow/shared";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -29,7 +30,7 @@ interface Done { facilityName: string; code: string; joinUrl: string; enrolmentT
 type Step = 1 | 2 | 3 | "code" | "enrol" | "codes";
 
 const cedi = (n: number) => `GH₵ ${n.toLocaleString("en-GH", { maximumFractionDigits: 0 })}`;
-const STEP_OF: Record<string, 1 | 2 | 3> = { facilityName: 1, facilityType: 1, region: 1, adminName: 1, adminPhone: 1, adminEmail: 1, password: 1, acceptedTerms: 1, planId: 2, departments: 3, cadres: 3 };
+const STEP_OF: Record<string, 1 | 2 | 3> = { facilityName: 1, facilityType: 1, region: 1, districtText: 1, adminName: 1, adminPhone: 1, adminEmail: 1, password: 1, acceptedTerms: 1, planId: 2, departments: 3, cadres: 3 };
 
 function ChooseMany({ legend, items, chosen, onChange, extra, error }: { legend: string; items: string[]; chosen: string[]; onChange: (v: string[]) => void; extra: string; error?: string }) {
   const [typed, setTyped] = useState("");
@@ -63,6 +64,8 @@ export function FacilityRegisterForm() {
   const [step, setStep] = useState<Step>(1);
   const [v, setV] = useState({ agency: "", facilityName: "", facilityType: "", region: "", districtText: "", adminName: "", adminEmail: "", adminPhone: "", password: "", confirm: "" });
   const [districtId, setDistrictId] = useState("");
+  // "" = not chosen yet, "other" = typed by hand, otherwise a name from the Ghana Health Service list
+  const [pick, setPick] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [districts, setDistricts] = useState<{ id: string; name: string; region: string }[] | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
@@ -92,14 +95,15 @@ export function FacilityRegisterForm() {
     return () => { live = false; };
   }, [v.facilityType]);
   const listed = districts !== null && districts.length > 0;
-  const other = districtId === "other";
+  const facilities = directoryFacilities(v.region, v.districtText, v.facilityType);
 
   function next1() {
     const e: Record<string, string> = {};
     if (!v.agency) e.agency = "Choose who runs the facility.";
-    if (!v.facilityName.trim()) e.facilityName = "Enter the facility name.";
+    if (!v.facilityName.trim()) e.facilityName = pick === "" && facilities.length > 0 ? "Choose your facility." : "Enter the facility name.";
     if (!v.facilityType) e.facilityType = "Choose the type of facility.";
-    if (!v.region.trim()) e.region = "Enter the region.";
+    if (!v.region.trim()) e.region = "Choose the region.";
+    if (!v.districtText.trim()) e.districtText = "Choose the district.";
     if (!v.adminName.trim()) e.adminName = "Enter your name.";
     if (!v.adminPhone.trim()) e.adminPhone = "Enter your phone number.";
     if (!/^\S+@\S+\.\S+$/.test(v.adminEmail.trim())) e.adminEmail = "Enter an email address you can open.";
@@ -118,7 +122,7 @@ export function FacilityRegisterForm() {
     setBusy(true);
     try {
       const res = await api.post<Done>("/api/public/register-facility", {
-        agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtId: districtId && !other ? districtId : undefined,
+        agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtId: districtId || undefined,
         districtText: v.districtText || undefined, adminName: v.adminName, adminEmail: v.adminEmail, adminPhone: v.adminPhone, password: v.password, acceptedTerms: true,
         planId: planId || undefined, departments: departments ?? [], cadres: cadres ?? [],
       });
@@ -237,30 +241,56 @@ export function FacilityRegisterForm() {
               )}
             </Field>
             <span className="hidden sm:block" />
-            <Field label="Facility name" error={errors.facilityName}>{(a) => <Input {...a} value={v.facilityName} onChange={set("facilityName")} autoComplete="organization" />}</Field>
+            <Field label="Region" error={errors.region}>
+              {(a) => (
+                <Select {...a} value={v.region} onChange={(e) => { setV({ ...v, region: e.target.value, districtText: "", facilityName: "" }); setPick(""); }}>
+                  <option value="">Choose your region</option>
+                  {GHANA_REGION_NAMES.map((r) => <option key={r} value={r}>{r}</option>)}
+                </Select>
+              )}
+            </Field>
+            <Field label="District" error={errors.districtText}>
+              {(a) => (
+                <Select {...a} value={v.districtText} disabled={!v.region} onChange={(e) => { setV({ ...v, districtText: e.target.value, facilityName: "" }); setPick(""); }}>
+                  <option value="">{v.region ? "Choose your district" : "Choose a region first"}</option>
+                  {(GHANA_DISTRICTS[v.region] ?? []).map((d) => <option key={d} value={d}>{d}</option>)}
+                </Select>
+              )}
+            </Field>
             <Field label="Type of facility" error={errors.facilityType}>
               {(a) => (
-                <Select {...a} value={v.facilityType} onChange={set("facilityType")}>
+                <Select {...a} value={v.facilityType} onChange={(e) => { setV({ ...v, facilityType: e.target.value, facilityName: "" }); setPick(""); }}>
                   <option value="">Choose</option>
                   {TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
               )}
             </Field>
-            {listed ? (
-              <Field label="District" optional hint="Your facility appears under this district once you register.">
+            {facilities.length > 0 && (
+              <Field label="Facility" error={errors.facilityName}>
                 {(a) => (
-                  <Select {...a} value={districtId} onChange={(e) => { setDistrictId(e.target.value); const d = districts?.find((x) => x.id === e.target.value); if (d) setV({ ...v, region: d.region }); }}>
-                    <option value="">Choose your district</option>
-                    {districts!.map((d) => <option key={d.id} value={d.id}>{d.name}, {d.region}</option>)}
-                    <option value="other">My district is not listed</option>
+                  <Select {...a} value={pick} onChange={(e) => { setPick(e.target.value); setV({ ...v, facilityName: e.target.value === "other" ? "" : e.target.value }); }}>
+                    <option value="">Choose your facility</option>
+                    {facilities.map((f, i) => <option key={`${f}-${i}`} value={f}>{f}</option>)}
+                    <option value="other">My facility is not listed</option>
                   </Select>
                 )}
               </Field>
-            ) : (
-              <Field label="District" optional>{(a) => <Input {...a} value={v.districtText} onChange={set("districtText")} />}</Field>
             )}
-            <Field label="Region" error={errors.region}>{(a) => <Input {...a} value={v.region} onChange={set("region")} />}</Field>
-            {other && <Field label="Your district's name" optional>{(a) => <Input {...a} value={v.districtText} onChange={set("districtText")} />}</Field>}
+            {(facilities.length === 0 || pick === "other") && (
+              <Field label="Facility name" error={errors.facilityName} hint={facilities.length === 0 && v.districtText && v.facilityType ? "We have no list of this kind of facility in this district yet. Type the name." : undefined}>
+                {(a) => <Input {...a} value={v.facilityName} onChange={set("facilityName")} autoComplete="organization" />}
+              </Field>
+            )}
+            {listed && (
+              <Field label="Supervising district office" optional hint="Only if your district office is already on HealthFlow. Your facility then appears under it.">
+                {(a) => (
+                  <Select {...a} value={districtId} onChange={(e) => setDistrictId(e.target.value)}>
+                    <option value="">None yet</option>
+                    {districts!.map((d) => <option key={d.id} value={d.id}>{d.name}, {d.region}</option>)}
+                  </Select>
+                )}
+              </Field>
+            )}
           </div>
           <h2 className="pt-2 text-base font-semibold">Your account</h2>
           <p className="-mt-2 text-sm text-[var(--muted)]">You become the facility&apos;s administrator.</p>
