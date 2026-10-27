@@ -101,17 +101,18 @@ leaveSettingsRouter.get("/entitlements", allowRoles(...READ_ROLES), async (req, 
   const { facilityId } = caller(req);
   await ensureLeaveTypes(facilityId);
   const year = yearOf(req.query.year);
-  const types = await prisma.leaveType.findMany({ where: { facilityId, active: true, countsAgainstEntitlement: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, code: true } });
+  const types = await prisma.leaveType.findMany({ where: { facilityId, active: true, countsAgainstEntitlement: true, code: { not: "PART" } }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, code: true } });
   const typeId = typeof req.query.leaveTypeId === "string" && types.some((t) => t.id === req.query.leaveTypeId) ? req.query.leaveTypeId : types[0]?.id;
   if (!typeId) return res.json({ year, types, leaveTypeId: null, rows: [] });
-  // The grade's annual days are only a default for annual leave; Partial leave has no default and starts unset.
-  const dflt = (grade: string | null) => (types.find((t) => t.id === typeId)?.code === "PART" ? null : defaultAnnualDays(grade));
+  // Partial leave comes out of the annual days, so annual's "taken" includes it.
+  const partIds = types.find((t) => t.id === typeId)?.code === "L" ? (await prisma.leaveType.findMany({ where: { facilityId, code: "PART" }, select: { id: true } })).map((t) => t.id) : [];
+  const dflt = defaultAnnualDays;
   const from = new Date(Date.UTC(year, 0, 1));
   const to = new Date(Date.UTC(year + 1, 0, 1));
   const [staff, ents, taken] = await Promise.all([
     prisma.staff.findMany({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, staffNo: true, leaveGrade: true, cadre: { select: { name: true } } } }),
     prisma.leaveEntitlement.findMany({ where: { facilityId, leaveTypeId: typeId, leaveYear: year } }),
-    prisma.leaveRequest.groupBy({ by: ["staffId", "status"], where: { facilityId, leaveTypeId: typeId, status: { in: ["APPROVED", "SUBMITTED"] }, startDate: { gte: from, lt: to } }, _sum: { daysDeducted: true } }),
+    prisma.leaveRequest.groupBy({ by: ["staffId", "status"], where: { facilityId, leaveTypeId: { in: [typeId, ...partIds] }, status: { in: ["APPROVED", "SUBMITTED"] }, startDate: { gte: from, lt: to } }, _sum: { daysDeducted: true } }),
   ]);
   const entBy = new Map(ents.map((e) => [e.staffId, e]));
   const sum = (staffId: string, status: string) => taken.find((t) => t.staffId === staffId && t.status === status)?._sum.daysDeducted ?? 0;

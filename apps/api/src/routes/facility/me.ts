@@ -41,7 +41,7 @@ meRouter.get("/today", async (req, res) => {
     }),
     prisma.staff.findUniqueOrThrow({ where: { id: who.staffId }, select: { cadreId: true } }),
     prisma.dutySwap.findMany({ where: { facilityId: who.facilityId, status: { in: ["REQUESTED", "ACCEPTED"] }, OR: [{ requesterStaffId: who.staffId }, { targetStaffId: who.staffId }] }, select: { id: true, status: true, requesterStaffId: true, requesterAssignmentId: true } }),
-    prisma.leaveEntitlement.findMany({ where: { staffId: who.staffId, leaveYear: new Date().getUTCFullYear(), leaveType: { countsAgainstEntitlement: true, active: true } }, include: { leaveType: { select: { id: true, name: true } } } }),
+    prisma.leaveEntitlement.findMany({ where: { staffId: who.staffId, leaveYear: new Date().getUTCFullYear(), leaveType: { countsAgainstEntitlement: true, active: true } }, include: { leaveType: { select: { id: true, name: true, code: true } } } }),
   ]);
 
   const timed = rows.filter((r) => r.shift.startTime && r.shift.endTime).map((r) => {
@@ -66,7 +66,9 @@ meRouter.get("/today", async (req, res) => {
   for (let d = d0; d <= d0 + 8 && offDays.length < 2; d++) if (!dutyDays.has(d) && d >= (dutyDays.has(d0) ? d0 + 1 : d0)) offDays.push(d);
   const yearStart = new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1));
   const leave = await Promise.all(entitlements.map(async (e) => {
-    const taken = await prisma.leaveRequest.aggregate({ where: { staffId: who.staffId, leaveTypeId: e.leaveTypeId, status: "APPROVED", startDate: { gte: yearStart } }, _sum: { daysDeducted: true } });
+    // Partial leave comes out of the annual days.
+    const ids = e.leaveType.code === "L" ? [e.leaveTypeId, ...(await prisma.leaveType.findMany({ where: { facilityId: who.facilityId, code: "PART" }, select: { id: true } })).map((t) => t.id)] : [e.leaveTypeId];
+    const taken = await prisma.leaveRequest.aggregate({ where: { staffId: who.staffId, leaveTypeId: { in: ids }, status: "APPROVED", startDate: { gte: yearStart } }, _sum: { daysDeducted: true } });
     const entitled = e.daysEntitled + e.daysCarriedOver;
     return { type: e.leaveType.name, entitled, taken: taken._sum.daysDeducted ?? 0, remaining: entitled - (taken._sum.daysDeducted ?? 0) };
   }));

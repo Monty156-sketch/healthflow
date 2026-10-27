@@ -49,7 +49,7 @@ function initialValues(s?: Staff): FormValues {
     excludedFromNights: s?.excludedFromNights ?? false,
     morningOnly: s?.morningOnly ?? false,
     smsOptOut: s?.smsOptOut ?? false,
-    willingForExtraDuties: s?.willingForExtraDuties ?? false,
+    willingForExtraDuties: s?.willingForExtraDuties ?? true,
     exclusionReason: s?.exclusionReason ?? "",
     maxDutiesPerWeek: String(s?.maxDutiesPerWeek ?? 0),
     canLead: s?.canLead ?? false,
