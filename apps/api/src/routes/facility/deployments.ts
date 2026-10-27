@@ -11,6 +11,7 @@ import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { parseOr400 } from "../../lib/validate.js";
+import { writePair } from "../../lib/ledger.js";
 import { mendRosters, type RosterMend } from "../../lib/leaveRoster.js";
 import { todayDay } from "../../lib/leaveWindow.js";
 import { sayDay } from "../../engine/time.js";
@@ -156,6 +157,12 @@ deploymentsRouter.post("/swap-out", allowRoles(...READ_ROLES, "STAFF"), async (r
     auditAction: "roster_mended_for_swap_out", gapSubject: `${me.fullName}'s swap`,
     auditLead: (n, month) => `${me.fullName} stepped out of duty from ${sayDay(start)} to ${sayDay(end)}, removing ${n} ${n === 1 ? "duty" : "duties"} from the ${month} roster.`,
   }, { email: who.email, displayName: who.displayName });
+  // Whoever took a duty on is owed one back. The ledger feeds the next roster and the re-plan on return, so the swapper works them off.
+  const owed = new Map<string, number>();
+  for (const m of mended) for (const c of m.coverers) owed.set(c.staffId, (owed.get(c.staffId) ?? 0) + c.duties);
+  for (const [creditorId, duties] of owed) {
+    await writePair({ facilityId: who.facilityId, debtorId: me.id, creditorId, duties, reason: "SWAP_HANDOVER", description: `Covered ${duties} ${duties === 1 ? "duty" : "duties"} while ${me.fullName} was out from ${sayDay(start)} to ${sayDay(end)}.` });
+  }
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "swap_out", entityType: "Deployment", entityId: dep.id, summary: `${me.fullName} stepped out of duty from ${sayDay(start)} to ${sayDay(end)}${input.reason ? `. Reason: ${input.reason}` : ""}.` });
   await notifyDeciders(who.facilityId, { type: "swap_out", title: `${me.fullName} is out ${input.days === 1 ? "for a day" : `for ${input.days} days`}`, body: `Their duties from ${sayDay(start)} to ${sayDay(end)} were covered automatically. Confirm them back under Returns due.`, linkUrl: "/returns", severity: "INFO" }, who.email);
   res.status(201).json({ id: dep.id, roster: summary(mended) });

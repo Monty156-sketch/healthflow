@@ -350,6 +350,8 @@ model Facility {
   district                   District?      @relation(fields: [districtId], references: [id])
   subDistrict                String?
   region                     String?
+  /// The district the facility chose at registration, kept so a district office that registers later can claim it.
+  districtName               String?
   weekStartsOn                Int           @default(1) // 1 = Monday
   referencePeriodWeeks        Int           @default(4)
   leaveYearStartMonth         Int           @default(1)

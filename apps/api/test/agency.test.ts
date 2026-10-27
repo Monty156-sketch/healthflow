@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import request from "supertest";
 import { app, freshIp, makeFacility, PASSWORD, prisma, resetDatabase } from "./helpers.js";
 import { grantedFor } from "../src/lib/district.js";
+import { claimFacilitiesFor } from "../src/lib/districtLink.js";
 
 beforeEach(resetDatabase);
 
@@ -50,5 +51,16 @@ describe("Ghana Health Service and CHAG", () => {
       await prisma.districtGrant.create({ data: { districtId: d.id, facilityId: f.id, scopes: ["COVERAGE"] } });
     }
     expect((await grantedFor(d.id, "COVERAGE")).map((g) => g.name)).toEqual(["CHAG Clinic"]);
+  });
+
+  it("links the facilities that chose a district once that district's office is approved", async () => {
+    expect((await pub("/api/public/register-facility", reg({ facilityName: "Waiting Clinic", adminEmail: "w1@x.test", districtText: "Wa Municipal" }))).status).toBe(201);
+    expect((await pub("/api/public/register-facility", reg({ facilityName: "Other Clinic", adminEmail: "w2@x.test", districtText: "Nadowli-Kaleo" }))).status).toBe(201);
+    expect((await pub("/api/public/register-facility", reg({ facilityName: "Chag Clinic", agency: "CHAG", adminEmail: "w3@x.test", districtText: "Wa" }))).status).toBe(201);
+    const wa = await prisma.district.create({ data: { name: "Wa", region: "Upper West", agency: "GHS", level: "DISTRICT" } });
+    expect(await claimFacilitiesFor(wa)).toBe(1);
+    const rows = await prisma.facility.findMany({ orderBy: { name: "asc" } });
+    expect(rows.map((f) => [f.name, f.districtId === wa.id])).toEqual([["Chag Clinic", false], ["Other Clinic", false], ["Waiting Clinic", true]]);
+    expect(await claimFacilitiesFor(wa)).toBe(0);
   });
 });

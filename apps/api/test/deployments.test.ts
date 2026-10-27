@@ -83,6 +83,12 @@ describe("emergency deployments", () => {
     const made = await me.post("/api/facility/deployments/swap-out", { startDate: iso(start), days: 2, reason: "Family matter" });
     expect(made.status).toBe(201);
     expect(await prisma.rosterAssignment.count({ where: { rosterId, staffId: people[0].id, dutyDate: { gte: new Date(start * DAY), lte: new Date((start + 1) * DAY) }, shift: { countsAsDuty: true } } })).toBe(0);
+    const covered = made.body.roster.filled as number;
+    const owes = await prisma.dutyLedgerEntry.findMany({ where: { staffId: people[0].id, entryType: "DEBT", reason: "SWAP_HANDOVER" } });
+    expect(owes.reduce((n, e) => n + e.duties, 0)).toBeLessThanOrEqual(covered);
+    if (covered > 0) expect(owes.length).toBeGreaterThan(0);
+    const owed = await prisma.dutyLedgerEntry.findMany({ where: { entryType: "CREDIT", reason: "SWAP_HANDOVER", counterpartyStaffId: people[0].id } });
+    expect(owed.reduce((n, e) => n + e.duties, 0)).toBe(owes.reduce((n, e) => n + e.duties, 0));
     expect((await me.post("/api/facility/deployments/swap-out", { startDate: iso(start + 5), days: 1 })).status).toBe(409);
     const dep = (await api.get("/api/facility/deployments")).body.deployments[0] as { id: string; kind: string; members: { id: string; shift: string }[] };
     expect(dep).toMatchObject({ kind: "SWAP" });

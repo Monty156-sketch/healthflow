@@ -18,8 +18,8 @@ import { issueCode } from "../lib/accessCode.js";
 import { applyStandardSetup, ensureStarterNotice, portfolioFor, seedChosen } from "../lib/facilitySetup.js";
 import { makeEnrolmentToken } from "../lib/signedTokens.js";
 import { writeAuditLog } from "../lib/audit.js";
+import { districtKey as nameKey } from "../lib/districtLink.js";
 
-const nameKey = (s: string) => s.toLowerCase().replace(/\b(municipal|metropolitan|district|assembly)\b/g, "").replace(/[^a-z0-9]/g, "");
 
 /** The registered district office that matches the district the person chose, if there is one. Choosing the district is enough to link the facility to it. */
 async function districtNamed(region: string, name: string | undefined, agency: string) {
@@ -114,7 +114,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   // say) nothing is left behind, so the same details can be sent again. The starter set-up follows.
   const facility = await prisma.$transaction(async (tx) => {
     const f = await tx.facility.create({
-      data: { name: body.facilityName, facilityType: body.facilityType, agency: body.agency, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
+      data: { name: body.facilityName, facilityType: body.facilityType, agency: body.agency, region: district?.region ?? body.region, districtId: district?.id ?? null, districtName: body.districtText || district?.name || null, status: "PENDING" },
     });
     const staff = await tx.staff.create({ data: { facilityId: f.id, staffNo: "ADMIN-001", fullName: body.adminName, email: body.adminEmail, phone, status: "ACTIVE" } });
     await tx.userProfile.create({

@@ -2,6 +2,7 @@
 // report to it. Everything else a region sees (facilities, coverage, staffing)
 // comes through the same read-only district screens, widened to the districts
 // under it, and still only where each facility has granted access.
+import { claimFacilitiesFor } from "../lib/districtLink.js";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -60,7 +61,8 @@ regionRouter.post("/districts/:id/approve", async (req, res) => {
     prisma.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } }),
     prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } }),
   ]);
-  await writeAuditLog({ facilityId: null, actorEmail: res.locals.email, action: "district_approved_by_region", entityType: "District", entityId: d.id, summary: `${office.name} approved the district ${d.name}.` });
+  const claimed = await claimFacilitiesFor(d);
+  await writeAuditLog({ facilityId: null, actorEmail: res.locals.email, action: "district_approved_by_region", entityType: "District", entityId: d.id, summary: `${office.name} approved the district ${d.name}.${claimed ? ` ${claimed} waiting ${claimed === 1 ? "facility was" : "facilities were"} linked to it.` : ""}` });
   if (d.contactEmail) void sendEmail({ to: d.contactEmail, subject: "Your HealthFlow district is approved", text: `Dear ${d.contactName ?? "officer"},\n\n${office.name} has approved ${d.name} on HealthFlow. Sign in at ${appUrl("/district/login")} with the email and password you registered with.\n\nPS Tech, Wa, Upper West Region, Ghana` });
   res.json({ ok: true });
 });
