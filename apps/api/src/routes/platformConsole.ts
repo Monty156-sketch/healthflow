@@ -2,6 +2,7 @@
 // behind the platform-only guard. There is no delete anywhere in it: things
 // are deactivated, suspended, archived or written off. Anything that touches a
 // facility is also written to that facility's own audit log.
+import { claimFacilitiesFor } from "../lib/districtLink.js";
 import { AGENCY_CODES, agencyName } from "../lib/agency.js";
 import { Router } from "express";
 import { z } from "zod";
@@ -193,7 +194,8 @@ consoleRouter.post("/districts/:id/approve", async (req, res) => {
     prisma.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } }),
     prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } }),
   ]);
-  await platformAudit(req, "district_approved", `${liveUser(req).displayName} approved the district ${d.name}. Its officer can now sign in.`, { entityType: "District", entityId: d.id });
+  const claimed = await claimFacilitiesFor(d);
+  await platformAudit(req, "district_approved", `${liveUser(req).displayName} approved the district ${d.name}. Its officer can now sign in.${claimed ? ` ${claimed} ${claimed === 1 ? "facility that had chosen" : "facilities that had chosen"} this district ${claimed === 1 ? "was" : "were"} linked to it.` : ""}`, { entityType: "District", entityId: d.id });
   if (d.contactEmail) {
     void sendEmail({ to: d.contactEmail, subject: "Your HealthFlow district is approved", text: `Dear ${d.contactName ?? "officer"},\n\n${d.name} is approved on HealthFlow. Sign in at ${appUrl("/district/login")} with the email and password you registered with.\n\nPS Tech, Wa, Upper West Region, Ghana` });
   }

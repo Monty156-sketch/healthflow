@@ -23,6 +23,8 @@ export interface RosterMend {
   status: string;
   removed: number;
   filled: { name: string; date: string; shift: string }[];
+  /** Colleagues who took on more duties than they gave up, and how many: the people the absent person owes. */
+  coverers: { staffId: string; duties: number }[];
   unfilled: { date: string; shift: string }[];
 }
 
@@ -132,8 +134,12 @@ export async function mendRosters(facilityId: string, job: MendJob, by: { email:
     const leaverOff = result.cells.filter((c) => absent.has(c.staffId) && c.day >= lo && c.day <= hi && c.shiftId === offId);
     const gaps = gapsOf(result);
     const nameOf = new Map(data.staff.map((x) => [x.id, x.name]));
+    const net = new Map<string, number>();
+    for (const c of added) net.set(c.staffId, (net.get(c.staffId) ?? 0) + 1);
+    for (const c of dropped) net.set(c.staffId, (net.get(c.staffId) ?? 0) - 1);
+    const coverers = [...net].filter(([id, n]) => n > 0 && !absent.has(id)).map(([staffId, duties]) => ({ staffId, duties }));
     const mend: RosterMend = {
-      rosterId: roster.id, month: monthName(roster), status: roster.status, removed: gone.length,
+      rosterId: roster.id, month: monthName(roster), status: roster.status, removed: gone.length, coverers,
       filled: added.map((c) => ({ name: nameOf.get(c.staffId) ?? "Someone", date: dateOf(c.day).toISOString().slice(0, 10), shift: data.shiftName.get(c.shiftId) ?? "a shift" })),
       unfilled: gaps.map((g) => ({ date: dateOf(g.day).toISOString().slice(0, 10), shift: (g.shiftId && data.shiftName.get(g.shiftId)) || "a shift" })),
     };
