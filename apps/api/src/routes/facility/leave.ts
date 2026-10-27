@@ -39,6 +39,7 @@ const SEED: { code: string; name: string; colour: string; counts: boolean; paid:
   { code: "OA", name: "Official assignment", colour: "#1f7a4d", counts: false, paid: true },
   { code: "U", name: "Unpaid", colour: "#77878a", counts: false, paid: false },
   { code: "PERM", name: "Permission", colour: "#8c6d1f", counts: false, paid: true, short: true, debt: true },
+  { code: "PART", name: "Partial leave", colour: "#4f7a5a", counts: true, paid: true },
 ];
 
 export async function ensureLeaveTypes(facilityId: string) {
@@ -163,7 +164,7 @@ async function balanceOf(facilityId: string, staffId: string, leaveTypeId: strin
   });
   // With no figure set for the year, the person's grade gives the days (senior 36, junior 28).
   const grade = ent ? null : (await prisma.staff.findFirst({ where: { id: staffId, facilityId }, select: { leaveGrade: true } }))?.leaveGrade;
-  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : defaultAnnualDays(grade);
+  const entitled = ent ? ent.daysEntitled + ent.daysCarriedOver : type.code === "PART" ? null : defaultAnnualDays(grade);
   return { configured: entitled !== null, entitled, taken: taken._sum.daysDeducted ?? 0, pending: pending._sum.daysDeducted ?? 0, remaining: entitled === null ? null : entitled - (taken._sum.daysDeducted ?? 0) };
 }
 

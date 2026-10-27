@@ -104,6 +104,8 @@ leaveSettingsRouter.get("/entitlements", allowRoles(...READ_ROLES), async (req, 
   const types = await prisma.leaveType.findMany({ where: { facilityId, active: true, countsAgainstEntitlement: true }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, code: true } });
   const typeId = typeof req.query.leaveTypeId === "string" && types.some((t) => t.id === req.query.leaveTypeId) ? req.query.leaveTypeId : types[0]?.id;
   if (!typeId) return res.json({ year, types, leaveTypeId: null, rows: [] });
+  // The grade's annual days are only a default for annual leave; Partial leave has no default and starts unset.
+  const dflt = (grade: string | null) => (types.find((t) => t.id === typeId)?.code === "PART" ? null : defaultAnnualDays(grade));
   const from = new Date(Date.UTC(year, 0, 1));
   const to = new Date(Date.UTC(year + 1, 0, 1));
   const [staff, ents, taken] = await Promise.all([
@@ -121,8 +123,8 @@ leaveSettingsRouter.get("/entitlements", allowRoles(...READ_ROLES), async (req, 
       return {
         staffId: s.id, name: s.fullName, staffNo: s.staffNo, cadre: s.cadre?.name ?? null,
         configured: Boolean(e), daysEntitled: e?.daysEntitled ?? null, daysCarriedOver: e?.daysCarriedOver ?? 0,
-        leaveGrade: s.leaveGrade, defaultDays: defaultAnnualDays(s.leaveGrade),
-        taken: takenDays, pending: sum(s.id, "SUBMITTED"), remaining: e ? e.daysEntitled + e.daysCarriedOver - takenDays : defaultAnnualDays(s.leaveGrade) === null ? null : defaultAnnualDays(s.leaveGrade)! - takenDays,
+        leaveGrade: s.leaveGrade, defaultDays: dflt(s.leaveGrade),
+        taken: takenDays, pending: sum(s.id, "SUBMITTED"), remaining: e ? e.daysEntitled + e.daysCarriedOver - takenDays : dflt(s.leaveGrade) === null ? null : dflt(s.leaveGrade)! - takenDays,
       };
     }),
   });

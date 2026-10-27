@@ -67,6 +67,19 @@ describe("entitlements", () => {
     expect(rows.find((r) => r.name === "Esi Naa")).toMatchObject({ daysEntitled: 21, remaining: 21 });
   });
 
+  it("lists Partial leave beside annual leave, with no default days of its own", async () => {
+    const { api, people } = await setup();
+    await prisma.staff.update({ where: { id: people[0].id }, data: { leaveGrade: "SENIOR" } });
+    const first = (await api.get("/api/facility/entitlements?year=2026")).body;
+    const part = first.types.find((t: { code: string }) => t.code === "PART");
+    expect(part).toBeTruthy();
+    const rows = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${part.id}`)).body.rows as { name: string; defaultDays: number | null; remaining: number | null; configured: boolean }[];
+    expect(rows.find((r) => r.name === "Ama Dery")).toMatchObject({ defaultDays: null, remaining: null, configured: false });
+    await api.post("/api/facility/entitlements/set-all", { year: 2026, leaveTypeId: part.id, daysEntitled: 5 });
+    const after = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${part.id}`)).body.rows as { name: string; remaining: number }[];
+    expect(after.find((r) => r.name === "Ama Dery")?.remaining).toBe(5);
+  });
+
   it("gives senior staff 36 working days and junior staff 28 until a figure is set by hand", async () => {
     const { api, people } = await setup();
     await prisma.staff.update({ where: { id: people[0].id }, data: { leaveGrade: "SENIOR" } });
