@@ -98,9 +98,22 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   }
   const passwordHash = await hashPassword(body.password);
 
-  const facility = await prisma.facility.create({
-    data: { name: body.facilityName, facilityType: body.facilityType, agency: body.agency, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
+  // The facility and its administrator are made together. If either fails (an email taken a moment ago,
+  // say) nothing is left behind, so the same details can be sent again. The starter set-up follows.
+  const facility = await prisma.$transaction(async (tx) => {
+    const f = await tx.facility.create({
+      data: { name: body.facilityName, facilityType: body.facilityType, agency: body.agency, region: district?.region ?? body.region, districtId: district?.id ?? null, status: "PENDING" },
+    });
+    const staff = await tx.staff.create({ data: { facilityId: f.id, staffNo: "ADMIN-001", fullName: body.adminName, email: body.adminEmail, phone, status: "ACTIVE" } });
+    await tx.userProfile.create({
+      data: { userEmail: body.adminEmail, passwordHash, role: "FACILITY_ADMIN", scopeType: "FACILITY", scopeId: f.id, facilityId: f.id, staffId: staff.id, active: true },
+    });
+    return f;
+  }).catch((e: { code?: string }) => {
+    if (e?.code === "P2002") return null;
+    throw e;
   });
+  if (!facility) return res.status(409).json({ error: "email_taken", message: "That email address, or that facility, was registered a moment ago. Sign in, or check the details and try again." });
   // A health centre rosters by unit, so it always has the three, whatever was ticked.
   const units = body.facilityType === "HEALTH_CENTRE" ? ["Clinical Nurses", "Midwives", "Public Health"] : [];
   const have = new Set(body.departments.map((d) => d.trim().toLowerCase()));
@@ -109,12 +122,7 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   if (plan) await prisma.subscription.create({ data: { facilityId: facility.id, planId: plan.id, status: "TRIAL" } });
   await applyStandardSetup(facility.id, body.facilityType);
   const { notice } = await ensureStarterNotice(facility.id, facility.name);
-  await prisma.$transaction(async (tx) => {
-    const staff = await tx.staff.create({ data: { facilityId: facility.id, staffNo: "ADMIN-001", fullName: body.adminName, email: body.adminEmail, phone, status: "ACTIVE" } });
-    await tx.userProfile.create({
-      data: { userEmail: body.adminEmail, passwordHash, role: "FACILITY_ADMIN", scopeType: "FACILITY", scopeId: facility.id, facilityId: facility.id, staffId: staff.id, active: true, privacyNoticeVersionAccepted: notice.version },
-    });
-  });
+  await prisma.userProfile.update({ where: { userEmail: body.adminEmail }, data: { privacyNoticeVersionAccepted: notice.version } });
   const code = await issueCode(facility.id, body.adminEmail);
   const created = await prisma.userProfile.findUniqueOrThrow({ where: { userEmail: body.adminEmail }, select: { id: true } });
   await writeAuditLog({
