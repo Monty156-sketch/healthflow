@@ -71,7 +71,7 @@ export default function DistrictsPage() {
       {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
       {link && (
         <Notice tone="success">
-          Send this one-time link to the officer so they can set a password. It expires in 60 minutes and is shown only now.
+          Send this one-time link to the officer so they can set a password. It expires in 30 minutes and is shown only now.
           <span className="mt-1 block break-all text-sm">{link}</span>
         </Notice>
       )}
