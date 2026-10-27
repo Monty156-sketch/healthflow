@@ -22,7 +22,7 @@ const CHPS_CADRES = ["Community Health Officer", "Community Health Nurse", "Midw
 const CHPS_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Public Health"];
 const CENTRE_CADRES = ["Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Pharmacy Technician", "Laboratory Technician", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Driver", "Security", "Cleaner"];
 const CLINIC_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Support Services"];
-const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Midwives", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Support Services"];
+const CENTRE_DEPARTMENTS = ["Clinical Nurses", "Maternity", "Public Health", "Antenatal and Postnatal", "Child Welfare", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Records", "Stores", "Support Services"];
 
 /**
  * The cadres and departments a facility of this type is offered at registration.

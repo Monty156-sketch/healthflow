@@ -1,5 +1,5 @@
-// A health centre rosters by unit (clinical nurses, midwives, public health). A unit's first roster starts
-// from the usual numbers: clinical nurses 2 on mornings and 1 on afternoons and nights, midwives 1 on each,
+// A health centre rosters by unit (clinical nurses, maternity, public health). A unit's first roster starts
+// from the usual numbers: clinical nurses 2 on mornings and 1 on afternoons and nights, maternity 1 on each,
 // any other unit 1 on mornings. The in-charge can change them on the roster page.
 import { prisma } from "./prisma.js";
 import { unitMinimums } from "./dutyPlan.js";
@@ -20,5 +20,5 @@ export async function seedUnitDemand(facilityId: string, department: { id: strin
 export async function rostersByUnit(facilityId: string, facilityType: string, hospitalTypes: string[]) {
   if (hospitalTypes.includes(facilityType)) return true;
   if (facilityType !== "HEALTH_CENTRE") return false;
-  return Boolean(await prisma.department.findFirst({ where: { facilityId, active: true, name: { in: ["Clinical Nurses", "Midwives"] } }, select: { id: true } }));
+  return Boolean(await prisma.department.findFirst({ where: { facilityId, active: true, name: { in: ["Clinical Nurses", "Maternity", "Midwives"] } }, select: { id: true } }));
 }

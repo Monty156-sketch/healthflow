@@ -261,7 +261,7 @@ export function StaffForm({
         {dutyShifts.length > 0 && (
           <fieldset className="sm:col-span-2">
             <legend className="mb-1 text-sm font-medium">Shifts this person may work</legend>
-            <p className="mb-2 text-sm text-[var(--muted)]">None ticked: every shift their cadre allows.</p>
+            <p className="mb-2 text-sm text-[var(--muted)]">Tick just one for someone who works only that shift, for example nights only. None ticked: every shift their cadre allows.</p>
             <div className="flex flex-wrap gap-x-6">
               {dutyShifts.map((sh) => (
                 <Checkbox
