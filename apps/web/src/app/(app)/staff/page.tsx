@@ -80,6 +80,7 @@ export default function StaffListPage() {
               <ButtonLink href="/staff/new" variant="secondary">
                 Add staff member
               </ButtonLink>
+              <ButtonLink href="/staff/transfers" variant="secondary">Transfers</ButtonLink>
               <ButtonLink href="/staff/import" variant="secondary">
                 Import from a file
               </ButtonLink>

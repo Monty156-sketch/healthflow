@@ -27,6 +27,7 @@ import {
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { makeResetToken, RESET_LINK_MINUTES } from "../../lib/signedTokens.js";
 import { transferToday } from "./transfers.js";
+import { removeLogin, scrubStaff } from "./staffMoves.js";
 import { appUrl } from "../../lib/email.js";
 
 export const staffRouter = Router();
@@ -501,6 +502,38 @@ staffRouter.patch("/:id/status", allowRoles(...ADMIN_ROLES), async (req, res) =>
 
   const s = await prisma.staff.findUniqueOrThrow({ where: { id: existing.id }, include: staffInclude });
   res.json({ staff: present(s) });
+});
+
+// ---------------------------------------------------------------- delete
+
+const deleteInput = z.object({ reason: z.string().trim().min(5, "Say why, in a few words.").max(300) });
+
+/**
+ * "Delete" for a person who has left or was added by mistake. The login, phone,
+ * email, photo and emergency contact are removed so the email can be used again.
+ * The name and staff number stay, because past rosters and the audit log refer to them.
+ */
+staffRouter.delete("/:id", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(deleteInput, req.body, res);
+  if (!input) return;
+  const existing = await prisma.staff.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { userProfile: { select: { id: true, role: true } } } });
+  if (!existing) return res.status(404).json({ error: "not_found" });
+  if (existing.userProfile?.id === who.userId) return res.status(409).json({ error: "cannot_remove_self", message: "You cannot delete yourself. Ask another facility admin to do it." });
+  if (existing.userProfile?.role === "FACILITY_ADMIN") {
+    const others = await prisma.userProfile.count({ where: { facilityId: who.facilityId, role: "FACILITY_ADMIN", active: true, id: { not: existing.userProfile.id } } });
+    if (others === 0) return res.status(409).json({ error: "last_admin", message: "This is the facility's only administrator. Make someone else an administrator first." });
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.staffMove.updateMany({ where: { staffId: existing.id, status: "PENDING" }, data: { status: "CANCELLED", decidedBy: who.email, decidedAt: new Date() } });
+    if (existing.userProfile) await removeLogin(tx, existing.userProfile.id);
+    await scrubStaff(tx, existing.id, "INACTIVE");
+  });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "staff_deleted", entityType: "Staff", entityId: existing.id, reason: input.reason,
+    summary: `${who.displayName} deleted ${existing.fullName} (staff no. ${existing.staffNo}) on ${displayDate(new Date())}.${existing.userProfile ? " Their login was removed." : ""} Contact details were removed; the name stays on past rosters and in this log. Reason: ${input.reason}`,
+  });
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- ward
