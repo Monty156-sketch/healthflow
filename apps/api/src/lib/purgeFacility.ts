@@ -71,7 +71,7 @@ export async function purgeFacility(name: string, opts: { dryRun: boolean }): Pr
         }
         if (opts.dryRun) throw new DryRun();
       },
-      { timeout: 120_000, maxWait: 10_000 },
+      { timeout: 900_000, maxWait: 30_000 },
     );
   } catch (e) {
     if (!(e instanceof DryRun)) throw e;
