@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { directoryFacilities, FACILITY_DIRECTORY, GHANA_DISTRICTS, GHANA_REGION_NAMES } from "@healthflow/shared";
+import { directoryFacilities, FACILITY_DIRECTORY, GHANA_DISTRICTS, GHANA_REGION_NAMES } from "@healthflow/shared/geography";
 
 describe("Ghana geography", () => {
   it("has 16 regions and 261 districts", () => {

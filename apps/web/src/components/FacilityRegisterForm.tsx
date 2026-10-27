@@ -4,7 +4,7 @@
 // account, a plan, the departments and cadres it works with, and then the staff
 // access code. The administrator finishes by setting up an authenticator app.
 import { AGENCIES } from "@/lib/agency";
-import { directoryFacilities, GHANA_DISTRICTS, GHANA_REGION_NAMES } from "@healthflow/shared";
+import { directoryFacilities, GHANA_DISTRICTS, GHANA_REGION_NAMES } from "@healthflow/shared/geography";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
