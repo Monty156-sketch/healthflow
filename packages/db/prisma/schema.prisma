@@ -1661,6 +1661,8 @@ model Deployment {
   startDate  DateTime         @db.Date
   endDate    DateTime         @db.Date
   status     DeploymentStatus @default(ACTIVE)
+  /// EXERCISE (set up by the administrator) or SWAP (a person steps out of duty for a few days).
+  kind       String           @default("EXERCISE")
   createdBy  String
   createdAt  DateTime         @default(now())
   closedAt   DateTime?
@@ -1676,8 +1678,8 @@ model DeploymentMember {
   staffId      String
   staff        Staff      @relation(fields: [staffId], references: [id])
   /// The one shift they work each day of the deployment.
-  shiftId      String
-  shift        Shift      @relation(fields: [shiftId], references: [id])
+  shiftId      String?
+  shift        Shift?     @relation(fields: [shiftId], references: [id])
   /// The first day back on the usual roster, set when the in-charge confirms they are back.
   returnedOn   DateTime?  @db.Date
   returnedBy   String?

@@ -64,7 +64,7 @@ const staffInput = z
       .default(0),
     /** Can take charge of a shift. */
     canLead: z.boolean().optional(),
-    leaveGrade: z.enum(["SENIOR", "JUNIOR"]).nullish(),
+    leaveGrade: z.enum(["SENIOR", "INTERMEDIATE", "JUNIOR"]).nullish(),
     /** 0 means no limit. */
     maxNightsPerMonth: z.number({ invalid_type_error: "Most nights in a month must be a number." }).int("Most nights in a month must be a whole number.").min(0, "Most nights in a month cannot be negative.").max(31, "Most nights in a month is too high.").optional(),
     maxHoursPerMonth: z.number({ invalid_type_error: "Most hours in a month must be a number." }).int("Most hours in a month must be a whole number.").min(0, "Most hours in a month cannot be negative.").max(744, "Most hours in a month is too high.").optional(),

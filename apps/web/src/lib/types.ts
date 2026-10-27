@@ -27,7 +27,7 @@ export interface Staff {
   exclusionReason: string | null;
   maxDutiesPerWeek: number;
   canLead?: boolean;
-  leaveGrade?: "SENIOR" | "JUNIOR" | null;
+  leaveGrade?: "SENIOR" | "INTERMEDIATE" | "JUNIOR" | null;
   maxNightsPerMonth?: number;
   maxHoursPerMonth?: number;
   eligibleShifts?: { id: string; name: string; code: string }[];
@@ -380,7 +380,7 @@ export interface EntitlementRow {
   staffNo: string;
   cadre: string | null;
   configured: boolean;
-  leaveGrade?: "SENIOR" | "JUNIOR" | null;
+  leaveGrade?: "SENIOR" | "INTERMEDIATE" | "JUNIOR" | null;
   /** The yearly days the person's grade gives when none are set by hand. */
   defaultDays: number | null;
   daysEntitled: number | null;

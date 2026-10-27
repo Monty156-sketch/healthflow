@@ -9,7 +9,7 @@ import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import { Button, Checkbox, Field, Input, Notice, Panel, StatusBadge } from "@/components/ui";
 
-interface Dep { id: string; name: string; status: "ACTIVE" | "CLOSED"; startDate: string; endDate: string; dueBack: boolean; members: { id: string; name: string; cadre: string | null; shift: string; returnedOn: string | null }[] }
+interface Dep { id: string; name: string; kind: string; status: "ACTIVE" | "CLOSED"; startDate: string; endDate: string; dueBack: boolean; members: { id: string; name: string; cadre: string | null; shift: string; returnedOn: string | null }[] }
 
 export function DeploymentReturns() {
   const list = useResource<{ deployments: Dep[] }>("/api/facility/deployments");
@@ -45,7 +45,7 @@ export function DeploymentReturns() {
         const waiting = d.members.filter((m) => !m.returnedOn);
         const picked = ticked[d.id] ?? [];
         return (
-          <Panel key={d.id} title={`${d.name}: emergency roster`} description={`${showDate(d.startDate)} to ${showDate(d.endDate)}. They stay off the usual roster until you confirm them back.`} actions={<StatusBadge tone={d.dueBack ? "warning" : "success"}>{d.dueBack ? "Due back" : "Under way"}</StatusBadge>}>
+          <Panel key={d.id} title={d.kind === "SWAP" ? d.name : `${d.name}: emergency roster`} description={`${showDate(d.startDate)} to ${showDate(d.endDate)}. They stay off the usual roster until you confirm them back.`} actions={<StatusBadge tone={d.dueBack ? "warning" : "success"}>{d.dueBack ? "Due back" : "Under way"}</StatusBadge>}>
             <div className="mb-2 flex flex-wrap gap-2 text-sm">
               <button type="button" className="min-h-11 underline underline-offset-4" onClick={() => setTicked({ ...ticked, [d.id]: waiting.map((m) => m.id) })}>Select all {waiting.length}</button>
               <button type="button" className="min-h-11 underline underline-offset-4" onClick={() => setTicked({ ...ticked, [d.id]: [] })}>Clear</button>

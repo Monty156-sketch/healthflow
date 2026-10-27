@@ -53,9 +53,9 @@ deploymentsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const today = todayDay();
   res.json({
     deployments: rows.map((d) => ({
-      id: d.id, name: d.name, notes: d.notes, status: d.status, startDate: iso(dayOf(d.startDate)), endDate: iso(dayOf(d.endDate)), createdAt: d.createdAt,
+      id: d.id, name: d.name, kind: d.kind, notes: d.notes, status: d.status, startDate: iso(dayOf(d.startDate)), endDate: iso(dayOf(d.endDate)), createdAt: d.createdAt,
       dueBack: d.status === "ACTIVE" && today > dayOf(d.endDate),
-      members: d.members.map((m) => ({ id: m.id, staffId: m.staffId, name: m.staff.fullName, cadre: m.staff.cadre?.name ?? null, department: m.staff.department?.name ?? null, shift: m.shift.name, returnedOn: m.returnedOn ? iso(dayOf(m.returnedOn)) : null })),
+      members: d.members.map((m) => ({ id: m.id, staffId: m.staffId, name: m.staff.fullName, cadre: m.staff.cadre?.name ?? null, department: m.staff.department?.name ?? null, shift: m.shift?.name ?? "Off duty", returnedOn: m.returnedOn ? iso(dayOf(m.returnedOn)) : null })),
     })),
   });
 });
@@ -69,7 +69,7 @@ deploymentsRouter.get("/:id/roster", allowRoles(...READ_ROLES), async (req, res)
   for (let n = dayOf(d.startDate); n <= dayOf(d.endDate); n++) days.push(iso(n));
   res.json({
     name: d.name, startDate: days[0], endDate: days[days.length - 1], days,
-    rows: d.members.map((m) => ({ name: m.staff.fullName, staffNo: m.staff.staffNo, shift: m.shift.name, from: m.shift.startTime, to: m.shift.endTime })).sort((a, b) => a.shift.localeCompare(b.shift) || a.name.localeCompare(b.name)),
+    rows: d.members.map((m) => ({ name: m.staff.fullName, staffNo: m.staff.staffNo, shift: m.shift?.name ?? "Off duty", from: m.shift?.startTime ?? null, to: m.shift?.endTime ?? null })).sort((a, b) => a.shift.localeCompare(b.shift) || a.name.localeCompare(b.name)),
   });
 });
 
@@ -120,6 +120,44 @@ deploymentsRouter.post("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
   }
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "deployment_created", entityType: "Deployment", entityId: dep.id, summary: `${who.displayName} set up the ${input.name} deployment for ${ids.length} ${ids.length === 1 ? "person" : "people"}, ${sayDay(start)} to ${sayDay(end)}.` });
   await notifyDeciders(who.facilityId, { type: "deployment_created", title: `${input.name}: ${ids.length} off the usual roster`, body: `They return to the usual roster only when you confirm them back under Return due.`, linkUrl: "/returns", severity: "INFO" }, who.email);
+  res.status(201).json({ id: dep.id, roster: summary(mended) });
+});
+
+const swapInput = z.object({
+  startDate: isoDate("First day"),
+  days: z.number({ invalid_type_error: "Say how many days." }).int().min(1, "At least one day.").max(7, "A swap is up to seven days. For longer, ask for leave."),
+  reason: z.string().trim().max(300).optional(),
+});
+
+/**
+ * A person steps out of duty for a few days. No approval step: their duties come off,
+ * colleagues are put in, and the roster is updated on the spot. They stay under Return due
+ * until the in-charge confirms they are back, when the rest of the month is planned again.
+ */
+deploymentsRouter.post("/swap-out", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(swapInput, req.body, res);
+  if (!input) return;
+  if (!who.staffId) return res.status(403).json({ error: "forbidden", message: "Your account is not linked to a staff record." });
+  const start = dayOf(new Date(`${input.startDate}T00:00:00.000Z`));
+  const end = start + input.days - 1;
+  if (start < todayDay()) return res.status(400).json({ error: "invalid_input", fields: { startDate: "Start today or later." } });
+  const me = await prisma.staff.findFirst({ where: { id: who.staffId, facilityId: who.facilityId, status: "ACTIVE" }, select: { id: true, fullName: true } });
+  if (!me) return res.status(403).json({ error: "forbidden" });
+  const open = await prisma.deploymentMember.findFirst({ where: { staffId: me.id, returnedOn: null, deployment: { facilityId: who.facilityId } }, select: { id: true } });
+  if (open) return res.status(409).json({ error: "already_away", message: "You are already away and waiting to be confirmed back. Ask your in-charge to confirm your return first." });
+
+  const name = `Duty swap: ${me.fullName}`;
+  const dep = await prisma.deployment.create({
+    data: { facilityId: who.facilityId, name, kind: "SWAP", notes: input.reason || null, startDate: dateOf(start), endDate: dateOf(end), createdBy: who.email, members: { create: [{ staffId: me.id }] } },
+  });
+  const mended = await mendRosters(who.facilityId, {
+    absentIds: [me.id], from: start, to: end, why: `${me.fullName} swapped out of duty`, versionNote: `Before ${me.fullName} swapped out of duty`,
+    auditAction: "roster_mended_for_swap_out", gapSubject: `${me.fullName}'s swap`,
+    auditLead: (n, month) => `${me.fullName} stepped out of duty from ${sayDay(start)} to ${sayDay(end)}, removing ${n} ${n === 1 ? "duty" : "duties"} from the ${month} roster.`,
+  }, { email: who.email, displayName: who.displayName });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "swap_out", entityType: "Deployment", entityId: dep.id, summary: `${me.fullName} stepped out of duty from ${sayDay(start)} to ${sayDay(end)}${input.reason ? `. Reason: ${input.reason}` : ""}.` });
+  await notifyDeciders(who.facilityId, { type: "swap_out", title: `${me.fullName} is out ${input.days === 1 ? "for a day" : `for ${input.days} days`}`, body: `Their duties from ${sayDay(start)} to ${sayDay(end)} were covered automatically. Confirm them back under Returns due.`, linkUrl: "/returns", severity: "INFO" }, who.email);
   res.status(201).json({ id: dep.id, roster: summary(mended) });
 });
 

@@ -168,12 +168,13 @@ export function JoinFlow({ initialCode }: { initialCode?: string }) {
           <Field label="Email" error={fields.email} hint="You sign in with this.">{(a) => <Input {...a} type="email" autoComplete="email" value={form.email} onChange={(e) => set("email", e.target.value)} />}</Field>
           <Field label="Password" error={fields.password} hint="At least 12 characters.">{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.password} onChange={(e) => set("password", e.target.value)} />}</Field>
           <Field label="Confirm password" error={fields.confirm}>{(a) => <Input {...a} type="password" autoComplete="new-password" value={form.confirm} onChange={(e) => set("confirm", e.target.value)} />}</Field>
-          <Field label="Your grade" error={fields.grade} hint="Gives your yearly leave days: senior staff 36 working days, junior staff 28.">
+          <Field label="Your grade" error={fields.grade} hint="Gives your yearly leave days: category C 36 working days, D 28, E 21.">
             {(a) => (
               <Select {...a} value={form.grade} onChange={(e) => set("grade", e.target.value)}>
                 <option value="">Choose</option>
-                <option value="SENIOR">Senior staff</option>
-                <option value="JUNIOR">Junior staff</option>
+                <option value="SENIOR">Category C, senior staff</option>
+                <option value="INTERMEDIATE">Category D, intermediate staff</option>
+                <option value="JUNIOR">Category E, junior staff</option>
               </Select>
             )}
           </Field>

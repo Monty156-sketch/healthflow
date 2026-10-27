@@ -79,14 +79,16 @@ describe("entitlements", () => {
     expect(rows.find((r) => r.name === "Ama Dery")).toMatchObject({ taken: 2, remaining: 34 });
   });
 
-  it("gives senior staff 36 working days and junior staff 28 until a figure is set by hand", async () => {
+  it("gives category C 36 working days, D 28 and E 21 until a figure is set by hand", async () => {
     const { api, people } = await setup();
     await prisma.staff.update({ where: { id: people[0].id }, data: { leaveGrade: "SENIOR" } });
-    await prisma.staff.update({ where: { id: people[1].id }, data: { leaveGrade: "JUNIOR" } });
+    await prisma.staff.update({ where: { id: people[1].id }, data: { leaveGrade: "INTERMEDIATE" } });
+    await prisma.staff.create({ data: { facilityId: people[0].facilityId, staffNo: "Kojo", fullName: "Kojo Bawa", status: "ACTIVE", leaveGrade: "JUNIOR" } });
     const typeId = (await api.get("/api/facility/entitlements?year=2026")).body.leaveTypeId;
     const rows = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${typeId}`)).body.rows as { name: string; defaultDays: number | null; remaining: number | null; configured: boolean }[];
     expect(rows.find((r) => r.name === "Ama Dery")).toMatchObject({ defaultDays: 36, remaining: 36, configured: false });
     expect(rows.find((r) => r.name === "Esi Naa")).toMatchObject({ defaultDays: 28, remaining: 28 });
+    expect(rows.find((r) => r.name === "Kojo Bawa")).toMatchObject({ defaultDays: 21, remaining: 21 });
     // A figure set by hand wins.
     await api.put("/api/facility/entitlements", { year: 2026, leaveTypeId: typeId, entries: [{ staffId: people[0].id, daysEntitled: 30, daysCarriedOver: 0 }] });
     const after = (await api.get(`/api/facility/entitlements?year=2026&leaveTypeId=${typeId}`)).body.rows as { name: string; remaining: number }[];
