@@ -145,11 +145,18 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const rotations: ERotation[] = rotationRows.map((r) => ({
     id: r.id, name: r.name, sequenceShiftIds: r.sequenceOrder, cadreIds: r.applicableCadreIds, departmentIds: r.applicableDepartmentIds, enforcement: r.enforcement,
   }));
+  // People on an emergency deployment are away from the usual roster until the in-charge confirms they are back.
+  const deployed = await prisma.deploymentMember.findMany({
+    where: { deployment: { facilityId, startDate: { lte: dateFromDay(period.endDay) } }, OR: [{ returnedOn: null }, { returnedOn: { gt: dateFromDay(period.startDay) } }] },
+    select: { staffId: true, returnedOn: true, deployment: { select: { startDate: true } } },
+  });
+  const deployedAway = deployed.map((m) => ({ staffId: m.staffId, startDay: dayFromDate(m.deployment.startDate), endDay: m.returnedOn ? dayFromDate(m.returnedOn) - 1 : period.endDay + 60 }));
   const leave = leaveRows
     .filter((l) => overlaps(l, period.startDay, period.endDay))
     .map((l) => ({ staffId: l.staffId, startDay: dayFromDate(l.startDate), endDay: Math.min(effectiveEnd(l), period.endDay + 60) }))
     // Days in another ward are days this ward cannot use.
-    .concat(away);
+    .concat(away)
+    .concat(deployedAway);
   const toAssignment = (a: { staffId: string; shiftId: string; dutyDate: Date; locked?: boolean }): EAssignment => ({ staffId: a.staffId, shiftId: a.shiftId, day: dayFromDate(a.dutyDate), locked: a.locked });
 
   // Public-holiday duties each person worked over the last twelve months, so holidays are shared over the year.

@@ -6,7 +6,7 @@ import { categoryOf, mutedFrom } from "./notificationPrefs.js";
 import { textStaff } from "./sms.js";
 
 /** The notices worth a text: the ones that change a person's duties or ask them for something. */
-const SMS_TYPES = new Set(["roster_published", "duty_moved", "reinstated", "cover_asked", "cover_arranged", "swap_requested", "swap_decided", "leave_decided", "return_due"]);
+const SMS_TYPES = new Set(["roster_published", "duty_moved", "reinstated", "cover_asked", "cover_arranged", "swap_requested", "swap_decided", "leave_decided", "return_due", "deployment_assigned"]);
 
 export interface NoteContent {
   type: string;

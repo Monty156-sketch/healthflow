@@ -5,6 +5,7 @@ import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { ReturnItem, ReturnsDue } from "@/lib/types";
 import { ReturnActions } from "@/components/ReturnActions";
+import { DeploymentReturns } from "@/components/DeploymentReturns";
 import { Button, EmptyState, Loading, LoadError, PageHeader, Panel, StatusBadge, TableScroll } from "@/components/ui";
 
 function Table({ label, rows, kind, onOpen }: { label: string; rows: ReturnItem[]; kind: "overdue" | "soon" | "open"; onOpen: (id: string) => void }) {
@@ -72,6 +73,7 @@ export default function ReturnsPage() {
         title="Returns due"
         description="Confirm each return. Until then the person stays off the roster."
       />
+      <DeploymentReturns />
       {chosen && (
         <div className="mb-6">
           <Panel
