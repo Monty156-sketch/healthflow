@@ -59,7 +59,7 @@ describe("emergency deployments", () => {
     expect(back.status).toBe(200);
     expect(back.body.confirmed).toBe(3);
     expect((await prisma.deployment.findUniqueOrThrow({ where: { id: made.body.id } })).status).toBe("CLOSED");
-    expect((await api.post(`/api/facility/deployments/${made.body.id}/back`, { memberIds: [list[0].members[0].id] })).status).toBe(409);
+    expect((await api.post(`/api/facility/deployments/${made.body.id}/back`, { memberIds: [list[0].members[0].id], date: iso(start + 1) })).status).toBe(409);
     void facility;
   });
 

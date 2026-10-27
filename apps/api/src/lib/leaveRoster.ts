@@ -58,6 +58,7 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
     auditAction: "roster_mended_for_leave", gapSubject: `${leave.staff.fullName}'s leave`,
     auditLead: (n, month) => `Approving ${leave.staff.fullName}'s ${leave.leaveType.name.toLowerCase()} leave removed ${n} ${n === 1 ? "duty" : "duties"} from the ${month} roster.`,
   }, by);
+  if (out.length) await prisma.leaveRequest.update({ where: { id: leave.id }, data: { conflictsPublishedRoster: false } });
   return out;
 }
 
