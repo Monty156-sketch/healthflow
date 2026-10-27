@@ -81,6 +81,7 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/today", label: "Today", roles: ["STAFF"] },
   { href: "/my-duties", label: "Duties", roles: [...READ_ROLES, "STAFF"], section: "duties" },
   { href: "/leave", label: "Leave", roles: [...READ_ROLES, "STAFF"], section: "leave" },
+  { href: "/deployments", label: "Emergency roster", roles: READ_ROLES },
   { href: "/returns", label: "Returns due", roles: READ_ROLES },
   { href: "/coverage", label: "Coverage", roles: READ_ROLES },
   { href: "/reports/fairness", label: "Why this duty", roles: ["STAFF"] },

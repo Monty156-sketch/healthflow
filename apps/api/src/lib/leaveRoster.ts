@@ -29,6 +29,23 @@ export interface RosterMend {
 /** Rosters that carry duties, in these statuses, are mended. A draft with nothing in it is left to be generated. */
 const MENDABLE = ["GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"] as const;
 
+/** What to mend and how to say so. Absence mode takes the named people's duties off and refills them; replan mode re-plans everyone's unlocked duties in the window. */
+export interface MendJob {
+  absentIds: string[];
+  /** Re-plan every unlocked duty in the window instead of removing named people's duties. */
+  replan?: boolean;
+  from: number;
+  to: number;
+  /** Used in notices: "Ama Mensah is on leave". */
+  why: string;
+  versionNote: string;
+  auditAction: string;
+  /** The first sentence of the audit entry, given how many duties came off and which month's roster. */
+  auditLead: (removed: number, month: string) => string;
+  /** "Ama Mensah's leave" in "...could not be fully covered without breaking a rule". */
+  gapSubject: string;
+}
+
 export async function mendRostersForLeave(facilityId: string, leaveRequestId: string, by: { email: string; displayName: string }): Promise<RosterMend[]> {
   const leave = await prisma.leaveRequest.findFirst({ where: { id: leaveRequestId, facilityId }, include: { staff: { select: { id: true, fullName: true } }, leaveType: { select: { name: true } } } });
   if (!leave || leave.status !== "APPROVED") return [];
@@ -36,6 +53,18 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
   const from = Math.max(dayOf(leave.startDate), today);
   const to = leave.isOpenEnded ? from + 60 : dayOf(leave.endDate);
   if (to < from) return [];
+  const out = await mendRosters(facilityId, {
+    absentIds: [leave.staffId], from, to, why: `${leave.staff.fullName} is on leave`, versionNote: `Before refilling ${leave.staff.fullName}'s duties for leave`,
+    auditAction: "roster_mended_for_leave", gapSubject: `${leave.staff.fullName}'s leave`,
+    auditLead: (n, month) => `Approving ${leave.staff.fullName}'s ${leave.leaveType.name.toLowerCase()} leave removed ${n} ${n === 1 ? "duty" : "duties"} from the ${month} roster.`,
+  }, by);
+  return out;
+}
+
+/** The shared mender: removes duties, refills them with the best-fitting colleagues, and leaves everything else where it was. */
+export async function mendRosters(facilityId: string, job: MendJob, by: { email: string; displayName: string }): Promise<RosterMend[]> {
+  const { from, to } = job;
+  const absent = new Set(job.absentIds);
 
   const rosters = await prisma.roster.findMany({
     where: { facilityId, status: { in: [...MENDABLE] } },
@@ -48,12 +77,11 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
     const last = Date.UTC(roster.year, roster.month, 0) / DAY;
     if (last < from || first > to) continue;
     const data = await loadEngineData(facilityId, roster.id, roster.year, roster.month);
-    const person = data.staff.find((s) => s.id === leave.staffId);
-    if (!person) continue;
+    if (!job.replan && !data.staff.some((s) => absent.has(s.id))) continue;
     const dutyShifts = new Set(data.shifts.filter((s) => s.countsAsDuty && !s.isOnCall).map((s) => s.id));
     const lo = Math.max(from, first);
     const hi = Math.min(to, last);
-    const gone = data.current.filter((a) => a.staffId === leave.staffId && a.day >= lo && a.day <= hi && dutyShifts.has(a.shiftId));
+    const gone = data.current.filter((a) => a.day >= lo && a.day <= hi && dutyShifts.has(a.shiftId) && (job.replan ? !a.locked : absent.has(a.staffId)));
     if (gone.length === 0) continue;
 
     const goneKeys = new Set(gone.map((a) => `${a.staffId}:${a.day}`));
@@ -78,7 +106,7 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
       const gapDays = gapsOf(result).map((g) => g.day);
       const free = new Set(
         data.current
-          .filter((a) => a.staffId !== leave.staffId && !a.locked && dutyShifts.has(a.shiftId) && a.day >= lo && a.day <= hi && gapDays.some((g) => Math.abs(g - a.day) <= 6))
+          .filter((a) => !absent.has(a.staffId) && !a.locked && dutyShifts.has(a.shiftId) && a.day >= lo && a.day <= hi && gapDays.some((g) => Math.abs(g - a.day) <= 6))
           .map((a) => `${a.staffId}:${a.day}`)
       );
       const second = run(free);
@@ -100,7 +128,7 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
     const dropped: { staffId: string; day: number; shiftId: string }[] = [];
     for (const [k, sh] of now) if (was.get(k) !== sh) { const [sid, d] = k.split(":"); added.push({ staffId: sid, day: Number(d), shiftId: sh }); }
     for (const [k, sh] of was) if (now.get(k) !== sh) { const [sid, d] = k.split(":"); dropped.push({ staffId: sid, day: Number(d), shiftId: sh }); }
-    const leaverOff = result.cells.filter((c) => c.staffId === leave.staffId && c.day >= lo && c.day <= hi && c.shiftId === offId);
+    const leaverOff = result.cells.filter((c) => absent.has(c.staffId) && c.day >= lo && c.day <= hi && c.shiftId === offId);
     const gaps = gapsOf(result);
     const nameOf = new Map(data.staff.map((x) => [x.id, x.name]));
     const mend: RosterMend = {
@@ -111,7 +139,7 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
     let loose: { name: string; date: Date }[] = [];
     await prisma.$transaction(
       async (tx) => {
-        await saveVersion(tx, roster.id, roster.version + 1, by.email, `Before refilling ${leave.staff.fullName}'s duties for leave`);
+        await saveVersion(tx, roster.id, roster.version + 1, by.email, job.versionNote);
         for (const d of dropped) {
           await detachAttendance(tx, { rosterId: roster.id, staffId: d.staffId, dutyDate: dateOf(d.day) });
           await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id, staffId: d.staffId, dutyDate: dateOf(d.day) } });
@@ -142,33 +170,32 @@ export async function mendRostersForLeave(facilityId: string, leaveRequestId: st
     for (const [sid, list] of byPerson) {
       await notifyStaff(facilityId, sid, {
         type: "duty_changed", title: `You were added to the ${monthName(roster)} roster`,
-        body: `${leave.staff.fullName} is on leave, so you cover: ${list.slice(0, 4).join(", ")}${list.length > 4 ? ` and ${list.length - 4} more` : ""}.`,
+        body: `${job.why}, so you cover: ${list.slice(0, 4).join(", ")}${list.length > 4 ? ` and ${list.length - 4} more` : ""}.`,
         linkUrl: `/roster/${roster.id}`, severity: "ACTION",
       });
     }
     const movedAway = new Map<string, string[]>();
-    for (const d of dropped) if (d.staffId !== leave.staffId) movedAway.set(d.staffId, [...(movedAway.get(d.staffId) ?? []), `${data.shiftName.get(d.shiftId) ?? "duty"} on ${sayDay(d.day)}`]);
+    for (const d of dropped) if (!absent.has(d.staffId)) movedAway.set(d.staffId, [...(movedAway.get(d.staffId) ?? []), `${data.shiftName.get(d.shiftId) ?? "duty"} on ${sayDay(d.day)}`]);
     for (const [sid, list] of movedAway) {
       await notifyStaff(facilityId, sid, {
         type: "duty_changed", title: `Your duties changed in the ${monthName(roster)} roster`,
-        body: `To cover ${leave.staff.fullName}'s leave, these were moved off you: ${list.slice(0, 4).join(", ")}${list.length > 4 ? ` and ${list.length - 4} more` : ""}.`,
+        body: `${job.why}, so these were moved off you: ${list.slice(0, 4).join(", ")}${list.length > 4 ? ` and ${list.length - 4} more` : ""}.`,
         linkUrl: `/roster/${roster.id}`, severity: "ACTION",
       });
     }
     await writeAuditLog({
-      facilityId, actorEmail: by.email, action: "roster_mended_for_leave", entityType: "Roster", entityId: roster.id,
-      summary: `Approving ${leave.staff.fullName}'s ${leave.leaveType.name.toLowerCase()} leave removed ${gone.length} ${gone.length === 1 ? "duty" : "duties"} from the ${monthName(roster)} roster. ${gone.length - gaps.length < 0 ? 0 : gone.length - gaps.length} refilled by colleagues${moved ? `, moving ${movedAway.size} other ${movedAway.size === 1 ? "person's" : "people's"} nearby duties` : ""}${gaps.length ? `; ${gaps.length} could not be covered lawfully` : ""}. The roster before the change is saved as version ${roster.version}.`,
+      facilityId, actorEmail: by.email, action: job.auditAction, entityType: "Roster", entityId: roster.id,
+      summary: `${job.auditLead(gone.length, monthName(roster))} ${gone.length - gaps.length < 0 ? 0 : gone.length - gaps.length} refilled by colleagues${moved ? `, moving ${movedAway.size} other ${movedAway.size === 1 ? "person's" : "people's"} nearby duties` : ""}${gaps.length ? `; ${gaps.length} could not be covered lawfully` : ""}. The roster before the change is saved as version ${roster.version}.`,
     });
     if (gaps.length || loose.length) {
       await notifyDeciders(facilityId, {
         type: "roster_short", title: `${gaps.length ? `${gaps.length} ${gaps.length === 1 ? "duty" : "duties"} left uncovered` : "Attendance needs a look"} in ${monthName(roster)}`,
         body: gaps.length
-          ? `${leave.staff.fullName}'s leave could not be fully covered without breaking a rule. First gap: ${mend.unfilled[0].shift} on ${sayDay(dayOf(new Date(mend.unfilled[0].date)))}.`
+          ? `${job.gapSubject} could not be fully covered without breaking a rule. First gap: ${mend.unfilled[0].shift} on ${sayDay(dayOf(new Date(mend.unfilled[0].date)))}.`
           : `A duty changed after attendance was recorded.`,
         linkUrl: `/roster/${roster.id}`, severity: "ACTION",
       }, by.email);
     }
   }
-  if (out.length) await prisma.leaveRequest.update({ where: { id: leave.id }, data: { conflictsPublishedRoster: false } });
   return out;
 }

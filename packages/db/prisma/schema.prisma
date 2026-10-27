@@ -392,6 +392,7 @@ model Facility {
   cadres              Cadre[]
   staff               Staff[]
   userProfiles        UserProfile[]
+  deployments         Deployment[]
   movesOut            StaffMove[] @relation("MoveFrom")
   movesIn             StaffMove[] @relation("MoveTo")
   shifts              Shift[]
@@ -575,6 +576,7 @@ model Staff {
   dayOffRequests       DayOffRequest[]
   transfers            WardTransfer[]
   facilityMoves        StaffMove[]
+  deployments          DeploymentMember[]
   archivedAt           DateTime?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
@@ -658,6 +660,7 @@ model Shift {
   id             String   @id @default(cuid())
   facilityId     String
   facility       Facility @relation(fields: [facilityId], references: [id])
+  deploymentMembers DeploymentMember[]
   name           String
   code           String
   startTime      String?  // "HH:MM" — never a timestamp (AD5)
@@ -1639,5 +1642,46 @@ model StaffMove {
 
   @@index([fromFacilityId, status])
   @@index([toFacilityId, status])
+  @@index([staffId])
+}
+
+enum DeploymentStatus {
+  ACTIVE
+  CLOSED
+}
+
+/// An exercise or emergency that takes people off their usual duty for a while, such as a national campaign.
+/// Its members leave the monthly roster for the dates and work the one shift given to them instead.
+model Deployment {
+  id         String           @id @default(cuid())
+  facilityId String
+  facility   Facility         @relation(fields: [facilityId], references: [id])
+  name       String
+  notes      String?
+  startDate  DateTime         @db.Date
+  endDate    DateTime         @db.Date
+  status     DeploymentStatus @default(ACTIVE)
+  createdBy  String
+  createdAt  DateTime         @default(now())
+  closedAt   DateTime?
+  members    DeploymentMember[]
+
+  @@index([facilityId, status])
+}
+
+model DeploymentMember {
+  id           String     @id @default(cuid())
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id])
+  staffId      String
+  staff        Staff      @relation(fields: [staffId], references: [id])
+  /// The one shift they work each day of the deployment.
+  shiftId      String
+  shift        Shift      @relation(fields: [shiftId], references: [id])
+  /// The first day back on the usual roster, set when the in-charge confirms they are back.
+  returnedOn   DateTime?  @db.Date
+  returnedBy   String?
+
+  @@unique([deploymentId, staffId])
   @@index([staffId])
 }
