@@ -162,10 +162,11 @@ describe("a facility registering itself", () => {
     expect((await pub.post("/api/public/register-facility", body({ facilityType: "CLINIC", planId: small.id }))).status).toBe(201);
   });
 
-  it("turns away a taken email, a repeated facility, a weak password, and missing consent", async () => {
+  it("turns away a taken email, a weak password, and missing consent", async () => {
     expect((await pub.post("/api/public/register-facility", body())).status).toBe(201);
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Other Clinic" }))).body.error).toBe("email_taken");
-    expect((await pub.post("/api/public/register-facility", body({ adminEmail: "x@kaleo.test" }))).body.error).toBe("facility_exists");
+    // Two facilities may share a name: each gets its own access code, and the code is what tells them apart.
+    expect((await pub.post("/api/public/register-facility", body({ adminEmail: "x@kaleo.test" }))).status).toBe(201);
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Third", adminEmail: "y@kaleo.test", password: "short" }))).body.fields.password).toBeTruthy();
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Fourth", adminEmail: "z@kaleo.test", acceptedTerms: false }))).status).toBe(400);
     expect((await pub.post("/api/public/register-facility", body({ facilityName: "Fifth", adminEmail: "w@kaleo.test", departments: [] }))).body.fields.departments).toBeTruthy();

@@ -233,8 +233,9 @@ export function StaffForm({
             {(a) => (
               <Select {...a} value={values.leaveGrade} onChange={(e) => set("leaveGrade")(e.target.value)}>
                 <option value="">Not set</option>
-                <option value="SENIOR">Senior staff: 36 working days</option>
-                <option value="JUNIOR">Junior staff: 28 working days</option>
+                <option value="SENIOR">Category C, senior staff: 36 working days</option>
+                <option value="INTERMEDIATE">Category D, intermediate staff: 28 working days</option>
+                <option value="JUNIOR">Category E, junior staff: 21 working days</option>
               </Select>
             )}
           </Field>

@@ -12,7 +12,7 @@ import { showDate } from "@/lib/format";
 import type { Cadre, Department, Shift, Staff } from "@/lib/types";
 import { Button, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
 
-interface Dep { id: string; name: string; status: "ACTIVE" | "CLOSED"; startDate: string; endDate: string; dueBack: boolean; members: { id: string; name: string; cadre: string | null; department: string | null; shift: string; returnedOn: string | null }[] }
+interface Dep { id: string; name: string; kind: string; status: "ACTIVE" | "CLOSED"; startDate: string; endDate: string; dueBack: boolean; members: { id: string; name: string; cadre: string | null; department: string | null; shift: string; returnedOn: string | null }[] }
 interface Sheet { name: string; days: string[]; rows: { name: string; staffNo: string; shift: string; from: string | null; to: string | null }[] }
 interface Chosen { staffId: string; name: string; cadre: string; shiftId: string }
 const message = (e: unknown) => (e instanceof ApiError ? (e.body as { message?: string; fields?: Record<string, string> } | undefined)?.message ?? Object.values((e.body as { fields?: Record<string, string> } | undefined)?.fields ?? {})[0] ?? "That did not go through." : "That did not go through. Check your connection and try again.");

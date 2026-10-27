@@ -1,5 +1,6 @@
 "use client";
 
+import { SwapOutPanel } from "@/components/SwapOutPanel";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -97,6 +98,7 @@ export default function MyDutiesPage() {
   return (
     <>
       <PageHeader title="My duties" description="Your published duties, and the attendance recorded for each." />
+      <div className="mb-6"><SwapOutPanel /></div>
       <div className="mb-4 flex gap-3">
         <div>
           <label htmlFor="md-month" className="mb-1 block text-sm font-medium">Month</label>

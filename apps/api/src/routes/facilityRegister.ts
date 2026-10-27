@@ -19,6 +19,18 @@ import { applyStandardSetup, ensureStarterNotice, portfolioFor, seedChosen } fro
 import { makeEnrolmentToken } from "../lib/signedTokens.js";
 import { writeAuditLog } from "../lib/audit.js";
 
+const nameKey = (s: string) => s.toLowerCase().replace(/\b(municipal|metropolitan|district|assembly)\b/g, "").replace(/[^a-z0-9]/g, "");
+
+/** The registered district office that matches the district the person chose, if there is one. Choosing the district is enough to link the facility to it. */
+async function districtNamed(region: string, name: string | undefined, agency: string) {
+  if (!name) return null;
+  const key = nameKey(name);
+  if (!key) return null;
+  const rows = await prisma.district.findMany({ where: { level: "DISTRICT", status: "ACTIVE", active: true, region: { equals: region, mode: "insensitive" } } });
+  const hits = rows.filter((d) => nameKey(d.name) === key);
+  return hits.find((d) => d.agency === agency) ?? null;
+}
+
 export const facilityRegisterRouter = Router();
 
 const limiter = rateLimit({
@@ -80,8 +92,6 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   if (await prisma.userProfile.findUnique({ where: { userEmail: body.adminEmail }, select: { id: true } })) {
     return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address." });
   }
-  const same = await prisma.facility.findFirst({ where: { name: { equals: body.facilityName, mode: "insensitive" }, region: { equals: body.region, mode: "insensitive" } }, select: { id: true } });
-  if (same) return res.status(409).json({ error: "facility_exists", message: "A facility with that name is already registered in that region. If you work there, ask your in-charge for the access code. Otherwise call 055 457 1800." });
 
   const plansExist = await prisma.plan.count({ where: { active: true } });
   const plan = body.planId ? await prisma.plan.findFirst({ where: { id: body.planId, active: true } }) : null;
@@ -92,7 +102,9 @@ facilityRegisterRouter.post("/", limiter, async (req, res) => {
   if (body.departments.length === 0) return res.status(400).json({ error: "invalid_input", fields: { departments: "Choose at least one department." } });
   if (body.cadres.length === 0) return res.status(400).json({ error: "invalid_input", fields: { cadres: "Choose at least one cadre." } });
 
-  const district = body.districtId ? await prisma.district.findFirst({ where: { id: body.districtId, level: "DISTRICT", status: "ACTIVE", active: true } }) : null;
+  const district = body.districtId
+    ? await prisma.district.findFirst({ where: { id: body.districtId, level: "DISTRICT", status: "ACTIVE", active: true } })
+    : await districtNamed(body.region, body.districtText, body.agency);
   if (district && district.agency !== body.agency) {
     return res.status(400).json({ error: "invalid_input", fields: { districtId: `${district.name} is a ${agencyName(district.agency)} district. Choose a district under ${agencyName(body.agency)}.` } });
   }

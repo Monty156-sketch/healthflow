@@ -87,7 +87,7 @@ const registerInput = z.object({
   departmentText: optionalText(80, "Department"),
   position: optionalText(80, "Position"),
   asInCharge: z.boolean().default(false),
-  leaveGrade: z.enum(["SENIOR", "JUNIOR"]).nullish(),
+  leaveGrade: z.enum(["SENIOR", "INTERMEDIATE", "JUNIOR"]).nullish(),
 });
 
 /** Step two, and the last: create the account. */

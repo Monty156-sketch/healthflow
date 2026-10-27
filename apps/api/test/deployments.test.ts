@@ -72,4 +72,21 @@ describe("emergency deployments", () => {
     expect((await api.post("/api/facility/deployments", { name: "Real exercise", startDate: iso(today()), endDate: iso(today() + 2), members: [{ staffId: people[1].id, shiftId: morning.id }] })).status).toBe(400);
     if (off) expect((await api.post("/api/facility/deployments", { name: "Real exercise", startDate: iso(today()), endDate: iso(today() + 2), members: [{ staffId: people[0].id, shiftId: off.id }] })).status).toBe(400);
   });
+
+  it("lets a member of staff step out for a few days, covers them with no approval, and brings them back", async () => {
+    const { api, facility, people, rosterId } = await setup();
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Stand-in" } });
+    await prisma.userProfile.update({ where: { id: user.id }, data: { staffId: people[0].id } });
+    const me = as(user);
+    const start = today();
+    expect((await me.post("/api/facility/deployments/swap-out", { startDate: iso(start), days: 9 })).status).toBe(400);
+    const made = await me.post("/api/facility/deployments/swap-out", { startDate: iso(start), days: 2, reason: "Family matter" });
+    expect(made.status).toBe(201);
+    expect(await prisma.rosterAssignment.count({ where: { rosterId, staffId: people[0].id, dutyDate: { gte: new Date(start * DAY), lte: new Date((start + 1) * DAY) }, shift: { countsAsDuty: true } } })).toBe(0);
+    expect((await me.post("/api/facility/deployments/swap-out", { startDate: iso(start + 5), days: 1 })).status).toBe(409);
+    const dep = (await api.get("/api/facility/deployments")).body.deployments[0] as { id: string; kind: string; members: { id: string; shift: string }[] };
+    expect(dep).toMatchObject({ kind: "SWAP" });
+    expect(dep.members[0].shift).toBe("Off duty");
+    expect((await api.post(`/api/facility/deployments/${dep.id}/back`, { memberIds: [dep.members[0].id], date: iso(start + 2) })).status).toBe(200);
+  });
 });

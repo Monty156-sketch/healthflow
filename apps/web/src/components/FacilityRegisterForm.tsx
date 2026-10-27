@@ -63,11 +63,9 @@ export function FacilityRegisterForm() {
   const { adoptSession } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [v, setV] = useState({ agency: "", facilityName: "", facilityType: "", region: "", districtText: "", adminName: "", adminEmail: "", adminPhone: "", password: "", confirm: "" });
-  const [districtId, setDistrictId] = useState("");
   // "" = not chosen yet, "other" = typed by hand, otherwise a name from the Ghana Health Service list
   const [pick, setPick] = useState("");
   const [agreed, setAgreed] = useState(false);
-  const [districts, setDistricts] = useState<{ id: string; name: string; region: string }[] | null>(null);
   const [options, setOptions] = useState<Options | null>(null);
   const [planId, setPlanId] = useState("");
   const [departments, setDepartments] = useState<string[] | null>(null);
@@ -82,19 +80,12 @@ export function FacilityRegisterForm() {
   const [codeError, setCodeError] = useState<string | undefined>();
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [k]: e.target.value });
 
-  useEffect(() => {
-    let live = true;
-    if (!v.agency) return () => { live = false; };
-    api.get<{ districts: { id: string; name: string; region: string }[] }>(`/api/public/districts?agency=${v.agency}`).then((r) => live && setDistricts(r.districts)).catch(() => live && setDistricts([]));
-    return () => { live = false; };
-  }, [v.agency]);
   // The departments and cadres on offer depend on the type of facility, so they are fetched again when the type changes.
   useEffect(() => {
     let live = true;
     api.get<Options>(`/api/public/register-facility/options${v.facilityType ? `?type=${encodeURIComponent(v.facilityType)}` : ""}`).then((o) => { if (live) { setOptions(o); setDepartments(o.departments); setCadres(o.cadres); setPlanId((p) => (o.plans.some((x) => x.id === p) ? p : o.plans.length === 1 ? o.plans[0].id : "")); } }).catch(() => live && setProblem("The form could not load. Check your connection and refresh the page."));
     return () => { live = false; };
   }, [v.facilityType]);
-  const listed = districts !== null && districts.length > 0;
   const facilities = directoryFacilities(v.region, v.districtText, v.facilityType);
 
   function next1() {
@@ -122,8 +113,7 @@ export function FacilityRegisterForm() {
     setBusy(true);
     try {
       const res = await api.post<Done>("/api/public/register-facility", {
-        agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtId: districtId || undefined,
-        districtText: v.districtText || undefined, adminName: v.adminName, adminEmail: v.adminEmail, adminPhone: v.adminPhone, password: v.password, acceptedTerms: true,
+        agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtText: v.districtText || undefined, adminName: v.adminName, adminEmail: v.adminEmail, adminPhone: v.adminPhone, password: v.password, acceptedTerms: true,
         planId: planId || undefined, departments: departments ?? [], cadres: cadres ?? [],
       });
       setDone(res);
@@ -232,9 +222,9 @@ export function FacilityRegisterForm() {
       {step === 1 && (
         <form onSubmit={(e) => { e.preventDefault(); next1(); }} className="space-y-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Registered under" error={errors.agency} hint="Your supervising office is the one under the same agency.">
+            <Field label="Registered under" error={errors.agency} hint="Your facility is linked to its district office automatically when that office is on HealthFlow.">
               {(a) => (
-                <Select {...a} value={v.agency} onChange={(e) => { setV({ ...v, agency: e.target.value }); setDistrictId(""); setDistricts(null); }}>
+                <Select {...a} value={v.agency} onChange={(e) => { setV({ ...v, agency: e.target.value }); }}>
                   <option value="">Choose</option>
                   {AGENCIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                 </Select>
@@ -279,16 +269,6 @@ export function FacilityRegisterForm() {
             {(facilities.length === 0 || pick === "other") && (
               <Field label="Facility name" error={errors.facilityName} hint={facilities.length === 0 && v.districtText && v.facilityType ? "We have no list of this kind of facility in this district yet. Type the name." : undefined}>
                 {(a) => <Input {...a} value={v.facilityName} onChange={set("facilityName")} autoComplete="organization" />}
-              </Field>
-            )}
-            {listed && (
-              <Field label="Supervising district office" optional hint="Only if your district office is already on HealthFlow. Your facility then appears under it.">
-                {(a) => (
-                  <Select {...a} value={districtId} onChange={(e) => setDistrictId(e.target.value)}>
-                    <option value="">None yet</option>
-                    {districts!.map((d) => <option key={d.id} value={d.id}>{d.name}, {d.region}</option>)}
-                  </Select>
-                )}
               </Field>
             )}
           </div>
