@@ -392,6 +392,8 @@ model Facility {
   cadres              Cadre[]
   staff               Staff[]
   userProfiles        UserProfile[]
+  movesOut            StaffMove[] @relation("MoveFrom")
+  movesIn             StaffMove[] @relation("MoveTo")
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -572,6 +574,7 @@ model Staff {
   restrictions         StaffRestriction[]
   dayOffRequests       DayOffRequest[]
   transfers            WardTransfer[]
+  facilityMoves        StaffMove[]
   archivedAt           DateTime?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
@@ -1608,4 +1611,33 @@ model WardInCharge {
   createdAt      DateTime    @default(now())
 
   @@unique([facilityId, nameKey])
+}
+
+enum StaffMoveStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+/// A member of staff posted from one facility to another that is also on HealthFlow.
+/// The receiving facility's administrator accepts it; their details and login then move across.
+model StaffMove {
+  id             String          @id @default(cuid())
+  staffId        String
+  staff          Staff           @relation(fields: [staffId], references: [id])
+  fromFacilityId String
+  fromFacility   Facility        @relation("MoveFrom", fields: [fromFacilityId], references: [id])
+  toFacilityId   String
+  toFacility     Facility        @relation("MoveTo", fields: [toFacilityId], references: [id])
+  status         StaffMoveStatus @default(PENDING)
+  note           String?
+  requestedBy    String
+  decidedBy      String?
+  createdAt      DateTime        @default(now())
+  decidedAt      DateTime?
+
+  @@index([fromFacilityId, status])
+  @@index([toFacilityId, status])
+  @@index([staffId])
 }

@@ -110,7 +110,7 @@ export function withToken(token: string, cookie?: string) {
     post: (url: string, body?: object) => prep(request(app).post(url)).send(body ?? {}),
     patch: (url: string, body?: object) => prep(request(app).patch(url)).send(body ?? {}),
     put: (url: string, body?: object) => prep(request(app).put(url)).send(body ?? {}),
-    delete: (url: string) => prep(request(app).delete(url)),
+    delete: (url: string, body?: object) => prep(request(app).delete(url)).send(body ?? {}),
   };
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ReactNode, Suspense, useCallback, useState } from "react";
 import { useFacility } from "@/components/AppShell";
 import { StaffForm } from "@/components/StaffForm";
@@ -50,6 +50,114 @@ function Details({ s }: { s: Staff }) {
         <span className="figures">{s.maxDutiesPerWeek === 0 ? "No limit" : s.maxDutiesPerWeek}</span>
       </Row>
     </dl>
+  );
+}
+
+interface Destination { id: string; name: string; region: string | null; district: string | null }
+
+/** Posting to another facility on HealthFlow, or deleting the person. */
+function MovePanel({ s }: { s: Staff }) {
+  const { reload } = useFacility();
+  const router = useRouter();
+  const [mode, setMode] = useState<"move" | "delete" | null>(null);
+  const [q, setQ] = useState("");
+  const [found, setFound] = useState<Destination[] | null>(null);
+  const [dest, setDest] = useState<Destination | null>(null);
+  const [note, setNote] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [sent, setSent] = useState<string | null>(null);
+  const firstName = s.fullName.split(" ")[0];
+  const current = ["ACTIVE", "ON_LEAVE"].includes(s.status);
+
+  async function search(text: string) {
+    setQ(text);
+    setDest(null);
+    if (text.trim().length < 3) return setFound(null);
+    try {
+      setFound((await api.get<{ facilities: Destination[] }>(`/api/facility/staff-moves/destinations?q=${encodeURIComponent(text.trim())}`)).facilities);
+    } catch {
+      setFound([]);
+    }
+  }
+  const fail = (e: unknown) => setProblem(e instanceof ApiError ? ((e.body as { message?: string; fields?: Record<string, string> } | undefined)?.message ?? Object.values((e.body as { fields?: Record<string, string> } | undefined)?.fields ?? {})[0] ?? "That did not go through.") : "That did not go through. Check your connection and try again.");
+  async function ask() {
+    if (!dest) return;
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.post("/api/facility/staff-moves", { staffId: s.id, toFacilityId: dest.id, note: note || undefined });
+      setSent(dest.name);
+      setMode(null);
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.delete(`/api/facility/staff/${s.id}`, { reason });
+      reload();
+      router.push("/staff");
+    } catch (e) {
+      fail(e);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="Transfer or delete">
+      {sent && <Notice tone="success">Asked {sent} to take {firstName}. They move over when its administrator accepts. Follow it under Transfers.</Notice>}
+      <div className="mt-2 flex flex-wrap gap-2">
+        {current && <Button variant="secondary" onClick={() => { setMode("move"); setProblem(null); }}>Transfer to another facility</Button>}
+        <Button variant="secondary" onClick={() => { setMode("delete"); setProblem(null); }}>Delete</Button>
+      </div>
+      <p className="mt-2 text-sm text-[var(--muted)]">If the new facility is on HealthFlow, transfer {firstName} there and their details move across. Delete is for someone who left or was added by mistake.</p>
+      <ConfirmDialog
+        open={mode === "move"}
+        title={`Transfer ${firstName} to another facility`}
+        confirmLabel="Ask to transfer"
+        busy={busy}
+        onConfirm={() => { if (dest) void ask(); else setProblem("Search for the facility and choose it from the list."); }}
+        onCancel={() => setMode(null)}
+      >
+        <p>The other facility&apos;s administrator must accept. Then {firstName}&apos;s details and sign in move there, so they do not register again. Here they are marked Transferred and their phone, email and photo are removed. Past rosters stay.</p>
+        <div className="mt-3 space-y-3">
+          <Field label="Search for the facility" hint="Type at least three letters of its name.">{(a) => <Input {...a} value={q} onChange={(e) => void search(e.target.value)} />}</Field>
+          {found && found.length === 0 && <p className="text-sm text-[var(--muted)]">No facility on HealthFlow has that name. If it is not on HealthFlow yet, delete {firstName} here and add them there.</p>}
+          {found && found.length > 0 && (
+            <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)]">
+              {found.map((f) => (
+                <li key={f.id}>
+                  <button type="button" onClick={() => setDest(f)} aria-pressed={dest?.id === f.id} className={`min-h-11 w-full px-3 py-2 text-left text-sm ${dest?.id === f.id ? "bg-[var(--surface-2)] font-medium" : ""}`}>
+                    {f.name}<span className="block text-[var(--muted)]">{[f.district, f.region].filter(Boolean).join(", ")}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Field label="Note for them" optional>{(a) => <Input {...a} value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} />}</Field>
+        </div>
+        {problem && <div className="mt-3"><Notice tone="block">{problem}</Notice></div>}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={mode === "delete"}
+        title={`Delete ${s.fullName}?`}
+        confirmLabel="Delete"
+        tone="danger"
+        busy={busy}
+        onConfirm={() => void remove()}
+        onCancel={() => setMode(null)}
+      >
+        <p>{s.account ? `${firstName}'s sign in is removed and they are signed out. ` : ""}Their phone, email, photo and emergency contact are removed. Their name and staff number stay on past rosters and in the audit log, because those records must stay true.</p>
+        <div className="mt-3"><Field label="Reason" hint="Kept in the audit log.">{(a) => <Input {...a} value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} />}</Field></div>
+        {problem && <div className="mt-3"><Notice tone="block">{problem}</Notice></div>}
+      </ConfirmDialog>
+    </Panel>
   );
 }
 
@@ -351,6 +459,7 @@ function StaffDetail() {
               setSavedNote(`Status changed to ${STAFF_STATUS[updated.status].label}.`);
             }}
           />
+          {isAdmin && <MovePanel s={s} />}
           {s.account ? (
             <AccountPanel s={{ ...s, account: s.account }} />
           ) : (
