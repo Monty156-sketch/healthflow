@@ -73,6 +73,8 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     }
   }
 
+  const debug: unknown[] = [];
+  const dutyIds = (d: { shifts: { id: string; countsAsDuty: boolean }[] }) => new Set(d.shifts.filter((x) => x.countsAsDuty).map((x) => x.id));
   const unfilled: { date: string; shift: string }[] = [];
   const rosterIds: string[] = [];
   for (let i = 0; i < months.length; i++) {
@@ -103,6 +105,7 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
       throw new WeekProblem(409, "not_feasible", `A lawful week cannot be drawn from ${sayDay(lo)} with the staff and shifts as they are. Nothing was changed. Check how many people each shift needs.`);
     }
 
+    debug.push({ lo, hi, cells: result.cells.length, fresh: result.cells.filter((c) => c.day >= lo && c.day <= hi).length, duty: result.cells.filter((c) => dutyIds(data).has(c.shiftId)).length, unf: result.unfilled.length, staff: data.staff.length, current: data.current.length, locked: locked.length });
     const hadDuties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
     const fresh = result.cells.filter((c) => c.day >= lo && c.day <= hi && !lockedKey.has(`${c.staffId}:${c.day}`));
     await prisma.$transaction(async (tx) => {
@@ -142,5 +145,5 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     });
   }
   const view = await weekView(facilityId, dept?.id ?? null, from);
-  return { ...view, unfilled, rosterIds };
+  return { ...view, unfilled, rosterIds, debug } as WeekView;
 }

@@ -41,7 +41,7 @@ describe("weekly rosters", () => {
     const drawn = await api.post("/api/facility/weekly-rosters", { startDate: iso(from) });
     expect(drawn.status).toBe(201);
     expect(drawn.body.week.days).toHaveLength(7);
-    expect(drawn.body.week.duties).toBeGreaterThan(0);
+    expect(drawn.body.week.duties, JSON.stringify(drawn.body.week.debug)).toBeGreaterThan(0);
     expect(drawn.body.week.from).toBe(iso(from));
     // Days before the week are exactly as they were.
     expect(await prisma.rosterAssignment.count({ where: { rosterId: roster.id, dutyDate: { lt: new Date(from * DAY) } } })).toBe(before);
