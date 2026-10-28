@@ -54,6 +54,8 @@ const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications", "/api/
 /** What full-access support may not do even inside a session: hand out access, touch personal-data rights, billing, or take a copy of everything. */
 const SUPPORT_NEVER = ["/api/facility/privacy", "/api/facility/invitations", "/api/facility/billing", "/api/facility/notices/legal", "/api/facility/directorate", "/api/facility/me/"];
 const SUPPORT_NEVER_READ = ["/api/facility/privacy/export", "/api/facility/me/data"];
+/** Routes that hand out access to an account, which a prefix cannot name: inviting someone and issuing a reset link. */
+const SUPPORT_NEVER_PATTERNS = [/^\/api\/facility\/staff\/[^/]+\/(invite|reset-link)(\/|$)/];
 
 /**
  * PS Tech support acting inside a facility. The platform account sends the
@@ -72,12 +74,13 @@ async function supportCaller(req: Request, res: Response, email: string, userId:
     return null;
   }
   const write = !["GET", "HEAD"].includes(req.method);
-  const url = req.originalUrl.split("?")[0];
+  // Routing ignores letter case and repeated slashes, so the checks below must too.
+  const url = req.originalUrl.split("?")[0].toLowerCase().replace(/\/{2,}/g, "/");
   if (write && s.accessLevel !== "FULL") {
     res.status(403).json({ error: "support_read_only", message: "This support session is read only. Start a full access session to make changes." });
     return null;
   }
-  if ((write && SUPPORT_NEVER.some((p) => url.startsWith(p))) || SUPPORT_NEVER_READ.some((p) => url.startsWith(p))) {
+  if ((write && (SUPPORT_NEVER.some((p) => url.startsWith(p)) || SUPPORT_NEVER_PATTERNS.some((p) => p.test(url)))) || SUPPORT_NEVER_READ.some((p) => url.startsWith(p))) {
     res.status(403).json({ error: "support_not_allowed", message: "Support access cannot do this. The facility's own administrator has to." });
     return null;
   }

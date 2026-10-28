@@ -18,8 +18,19 @@ import { ReinstateError, reinstate, reinstatementPlan } from "../../lib/reinstat
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { isoOf, sayDay, sayRange, dayOf } from "../../engine/time.js";
+import { staffInMyWard, wardStaffFilter } from "../../lib/wardScope.js";
 
 export const leaveRouter = Router();
+
+// An in-charge reaches only their own ward's leave. Anyone else's request looks like it does not exist.
+leaveRouter.param("id", async (req, res, next, id) => {
+  const who = caller(req);
+  if (who.departmentId) {
+    const row = await prisma.leaveRequest.findFirst({ where: { id, facilityId: who.facilityId }, select: { staffId: true } });
+    if (row && !(await staffInMyWard(who, row.staffId))) return res.status(404).json({ error: "not_found" });
+  }
+  next();
+});
 
 const DECIDERS = READ_ROLES; // supervisor, roster manager and facility admin
 const dayFromDate = (d: Date) => Math.floor(d.getTime() / 86_400_000);
@@ -57,7 +68,7 @@ leaveRouter.get("/types", async (req, res) => {
   await ensureLeaveTypes(facilityId);
   const types = await prisma.leaveType.findMany({ where: { facilityId, active: true }, orderBy: { sortOrder: "asc" } });
   const people = DECIDERS.includes(caller(req).role)
-    ? (await prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } })).map((p) => ({ id: p.id, name: p.fullName }))
+    ? (await prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...wardStaffFilter(caller(req)) }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true } })).map((p) => ({ id: p.id, name: p.fullName }))
     : [];
   res.json({
     note: NOTE,
@@ -205,7 +216,7 @@ leaveRouter.get("/requests", async (req, res) => {
   const rows = await prisma.leaveRequest.findMany({
     where: {
       facilityId: who.facilityId,
-      ...(mine ? { staffId: who.staffId ?? "none" } : {}),
+      ...(mine ? { staffId: who.staffId ?? "none" } : { staff: wardStaffFilter(who) }),
       ...(status === "open" ? { status: "SUBMITTED" } : status && ["APPROVED", "REJECTED", "CANCELLED"].includes(status) ? { status: status as "APPROVED" | "REJECTED" | "CANCELLED" } : {}),
     },
     include,
@@ -232,7 +243,7 @@ leaveRouter.post("/requests", async (req, res) => {
   if (onBehalf && !DECIDERS.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "You can only ask for your own leave." });
   const staffId = input.staffId ?? who.staffId;
   if (!staffId) return res.status(400).json({ error: "no_staff_record", message: "Your account is not linked to a staff record, so leave cannot be requested for you. Ask your in-charge." });
-  const person = await prisma.staff.findFirst({ where: { id: staffId, facilityId: who.facilityId, status: "ACTIVE" } });
+  const person = await prisma.staff.findFirst({ where: { id: staffId, facilityId: who.facilityId, status: "ACTIVE", ...(onBehalf ? wardStaffFilter(who) : {}) } });
   if (!person) return res.status(404).json({ error: "not_found", message: "That person is not an active member of staff here." });
   await ensureLeaveTypes(who.facilityId);
   const type = await prisma.leaveType.findFirst({ where: { id: input.leaveTypeId, facilityId: who.facilityId, active: true } });
@@ -284,6 +295,7 @@ leaveRouter.get("/preview", async (req, res) => {
   const q = z.object({ leaveTypeId: z.string(), startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), staffId: z.string().optional() }).safeParse(req.query);
   if (!q.success) return res.json({ days: null });
   const staffId = q.data.staffId && DECIDERS.includes(who.role) ? q.data.staffId : who.staffId;
+  if (staffId && !(await staffInMyWard(who, staffId))) return res.json({ days: null });
   const type = await prisma.leaveType.findFirst({ where: { id: q.data.leaveTypeId, facilityId: who.facilityId } });
   const start = isoToDay(q.data.startDate);
   const end = isoToDay(q.data.endDate);
@@ -442,7 +454,7 @@ leaveRouter.get("/returns", allowRoles(...DECIDERS), async (req, res) => {
   await syncReturns(who.facilityId);
   const today = todayDay();
   const rows = await prisma.leaveRequest.findMany({
-    where: { facilityId: who.facilityId, status: "APPROVED", actualReturnDate: null, returnStatus: { not: "EXTENDED" }, startDate: { lte: dateFromDay(today + 14) } },
+    where: { facilityId: who.facilityId, status: "APPROVED", actualReturnDate: null, returnStatus: { not: "EXTENDED" }, startDate: { lte: dateFromDay(today + 14) }, staff: wardStaffFilter(who) },
     include: { ...include, extensions: { where: { status: "SUBMITTED" }, select: { id: true } } },
     orderBy: { endDate: "asc" },
   });
@@ -610,18 +622,19 @@ leaveRouter.post("/requests/:id/extend", async (req, res) => {
 // ------------------------------------------------------------- calendar
 
 leaveRouter.get("/calendar", allowRoles(...DECIDERS), async (req, res) => {
-  const { facilityId } = caller(req);
+  const who = caller(req);
+  const { facilityId } = who;
   const month = typeof req.query.month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(req.query.month) ? req.query.month : new Date().toISOString().slice(0, 7);
   const [y, m] = month.split("-").map(Number);
   const first = dayOf(y, m, 1);
   const last = dayOf(y, m + 1, 1) - 1;
   const [rows, staff, cadres, departments] = await Promise.all([
     prisma.leaveRequest.findMany({
-      where: { facilityId, status: { in: ["SUBMITTED", "APPROVED"] }, startDate: { lte: dateFromDay(last) }, endDate: { gte: dateFromDay(first) } },
+      where: { facilityId, status: { in: ["SUBMITTED", "APPROVED"] }, startDate: { lte: dateFromDay(last) }, endDate: { gte: dateFromDay(first) }, staff: wardStaffFilter(who) },
       include,
     }),
     prisma.staff.findMany({
-      where: { facilityId, status: "ACTIVE" },
+      where: { facilityId, status: "ACTIVE", ...wardStaffFilter(who) },
       include: { cadre: { select: { id: true, name: true, code: true, sortOrder: true } }, department: { select: { name: true } } },
       orderBy: { staffNo: "asc" },
     }),

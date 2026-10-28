@@ -15,6 +15,7 @@ import { detachAttendance, relinkAttendance } from "../../lib/attendanceReview.j
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { writePair } from "../../lib/ledger.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { staffInMyWard, wardSwapFilter } from "../../lib/wardScope.js";
 import { sayDay } from "../../engine/time.js";
 import { checkOf, findingKey, loadEngineData, monthName, saveVersion, storeFindings, type Data } from "./rosters.js";
 
@@ -240,7 +241,7 @@ swapsRouter.get("/", async (req, res) => {
   const decider = READ_ROLES.includes(who.role);
   const [rows] = await Promise.all([
     prisma.dutySwap.findMany({
-      where: { facilityId: who.facilityId, ...(decider ? {} : { OR: [{ requesterStaffId: who.staffId ?? "none" }, { targetStaffId: who.staffId ?? "none" }] }) },
+      where: { facilityId: who.facilityId, ...(decider ? wardSwapFilter(who) : { OR: [{ requesterStaffId: who.staffId ?? "none" }, { targetStaffId: who.staffId ?? "none" }] }) },
       include, orderBy: { id: "desc" }, take: 200,
     }),
   ]);
@@ -252,6 +253,7 @@ swapsRouter.get("/:id", async (req, res) => {
   const row = await prisma.dutySwap.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include });
   if (!row) return res.status(404).json({ error: "not_found" });
   const decider = READ_ROLES.includes(who.role);
+  if (decider && !(await staffInMyWard(who, row.requesterStaffId)) && !(await staffInMyWard(who, row.targetStaffId))) return res.status(404).json({ error: "not_found" });
   if (!decider && row.requesterStaffId !== who.staffId && row.targetStaffId !== who.staffId) return res.status(404).json({ error: "not_found" });
   // Worked out again every time this is opened, never read back from when it was asked.
   const check = ["REQUESTED", "ACCEPTED"].includes(row.status)
@@ -346,7 +348,7 @@ swapsRouter.post("/:id/decide", allowRoles(...READ_ROLES), async (req, res) => {
   const input = parseOr400(decideInput, req.body, res);
   if (!input) return;
   const row = await prisma.dutySwap.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include });
-  if (!row) return res.status(404).json({ error: "not_found" });
+  if (!row || (!(await staffInMyWard(who, row.requesterStaffId)) && !(await staffInMyWard(who, row.targetStaffId)))) return res.status(404).json({ error: "not_found" });
   if (row.status !== "ACCEPTED") return res.status(409).json({ error: "not_ready", message: "Only a swap the other person has accepted can be decided." });
 
   if (input.decision === "reject") {

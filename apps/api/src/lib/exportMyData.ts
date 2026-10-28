@@ -3,6 +3,7 @@
 // self-service: no request, no waiting. It names no one else except by role
 // (an approver is "the facility", a swap partner is "a colleague").
 import { prisma } from "./prisma.js";
+import { csvCell } from "./csvSafe.js";
 
 const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
@@ -22,7 +23,9 @@ export async function exportMyData(staffId: string, facilityId: string) {
     prisma.userProfile.findUnique({ where: { staffId }, select: { userEmail: true, role: true, lastSignInAt: true, privacyNoticeVersionAccepted: true, mfaEnabled: true } }),
     prisma.clockEvent.findMany({ where: { staffId, facilityId }, orderBy: { at: "asc" } }),
   ]);
-  const ids = [staffId, ...leave.map((l) => l.id), ...assignments.map((a) => a.id), ...swaps.map((s) => s.id), ...requests.map((r) => r.id)];
+  // Not the duties' ids: a cover duty keeps its id when it moves to the next person, and its audit sentences
+  // name the people who declined it and quote their reasons.
+  const ids = [staffId, ...leave.map((l) => l.id), ...swaps.map((s) => s.id), ...requests.map((r) => r.id)];
   const audit = await prisma.auditLog.findMany({ where: { facilityId, entityId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { createdAt: true, action: true, entityType: true, summary: true } });
 
   return {
@@ -47,10 +50,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
   };
 }
 
-const cell = (v: unknown) => {
-  const s = v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : typeof v === "object" ? JSON.stringify(v) : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+const cell = (v: unknown) => csvCell(v instanceof Date ? v.toISOString() : v !== null && typeof v === "object" ? JSON.stringify(v) : v);
 
 /** The same export as one readable CSV: a block per section, each with its own heading row. */
 export function exportToCsv(data: Awaited<ReturnType<typeof exportMyData>>): string {
