@@ -200,4 +200,16 @@ describe("the text gateway check", () => {
       delete process.env.SMS_GATE_PASSWORD;
     }
   });
+
+  it("places someone in their public health unit when the facility has it, and keeps a chosen ward", async () => {
+    const { facility, code } = await setup();
+    const info = await prisma.department.create({ data: { facilityId: facility.id, name: "Health Information" } });
+    const hio = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Health Information Officer", code: "HIO", sortOrder: 9 } });
+    const nobody = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Disease Control Officer", code: "DCO", sortOrder: 10 } });
+    expect((await pub.post("/api/public/join/register", reg(code, { cadreId: hio.id }))).status).toBe(201);
+    expect((await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email: "ama@sombo.test" } })).departmentId).toBe(info.id);
+    // No Disease Control unit here, so nothing is guessed.
+    expect((await pub.post("/api/public/join/register", reg(code, { cadreId: nobody.id, email: "kofi@sombo.test", fullName: "Kofi Dery" }))).status).toBe(201);
+    expect((await prisma.staff.findFirstOrThrow({ where: { facilityId: facility.id, email: "kofi@sombo.test" } })).departmentId).not.toBe(info.id);
+  });
 });

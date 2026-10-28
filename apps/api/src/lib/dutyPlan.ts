@@ -83,6 +83,14 @@ export function unitForCadre(cadre: string | null | undefined): { name: string; 
   return null;
 }
 
+/** The public health unit a cadre belongs to, where only one fits. A facility that has the unit places the person in it when they join. */
+export function publicHealthUnitForCadre(cadre: string | null | undefined): string | null {
+  const c = (cadre ?? "").trim().toLowerCase();
+  const hit = PUBLIC_HEALTH_UNITS.find((u) => u.cadres.length === 1 && u.cadres[0].toLowerCase() === c && !/disease control/.test(c));
+  if (hit) return hit.name;
+  return c === "disease control officer" ? "Disease Control" : null;
+}
+
 /** What a unit starts needing on its morning, afternoon and night shifts. OPD 2/1/1, maternity 1/1/1, public health nothing until its figure is agreed, any other unit the morning only. */
 export function unitMinimums(unit: string): [number, number, number] {
   const u = unit.trim().toLowerCase();
