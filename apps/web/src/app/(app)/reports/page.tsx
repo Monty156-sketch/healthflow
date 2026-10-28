@@ -5,7 +5,8 @@ import { PageHeader } from "@/components/ui";
 
 const REPORTS = [
   { href: "/reports/compliance", title: "Compliance report", body: "Hours, duty days, nights, longest rest and rest breaches for every person in a month, every override with who approved it, and signature lines. PDF and CSV." },
-  { href: "/reports/fairness", title: "Fairness report", body: "Night, weekend, holiday and total duties for each person over three months, against the average for their cadre. Staff see their own figures only. CSV." },
+  { href: "/reports/fairness", title: "Fairness report", body: "Night, weekend, holiday and total duties for each person over three, six or twelve months, against the average for their cadre. Staff see their own figures only. CSV." },
+  { href: "/reports/allowances", title: "Duty days and allowances", body: "For each person in a month: duty days, each shift worked, nights, weekends, public holidays and hours, set against attendance. For the accounts office. Counts only, no rates. Workbook and CSV." },
   { href: "/reports/evidence", title: "Evidence report", body: "What HealthFlow did for this facility, month by month: preparation time, conflicts caught before publication, overrides, amendments, attendance and swaps." },
 ];
 

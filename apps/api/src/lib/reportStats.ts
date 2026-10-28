@@ -104,10 +104,12 @@ export interface FairRow {
 
 const plural = (w: string) => (/fe$/i.test(w) ? w.replace(/fe$/i, "ves") : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : /[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : `${w}s`);
 
-/** Three months ending at the given one, per cadre, against the cadre mean. */
-export async function fairnessFigures(facilityId: string, endYear: number, endMonth: number, departmentId?: string | null) {
+const SPAN_WORDS: Record<number, string> = { 3: "three", 6: "six", 12: "twelve" };
+
+/** Three, six or twelve months ending at the given one, per cadre, against the cadre mean. */
+export async function fairnessFigures(facilityId: string, endYear: number, endMonth: number, departmentId?: string | null, span = 3) {
   const months: { year: number; month: number }[] = [];
-  for (let i = 2; i >= 0; i--) {
+  for (let i = span - 1; i >= 0; i--) {
     const d = new Date(Date.UTC(endYear, endMonth - 1 - i, 1));
     months.push({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 });
   }
@@ -146,7 +148,7 @@ export async function fairnessFigures(facilityId: string, endYear: number, endMo
       const sentence =
         members.length < 2
           ? null
-          : `Night duties among ${plural(g.name.toLowerCase())} range from ${Math.min(...nights)} to ${Math.max(...nights)} over these three months, against an average of ${means.nights}.`;
+          : `Night duties among ${plural(g.name.toLowerCase())} range from ${Math.min(...nights)} to ${Math.max(...nights)} over these ${SPAN_WORDS[span] ?? span} months, against an average of ${means.nights}.`;
       return { cadre: g.name, cadreId: g.id, means, sentence, people: members.sort((a, b) => b.duties - a.duties || a.name.localeCompare(b.name)) };
     })
     .filter((g) => g.people.length > 0);
@@ -192,4 +194,18 @@ export async function complianceForRosters(facilityId: string, rosters: Awaited<
     summary: { staffAboveNormalWeek: sum("staffAboveNormalWeek"), restBreaches: sum("restBreaches"), overridesGranted: sum("overridesGranted"), unfilledShifts: sum("unfilledShifts") },
     normalWeek: NORMAL_WEEK,
   };
+}
+
+/**
+ * People whose duties sit well away from their cadre's average, so an in-charge can look at them before anyone complains.
+ * Only cadres of three or more are judged, and a gap must be at least two duties and a quarter of the average.
+ */
+export function fairnessFlags(person: FairRow, means: Record<"nights" | "weekends" | "holidays" | "duties", number>, cadreSize: number): string[] {
+  if (cadreSize < 3) return [];
+  const out: string[] = [];
+  for (const [key, label] of [["nights", "night duties"], ["weekends", "weekend duties"], ["holidays", "holiday duties"], ["duties", "total duties"]] as const) {
+    const gap = person[key] - means[key];
+    if (Math.abs(gap) >= 2 && Math.abs(gap) >= 0.25 * Math.max(means[key], 1)) out.push(`${gap > 0 ? "More" : "Fewer"} ${label} than the cadre average (${person[key]} against ${means[key]})`);
+  }
+  return out;
 }

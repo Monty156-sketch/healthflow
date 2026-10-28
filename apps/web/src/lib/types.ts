@@ -482,7 +482,8 @@ export interface FairnessReport {
   period: { from: string; to: string };
   monthsCovered: number;
   monthsAsked: number;
+  span?: number;
   manager: boolean;
-  cadres?: { cadre: string; means: FairMeans; sentence: string | null; people: ({ staffId: string; name: string } & FairMeans)[] }[];
+  cadres?: { cadre: string; means: FairMeans; sentence: string | null; people: ({ staffId: string; name: string; flags?: string[] } & FairMeans)[] }[];
   mine?: { cadre: string; means: FairMeans; me: FairMeans; peers: number } | null;
 }
