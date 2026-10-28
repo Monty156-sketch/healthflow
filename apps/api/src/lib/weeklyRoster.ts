@@ -75,7 +75,6 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
 
   const unfilled: { date: string; shift: string }[] = [];
   const rosterIds: string[] = [];
-  let duties = 0;
   for (let i = 0; i < months.length; i++) {
     const m = months[i];
     const roster = found[i] ?? (await prisma.roster.create({ data: { facilityId, year: m.year, month: m.month, departmentId: dept?.id ?? null, preparedBy: by.email } }));
@@ -129,7 +128,6 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     const dutyShift = new Set(data.shifts.filter((s) => s.countsAsDuty && !s.isOnCall).map((s) => s.id));
     const mine = new Map<string, string[]>();
     for (const c of fresh) if (dutyShift.has(c.shiftId)) mine.set(c.staffId, [...(mine.get(c.staffId) ?? []), `${shiftName.get(c.shiftId) ?? "duty"} on ${sayDay(c.day)}`]);
-    duties += [...mine.values()].reduce((n, l) => n + l.length, 0);
     for (const [sid, list] of mine) {
       await notifyStaff(facilityId, sid, {
         type: "duty_changed", title: `Your duties for the week from ${sayDay(lo)}`,
@@ -144,5 +142,5 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     });
   }
   const view = await weekView(facilityId, dept?.id ?? null, from);
-  return { ...view, unfilled, rosterIds, duties };
+  return { ...view, unfilled, rosterIds };
 }
