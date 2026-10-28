@@ -10,6 +10,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { Cadre, Department, Shift, Staff } from "@/lib/types";
+import { WeeklyRoster } from "@/components/WeeklyRoster";
 import { Button, Checkbox, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge } from "@/components/ui";
 
 interface Dep { id: string; name: string; kind: string; status: "ACTIVE" | "CLOSED"; startDate: string; endDate: string; dueBack: boolean; members: { id: string; name: string; cadre: string | null; department: string | null; shift: string; returnedOn: string | null }[] }
@@ -128,7 +129,7 @@ function Sheet({ id }: { id: string }) {
 }
 
 export default function DeploymentsPage() {
-  const { isAdmin } = useFacility();
+  const { isAdmin, me } = useFacility();
   const list = useResource<{ deployments: Dep[] }>("/api/facility/deployments");
   const [done, setDone] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -137,9 +138,10 @@ export default function DeploymentsPage() {
   const deps = list.data.deployments;
   return (
     <>
-      <PageHeader title="Emergency roster" description="People taken out of their unit for an exercise or emergency, with the shift each one works. They are confirmed back under Returns due." />
+      <PageHeader title="Emergency roster" description="Weekly rosters for units that plan a week at a time, and people taken out of their unit for an exercise or emergency. Those on an exercise are confirmed back under Returns due." />
       {done && <Notice tone="success">{done}</Notice>}
       <div className="mt-4 space-y-6">
+        {me.role !== "SUPERVISOR" && <WeeklyRoster />}
         {isAdmin && <Builder onMade={(t) => { setDone(t); list.reload(); }} />}
         <Panel title="Exercises">
           {deps.length === 0 ? (

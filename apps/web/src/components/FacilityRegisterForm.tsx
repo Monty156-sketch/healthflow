@@ -25,7 +25,7 @@ const TYPES = [
 ] as const;
 
 interface Plan { id: string; name: string; monthlyPriceGhs: number; setupPriceGhs: number | null; staffBandMin: number | null; staffBandMax: number | null; features: string[] }
-interface Options { departments: string[]; cadres: string[]; plans: Plan[] }
+interface Options { auto: boolean; departments: string[]; cadres: string[]; publicHealthUnits: { name: string; cadres: string[] }[]; plans: Plan[] }
 interface Done { facilityName: string; code: string; joinUrl: string; enrolmentToken: string }
 type Step = 1 | 2 | 3 | "code" | "enrol" | "codes";
 
@@ -70,6 +70,7 @@ export function FacilityRegisterForm() {
   const [planId, setPlanId] = useState("");
   const [departments, setDepartments] = useState<string[] | null>(null);
   const [cadres, setCadres] = useState<string[] | null>(null);
+  const [units, setUnits] = useState<string[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -114,7 +115,8 @@ export function FacilityRegisterForm() {
     try {
       const res = await api.post<Done>("/api/public/register-facility", {
         agency: v.agency, facilityName: v.facilityName, facilityType: v.facilityType, region: v.region, districtText: v.districtText || undefined, adminName: v.adminName, adminEmail: v.adminEmail, adminPhone: v.adminPhone, password: v.password, acceptedTerms: true,
-        planId: planId || undefined, departments: departments ?? [], cadres: cadres ?? [],
+        planId: planId || undefined, departments: options.auto ? [] : departments ?? [], cadres: options.auto ? [] : cadres ?? [],
+        publicHealthUnits: !options.auto && (departments ?? []).includes("Public Health") ? units : undefined,
       });
       setDone(res);
       setStep("code");
@@ -323,13 +325,28 @@ export function FacilityRegisterForm() {
 
       {step === 3 && options && departments && cadres && (
         <div className="space-y-6">
-          <p className="text-[15px] text-[var(--muted)]">Tick your departments and cadres. You can change them later.</p>
-          <ChooseMany legend="Departments" items={options.departments} chosen={departments} onChange={setDepartments} extra="Add a department that is not listed" error={errors.departments} />
-          <ChooseMany legend="Cadres" items={options.cadres} chosen={cadres} onChange={setCadres} extra="Add a cadre that is not listed" error={errors.cadres} />
+          {options.auto ? (
+            <Notice tone="neutral">
+              <strong className="block">Nothing to choose here.</strong>
+              A {TYPES.find(([k]) => k === v.facilityType)?.[1].toLowerCase() ?? "hospital"} is set up with all {options.departments.length} of its wards and departments, including the public health units, and {options.cadres.length} cadres. You can hide or add any of them after you sign in.
+            </Notice>
+          ) : (
+            <>
+              <p className="text-[15px] text-[var(--muted)]">Tick your departments and cadres. You can change them later.</p>
+              <ChooseMany legend="Departments" items={options.departments} chosen={departments} onChange={setDepartments} extra="Add a department that is not listed" error={errors.departments} />
+              {departments.includes("Public Health") && (
+                <div>
+                  <ChooseMany legend="Public health units" items={options.publicHealthUnits.map((u) => u.name)} chosen={units} onChange={setUnits} extra="Add a unit that is not listed" />
+                  <p className="mt-1 text-sm text-[var(--muted)]">Each unit gets its own roster. The cadres who work in the units you tick are added for you.</p>
+                </div>
+              )}
+              <ChooseMany legend="Cadres" items={options.cadres} chosen={cadres} onChange={setCadres} extra="Add a cadre that is not listed" error={errors.cadres} />
+            </>
+          )}
           {problem && <Notice tone="block">{problem}</Notice>}
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setStep(options.plans.length ? 2 : 1)}>Back</Button>
-            <Button disabled={busy || departments.length === 0 || cadres.length === 0} onClick={submit}>{busy ? "Registering…" : "Register my facility"}</Button>
+            <Button disabled={busy || (!options.auto && (departments.length === 0 || cadres.length === 0))} onClick={submit}>{busy ? "Registering…" : "Register my facility"}</Button>
           </div>
         </div>
       )}

@@ -11,7 +11,7 @@ export const isInCharge = (position: string | null | undefined) => /in[- ]?charg
  * disease control and health information officers, and the accountant and administrator.
  */
 export const defaultWeekdaysOnly = (cadre: string) =>
-  /(specialist|community health nurse|radiograph|physiotherap|dietic|dietit|dental|disease control|health information|accountant|administrator)/i.test(cadre);
+  /(specialist|community health nurse|radiograph|physiotherap|dietic|dietit|dental|disease control|health information|health promotion|nutrition|environmental health|public health|occupational health|accountant|administrator)/i.test(cadre);
 
 /** Medical officers and doctors are not on the duty roster, and neither are accountants and administrators. Specialists and dental surgeons are, on office hours. */
 export const defaultOnRoster = (cadre: string) =>
@@ -28,18 +28,51 @@ export const cadreDefaults = (cadre: string) => ({ onRoster: defaultOnRoster(cad
 export const leadsByGrade = (position: string | null | undefined) =>
   /(senior|principal|chief|in[- ]?charge|nurse manager|matron|sister|deputy director|head of|supervisor)/i.test(position ?? "");
 
+/**
+ * The units of a public health department, each with the cadres who work in it. A facility that has Public Health
+ * chooses its units; every unit is a department of its own, so it has its own roster and its own in-charge.
+ */
+export const PUBLIC_HEALTH_UNITS: { name: string; cadres: string[] }[] = [
+  { name: "Disease Control", cadres: ["Disease Control Officer"] },
+  { name: "Family Health", cadres: ["Midwife", "Community Health Nurse"] },
+  { name: "Reproductive and Child Health", cadres: ["Midwife", "Community Health Nurse"] },
+  { name: "Health Promotion", cadres: ["Health Promotion Officer"] },
+  { name: "Nutrition", cadres: ["Nutrition Officer"] },
+  { name: "Health Information", cadres: ["Health Information Officer"] },
+  { name: "Public Health Nursing", cadres: ["Public Health Nurse"] },
+  { name: "Malaria Control", cadres: ["Disease Control Officer"] },
+  { name: "Tuberculosis and Priority Diseases", cadres: ["Disease Control Officer"] },
+  { name: "Occupational Health", cadres: ["Occupational Health Officer"] },
+  { name: "Mental Health", cadres: ["Psychiatric Nurse"] },
+  { name: "Environmental Health and Sanitation", cadres: ["Environmental Health Officer"] },
+];
+export const isPublicHealthUnit = (name: string) => PUBLIC_HEALTH_UNITS.some((u) => u.name.toLowerCase() === name.trim().toLowerCase());
+
+/** The wards and departments of a hospital. A polyclinic has the smaller set; regional and teaching hospitals add their specialist units. */
+const POLYCLINIC_WARDS = ["Outpatient", "Emergency", "Male Medical Ward", "Female Medical Ward", "Paediatric Ward", "Labour Ward", "Maternity Ward", "Antenatal and Postnatal", "Child Welfare", "Theatre", "Dental", "Eye", "Physiotherapy", "Laboratory", "Pharmacy", "Radiology", "Records", "Stores", "Transport", "Support Services"];
+const HOSPITAL_WARDS = ["Outpatient", "Emergency", "Male Medical Ward", "Female Medical Ward", "Male Surgical Ward", "Female Surgical Ward", "Paediatric Ward", "Special Care Baby Unit", "Labour Ward", "Maternity Ward", "Antenatal and Postnatal", "Gynaecology Ward", "Child Welfare", "Theatre", "Recovery Room", "Intensive Care", "Orthopaedic and Trauma Ward", "Isolation Ward", "Eye", "ENT", "Dental", "Psychiatry", "Physiotherapy", "Laboratory", "Blood Bank", "Pharmacy", "Radiology", "Mortuary", "Records", "Stores", "Transport", "Support Services"];
+const REGIONAL_EXTRA = ["Neonatal Intensive Care", "Renal and Dialysis", "Oncology", "Burns and Plastic Surgery", "Cardiology", "Neurology", "Urology", "Amenity Ward"];
+const TEACHING_EXTRA = ["Neurosurgery", "Cardiothoracic Surgery", "Paediatric Intensive Care", "Endocrinology and Diabetes", "Haematology", "Paediatric Surgery"];
+export const WARDS_BY_TYPE: Record<string, string[]> = {
+  POLYCLINIC: [...POLYCLINIC_WARDS, "Public Health", ...PUBLIC_HEALTH_UNITS.map((u) => u.name)],
+  HOSPITAL: [...HOSPITAL_WARDS, "Public Health", ...PUBLIC_HEALTH_UNITS.map((u) => u.name)],
+  PRIVATE_HOSPITAL: [...HOSPITAL_WARDS, "Public Health", ...PUBLIC_HEALTH_UNITS.map((u) => u.name)],
+  REGIONAL_HOSPITAL: [...HOSPITAL_WARDS, ...REGIONAL_EXTRA, "Public Health", ...PUBLIC_HEALTH_UNITS.map((u) => u.name)],
+  TEACHING_HOSPITAL: [...HOSPITAL_WARDS, ...REGIONAL_EXTRA, ...TEACHING_EXTRA, "Public Health", ...PUBLIC_HEALTH_UNITS.map((u) => u.name)],
+};
+
 /** The departments that do not run night duty, as the Ghana Health Service facilities have them. Every other department runs nights. */
-const NO_NIGHT_DEPARTMENTS = ["administration", "antenatal and postnatal", "child welfare", "dental", "eye", "physiotherapy", "public health", "radiology", "stores"];
+const NO_NIGHT_DEPARTMENTS = ["administration", "antenatal and postnatal", "child welfare", "dental", "eye", "physiotherapy", "public health", "radiology", "stores", "ent", "family planning", "antenatal clinic", "child welfare clinic", ...PUBLIC_HEALTH_UNITS.map((u) => u.name.toLowerCase())];
 export const defaultRunsNights = (department: string) => !NO_NIGHT_DEPARTMENTS.includes(department.trim().toLowerCase());
 
-export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Health Assistant", "Ward Assistant", "Orderly", "Driver", "Security", "Cleaner"];
+export const STANDARD_CADRES = ["Medical Officer", "Specialist", "Physician Assistant", "Midwife", "Nurse", "Enrolled Nurse", "Community Health Nurse", "Community Health Officer", "Nurse Anaesthetist", "Pharmacist", "Pharmacy Technician", "Laboratory Scientist", "Laboratory Technician", "Radiographer", "Physiotherapist", "Dietician", "Dental Surgeon", "Dental Therapist", "Disease Control Officer", "Health Information Officer", "Public Health Nurse", "Psychiatric Nurse", "Environmental Health Officer", "Health Promotion Officer", "Nutrition Officer", "Occupational Health Officer", "Health Assistant", "Ward Assistant", "Orderly", "Driver", "Security", "Cleaner"];
 export const STANDARD_DEPARTMENTS = ["Outpatient", "Maternity", "Antenatal and Postnatal", "Child Welfare", "Emergency", "Surgery", "Medicine", "Paediatrics", "Theatre", "Intensive Care", "Laboratory", "Pharmacy", "Radiology", "Dental", "Eye", "Physiotherapy", "Public Health", "Records", "Stores", "Transport", "Mortuary", "Support Services"];
 /** The units a health centre rosters by, plus the support units. */
 const UNIT_NAMES = ["OPD", "Clinical Nurses", "Maternity", "Midwives", "Security", "Drivers", "Cleaners"];
 
 /** The standard cadres and departments carry fixed night and office-hour settings. Ones the facility adds itself are free to change. */
 export const isStandardCadre = (name: string) => STANDARD_CADRES.some((c) => c.toLowerCase() === name.trim().toLowerCase());
-export const isStandardDepartment = (name: string) => [...STANDARD_DEPARTMENTS, ...UNIT_NAMES].some((d) => d.toLowerCase() === name.trim().toLowerCase());
+export const isStandardDepartment = (name: string) => [...STANDARD_DEPARTMENTS, ...UNIT_NAMES, ...Object.values(WARDS_BY_TYPE).flat()].some((d) => d.toLowerCase() === name.trim().toLowerCase());
 
 /** The roster unit a health centre or CHPS compound puts someone in, from their cadre. */
 export function unitForCadre(cadre: string | null | undefined): { name: string; runsNights: boolean } | null {

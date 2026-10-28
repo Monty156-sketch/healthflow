@@ -4,7 +4,7 @@
 // or written by the platform; staff are imported by the facility itself.
 import type { FacilityType } from "@healthflow/db";
 import { prisma } from "./prisma.js";
-import { cadreDefaults, defaultKind, defaultRunsNights, STANDARD_CADRES, STANDARD_DEPARTMENTS } from "./dutyPlan.js";
+import { cadreDefaults, defaultKind, defaultRunsNights, STANDARD_CADRES, STANDARD_DEPARTMENTS, WARDS_BY_TYPE } from "./dutyPlan.js";
 
 export { STANDARD_CADRES, STANDARD_DEPARTMENTS };
 import { ensureRules } from "../routes/facility/rules.js";
@@ -33,8 +33,11 @@ export function portfolioFor(type?: string | null): { cadres: string[]; departme
   if (type === "CHPS_COMPOUND") return { cadres: CHPS_CADRES, departments: CHPS_DEPARTMENTS };
   if (type === "CLINIC") return { cadres: CENTRE_CADRES, departments: CLINIC_DEPARTMENTS };
   if (type === "HEALTH_CENTRE") return { cadres: CENTRE_CADRES, departments: CENTRE_DEPARTMENTS };
-  return { cadres: STANDARD_CADRES, departments: STANDARD_DEPARTMENTS };
+  return { cadres: STANDARD_CADRES, departments: WARDS_BY_TYPE[type ?? ""] ?? STANDARD_DEPARTMENTS };
 }
+
+/** Hospitals, polyclinics, regional and teaching hospitals get every ward and cadre; their administrator does not choose them. */
+export const hasFullPortfolio = (type?: string | null) => Boolean(type && WARDS_BY_TYPE[type]);
 
 /** Adds any standard cadre or department the facility does not already have, by name, leaving everything it has as it is. */
 export async function seedGroups(facilityId: string, type?: FacilityType) {
