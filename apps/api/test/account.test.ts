@@ -197,13 +197,15 @@ describe("managing two-step sign-in", () => {
     expect(summary.body.account.recoveryCodesLeft).toBe(9);
   });
 
-  it("an admin can never turn it off; a supervisor can", async () => {
+  it("admins, in-charges and supervisors can never turn it off; other staff can", async () => {
     const facility = await makeFacility();
-    const admin = (await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, mfa: true })).user;
-    const supervisor = (await makeUser({ role: "SUPERVISOR", facilityId: facility.id, mfa: true })).user;
-    expect((await as(admin).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(403);
-    expect((await as(supervisor).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(200);
-    expect((await prisma.userProfile.findUniqueOrThrow({ where: { id: supervisor.id } })).mfaEnabled).toBe(false);
+    for (const role of ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"] as const) {
+      const user = (await makeUser({ role, facilityId: facility.id, mfa: true })).user;
+      expect((await as(user).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(403);
+    }
+    const nurse = (await makeUser({ role: "STAFF", facilityId: facility.id, mfa: true })).user;
+    expect((await as(nurse).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(200);
+    expect((await prisma.userProfile.findUniqueOrThrow({ where: { id: nurse.id } })).mfaEnabled).toBe(false);
   });
 });
 

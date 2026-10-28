@@ -84,7 +84,7 @@ describe("row-level security in the API client", () => {
     const none = await p.$transaction(async (tx) => setting(tx));
     expect(none[0].b).toBe("on");
 
-    expect(() => p.$transaction([p.staff.count()])).toThrow(/callback/i);
+    expect(() => p.$transaction([p.staff.count()])).toThrow(/async \(tx\)/);
     await p.$disconnect();
   });
 });
