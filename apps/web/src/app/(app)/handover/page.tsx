@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate, showDateTime } from "@/lib/format";
@@ -99,10 +99,11 @@ function Write({ options, ward, onDone }: { options: Options; ward: string; onDo
 
 export default function HandoverPage() {
   const options = useResource<Options>("/api/facility/handover/options");
-  const [ward, setWard] = useState("");
+  const [picked, setWard] = useState("");
   const [days, setDays] = useState("3");
   const [writing, setWriting] = useState(false);
-  useEffect(() => { if (options.data?.ward) setWard(options.data.ward); }, [options.data]);
+  // Staff and ward managers are held to their own ward; the rest choose.
+  const ward = options.data?.fixed ? (options.data.ward ?? "") : picked;
   const notes = useResource<{ notes: Note[] }>(options.data ? `/api/facility/handover?days=${days}${ward ? `&ward=${ward}` : ""}` : null);
 
   if (options.error && !options.data) return <LoadError onRetry={options.reload} />;
@@ -121,7 +122,7 @@ export default function HandoverPage() {
           {!o.fixed && o.wards.length > 0 && (
             <div className="max-w-[16rem]">
               <Field label="Ward">{(a) => (
-                <Select {...a} value={ward} onChange={(e) => setWard(e.target.value)}>
+                <Select {...a} value={picked} onChange={(e) => setWard(e.target.value)}>
                   <option value="">All wards</option>
                   {o.wards.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
                 </Select>
