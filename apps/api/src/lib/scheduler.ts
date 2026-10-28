@@ -13,6 +13,7 @@ import { applyDueTransfers } from "../routes/facility/transfers.js";
 import { runCredentialReminders } from "./credentials.js";
 import { runRosterDeadlineReminders } from "./rosterDeadline.js";
 import { runWhatsappReminders } from "./whatsapp.js";
+import { snapshotLastMonth } from "./scorecard.js";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -32,6 +33,7 @@ export const JOBS: Job[] = [
   { name: "credential-reminders", label: "Remind staff whose licences are nearing their date", everyMs: 24 * HOUR, run: async () => `${await runCredentialReminders()} reminder(s) sent.` },
   { name: "roster-deadlines", label: "Remind owners of rosters that are due to be published", everyMs: 24 * HOUR, run: async () => `${await runRosterDeadlineReminders()} reminder(s) sent.` },
   { name: "whatsapp-reminders", label: "Send WhatsApp duty reminders for today", everyMs: HOUR, run: async () => `${await runWhatsappReminders()} message(s) sent.` },
+  { name: "scorecard-snapshots", label: "Freeze last month's scorecard figures", everyMs: 24 * HOUR, run: async () => `${await snapshotLastMonth()} facility month(s) frozen.` },
   { name: "handover-cleanup", label: "Delete handover notes older than 90 days", everyMs: 24 * HOUR, run: async () => { const old = { lt: new Date(Date.now() - 90 * 86_400_000) }; const notes = await prisma.handoverNote.deleteMany({ where: { createdAt: old } }); return `${notes.count} note(s) removed.`; } },
   { name: "retention-scan", label: "Retention scan", everyMs: 24 * HOUR, run: async () => JSON.stringify(await runRetentionJob()).slice(0, 500) },
   { name: "sms-log-cleanup", label: "Delete text and WhatsApp message records older than 90 days", everyMs: 24 * HOUR, run: async () => { const old = { lt: new Date(Date.now() - 90 * 86_400_000) }; const a = await prisma.smsMessage.deleteMany({ where: { createdAt: old } }); const b = await prisma.whatsappMessage.deleteMany({ where: { createdAt: old } }); return `${a.count + b.count} record(s) removed.`; } },

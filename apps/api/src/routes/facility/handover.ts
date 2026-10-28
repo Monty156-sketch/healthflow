@@ -8,6 +8,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { notifyWard } from "../../lib/notify.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { patientProblem } from "../../lib/patientData.js";
 
 export const handoverRouter = Router();
 
@@ -38,6 +39,29 @@ async function wardFor(req: Parameters<typeof caller>[0], asked: unknown): Promi
     return { fixed: true, ward: me?.departmentId ?? null };
   }
   return { fixed: false, ward: typeof asked === "string" && asked ? asked : null };
+}
+
+/** Names the ward legitimately uses, so they are not mistaken for a patient's name. */
+async function knownNames(facilityId: string) {
+  const [f, depts, shifts, cadres, staff] = await Promise.all([
+    prisma.facility.findUnique({ where: { id: facilityId }, select: { name: true } }),
+    prisma.department.findMany({ where: { facilityId }, select: { name: true } }),
+    prisma.shift.findMany({ where: { facilityId }, select: { name: true } }),
+    prisma.cadre.findMany({ where: { facilityId }, select: { name: true } }),
+    prisma.staff.findMany({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, select: { fullName: true } }),
+  ]);
+  return [f?.name ?? "", ...depts.map((d) => d.name), ...shifts.map((s) => s.name), ...cadres.map((c) => c.name), ...staff.map((s) => s.fullName)];
+}
+
+/** Field errors for any of the three texts that seems to name a patient, or null when they are clean. */
+async function patientFields(facilityId: string, texts: Record<"summary" | "pending" | "concerns", string | null | undefined>) {
+  const known = await knownNames(facilityId);
+  const fields: Record<string, string> = {};
+  for (const [k, v] of Object.entries(texts)) {
+    const problem = patientProblem(v, known);
+    if (problem) fields[k] = problem;
+  }
+  return Object.keys(fields).length ? fields : null;
 }
 
 const present = (n: { id: string; departmentId: string | null; department?: { name: string } | null; shiftId: string; shift: { name: string }; dutyDate: Date; authorName: string; authorEmail: string; summary: string; pending: string | null; concerns: string | null; urgent: boolean; createdAt: Date; reads: { readerEmail: string; readerName: string; readAt: Date }[] }, me: string, manager: boolean) => ({
@@ -106,6 +130,8 @@ handoverRouter.post("/", async (req, res) => {
     const wards = await prisma.department.count({ where: { facilityId: who.facilityId, active: true, kind: "WARD" } });
     if (wards > 0) return res.status(400).json({ error: "invalid_input", fields: { ward: "Choose the ward." } });
   }
+  const named = await patientFields(who.facilityId, input);
+  if (named) return res.status(400).json({ error: "invalid_input", fields: named });
   const note = await prisma.handoverNote.create({
     data: { facilityId: who.facilityId, departmentId, shiftId: shift.id, dutyDate: new Date(`${input.dutyDate}T00:00:00.000Z`), authorEmail: who.email, authorName: who.displayName, summary: input.summary, pending: input.pending, concerns: input.concerns, urgent: input.urgent },
     include,
@@ -151,6 +177,8 @@ handoverRouter.put("/:id", async (req, res) => {
   if (!canChange(who, note)) return res.status(403).json({ error: "forbidden", message: "A note can be changed by its writer for twelve hours, or by the administrator." });
   const input = parseOr400(body.pick({ summary: true, pending: true, concerns: true, urgent: true }), req.body, res);
   if (!input) return;
+  const named = await patientFields(who.facilityId, input);
+  if (named) return res.status(400).json({ error: "invalid_input", fields: named });
   const updated = await prisma.handoverNote.update({ where: { id: note.id }, data: { summary: input.summary, pending: input.pending, concerns: input.concerns, urgent: input.urgent }, include });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "handover_changed", entityType: "HandoverNote", entityId: note.id, summary: `${who.displayName} changed a handover note by ${note.authorName}.` });
   res.json({ note: present(updated, who.email, isManager(who.role)) });

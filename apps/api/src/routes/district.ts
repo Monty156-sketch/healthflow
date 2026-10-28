@@ -330,14 +330,15 @@ const label = (y: number, m: number) => new Date(Date.UTC(y, m - 1, 1)).toLocale
 async function scorecardFor(req: Request) {
   const { year, month } = scorecardMonth(req.query.month);
   // Each figure is read under its own permission, and each read is written to the facility's audit log.
-  const [coverage, attendance, compliance] = await Promise.all([
+  const [coverage, attendance, compliance, staffing] = await Promise.all([
     read(req, "COVERAGE", "the performance scorecard"),
     read(req, "ATTENDANCE", "the performance scorecard"),
     read(req, "COMPLIANCE", "the performance scorecard"),
+    read(req, "STAFFING", "the performance scorecard"),
   ]);
-  const rows = await scorecard(year, month, coverage, attendance, compliance);
+  const rows = await scorecard(year, month, coverage, attendance, compliance, staffing);
   const prev = new Date(Date.UTC(year, month - 2, 1));
-  return { year, month, rows, coverage, attendance, compliance, label: label(year, month), previousLabel: label(prev.getUTCFullYear(), prev.getUTCMonth() + 1) };
+  return { year, month, rows, coverage, attendance, compliance, staffing, label: label(year, month), previousLabel: label(prev.getUTCFullYear(), prev.getUTCMonth() + 1) };
 }
 
 /** Per district, for a regional office comparing the districts that report to it. */
@@ -349,6 +350,7 @@ function byDistrict(rows: Row[]) {
     coverage: mean(list.map((r) => r.month.coverage)), previousCoverage: mean(list.map((r) => r.previous.coverage)),
     attendance: mean(list.map((r) => r.month.attendance)), previousAttendance: mean(list.map((r) => r.previous.attendance)),
     publishedBeforeStart: mean(list.map((r) => r.month.publishedBeforeStart)),
+    staffing: mean(list.map((r) => r.month.staffing)),
     blocking: list.every((r) => r.month.blocking === null) ? null : list.reduce((n, r) => n + (r.month.blocking ?? 0), 0),
     inConcern: list.filter((r) => r.concerns > 0).length,
   })).sort((a, b) => b.inConcern - a.inConcern || a.district.localeCompare(b.district));
@@ -356,7 +358,7 @@ function byDistrict(rows: Row[]) {
 
 districtRouter.get("/scorecard", async (req, res) => {
   const s = await scorecardFor(req);
-  const all = new Map([...s.coverage, ...s.attendance, ...s.compliance].map((g) => [g.facilityId, g]));
+  const all = new Map([...s.coverage, ...s.attendance, ...s.compliance, ...s.staffing].map((g) => [g.facilityId, g]));
   const level = (await prisma.district.findUnique({ where: { id: req.district!.districtId }, select: { level: true } }))?.level;
   res.json({
     reading: {
@@ -372,8 +374,9 @@ districtRouter.get("/scorecard", async (req, res) => {
       coverage: mean(s.rows.map((r) => r.month.coverage)), previousCoverage: mean(s.rows.map((r) => r.previous.coverage)),
       attendance: mean(s.rows.map((r) => r.month.attendance)), previousAttendance: mean(s.rows.map((r) => r.previous.attendance)),
       publishedBeforeStart: mean(s.rows.map((r) => r.month.publishedBeforeStart)),
+      staffing: mean(s.rows.map((r) => r.month.staffing)), previousStaffing: mean(s.rows.map((r) => r.previous.staffing)),
     },
-    thresholds: { coverage: "Good from 90%, watch from 75%", attendance: "Good from 90%, watch from 70%", publishedBeforeStart: "Good at 100%, watch from 50%", blocking: "Good at none, watch up to 2" },
+    thresholds: { staffing: "Good from 90%, watch from 75%", coverage: "Good from 90%, watch from 75%", attendance: "Good from 90%, watch from 70%", publishedBeforeStart: "Good at 100%, watch from 50%", blocking: "Good at none, watch up to 2" },
     facilities: s.rows,
     ...(level === "REGION" ? { districts: byDistrict(s.rows) } : {}),
   });
@@ -385,8 +388,8 @@ districtRouter.get("/scorecard.csv", async (req, res) => {
   const n = (v: number | null) => (v === null ? "" : v);
   const lines = [
     `Performance scorecard,${esc(req.district!.districtName)},${s.label},compared with ${s.previousLabel}`,
-    "Facility,District,Days fully staffed %,Change,Published before month began %,Attendance recorded %,Change,Blocking findings open,Warnings open",
-    ...s.rows.map((r) => [r.name, r.district ?? "", n(r.month.coverage), n(r.change.coverage), n(r.month.publishedBeforeStart), n(r.month.attendance), n(r.change.attendance), n(r.month.blocking), n(r.month.warnings)].map(esc).join(",")),
+    "Facility,District,Days fully staffed %,Change,Published before month began %,Attendance recorded %,Change,Posts filled %,Blocking findings open,Warnings open",
+    ...s.rows.map((r) => [r.name, r.district ?? "", n(r.month.coverage), n(r.change.coverage), n(r.month.publishedBeforeStart), n(r.month.attendance), n(r.change.attendance), n(r.month.staffing), n(r.month.blocking), n(r.month.warnings)].map(esc).join(",")),
   ];
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="scorecard-${s.year}-${String(s.month).padStart(2, "0")}.csv"`);

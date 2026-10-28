@@ -71,3 +71,19 @@ describe("shift handover notes", () => {
     expect(await prisma.auditLog.count({ where: { facilityId: facility.id, action: "handover_removed" } })).toBe(1);
   });
 });
+
+describe("patient names in handover notes", () => {
+  it("refuses a note that names a patient, saying which words and why, and accepts it once rewritten", async () => {
+    const { ama, night } = await setup();
+    const api = as(ama);
+    const bad = await api.post("/api/facility/handover", { shiftId: night.id, dutyDate: today(), summary: "Quiet night. Madam Fatima in bed 3 refused food.", pending: "Call 0241234567 about the result" });
+    expect(bad.status).toBe(400);
+    expect(bad.body.fields.summary).toContain("Madam Fatima");
+    expect(bad.body.fields.pending).toContain("phone number");
+    const good = await api.post("/api/facility/handover", { shiftId: night.id, dutyDate: today(), summary: "Quiet night. Bed 3 refused food, review at 06:00.", pending: "Result for bed 3 to be collected" });
+    expect(good.status).toBe(201);
+    // The same rule holds when a note is changed afterwards.
+    const edit = await api.put(`/api/facility/handover/${good.body.note.id}`, { summary: "Mr Kofi in bed 3 is better", urgent: false });
+    expect(edit.status).toBe(400);
+  });
+});

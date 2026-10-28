@@ -6,7 +6,7 @@ import { categoryOf, mutedFrom } from "./notificationPrefs.js";
 import { textStaff } from "./sms.js";
 
 /** The notices worth a text: the ones that change a person's duties or ask them for something. */
-const SMS_TYPES = new Set(["roster_published", "duty_moved", "reinstated", "cover_asked", "cover_arranged", "swap_requested", "swap_decided", "leave_decided", "return_due", "deployment_assigned"]);
+const SMS_TYPES = new Set(["roster_published", "duty_moved", "reinstated", "cover_asked", "cover_arranged", "swap_requested", "swap_decided", "leave_decided", "return_due", "deployment_assigned", "credential_expiry"]);
 
 export interface NoteContent {
   type: string;
@@ -47,7 +47,9 @@ export async function notifyDeciders(facilityId: string, n: NoteContent, exceptE
 /** The account linked to one staff record, if they have one. */
 export async function notifyStaff(facilityId: string, staffId: string, n: NoteContent) {
   const user = await prisma.userProfile.findFirst({ where: { facilityId, staffId, active: true }, select: { userEmail: true, staffId: true } });
-  if (user) await send(facilityId, [{ email: user.userEmail, staffId: user.staffId }], n);
+  if (user) return send(facilityId, [{ email: user.userEmail, staffId: user.staffId }], n);
+  // A member of staff with no login still gets the notices that change their duties, by text, if they have a number and have not opted out.
+  if (SMS_TYPES.has(n.type)) await textStaff(facilityId, staffId, n.type, n.body);
 }
 
 /** The facility administrators only. */
