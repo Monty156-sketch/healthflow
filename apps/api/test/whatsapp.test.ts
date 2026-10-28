@@ -85,3 +85,17 @@ describe("WhatsApp duty reminders", () => {
     expect((await nurseApi.put("/api/facility/me/whatsapp", { optIn: true })).status).toBe(409);
   });
 });
+
+describe("WhatsApp for people without a login", () => {
+  it("lets the administrator record that a person with no login agreed, but not for someone with a login", async () => {
+    const { api, facility, nurseId } = await setup();
+    const walkIn = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "W1", fullName: "Yaa No Login", status: "ACTIVE", phone: "0551112233" } });
+    const list = (await api.get("/api/facility/whatsapp/people")).body.people;
+    expect(list.map((p: { name: string }) => p.name)).toEqual(["Yaa No Login"]);
+    expect((await api.put(`/api/facility/whatsapp/people/${walkIn.id}`, { optIn: true })).status).toBe(200);
+    expect((await prisma.staff.findUniqueOrThrow({ where: { id: walkIn.id } })).whatsappOptIn).toBe(true);
+    expect(await prisma.auditLog.count({ where: { facilityId: facility.id, action: "whatsapp_opt_in_recorded" } })).toBe(1);
+    // Ama has her own login, so the choice is hers alone.
+    expect((await api.put(`/api/facility/whatsapp/people/${nurseId}`, { optIn: true })).status).toBe(409);
+  });
+});

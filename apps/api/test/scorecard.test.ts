@@ -72,12 +72,12 @@ describe("district performance scorecard", () => {
   it("writes each read to the facility's audit log and downloads as CSV", async () => {
     const { clinic, officer, admin } = await setup();
     await published(clinic.id, 1, 0.75, 2);
-    await as(admin).put("/api/facility/directorate", { scopes: ["ATTENDANCE", "COMPLIANCE", "COVERAGE"] });
+    await as(admin).put("/api/facility/directorate", { scopes: ["ATTENDANCE", "COMPLIANCE", "COVERAGE", "STAFFING"] });
     const csv = await as(officer).get("/api/district/scorecard.csv");
     expect(csv.status).toBe(200);
     expect(csv.text).toContain("Granted Clinic");
     expect(csv.text).toContain("Attendance recorded %");
-    expect(await prisma.auditLog.count({ where: { facilityId: clinic.id, action: "district_read" } })).toBe(3);
+    expect(await prisma.auditLog.count({ where: { facilityId: clinic.id, action: "district_read" } })).toBe(4);
     // Closed to a facility user.
     expect((await as(admin).get("/api/district/scorecard")).status).toBe(403);
   });
@@ -89,5 +89,27 @@ describe("district performance scorecard", () => {
     const last = ym(1);
     const res = (await as(officer).get("/api/district/scorecard?month=2999-01")).body;
     expect(res.month).toBe(`${last.year}-${String(last.month).padStart(2, "0")}`);
+  });
+
+  it("measures posts filled, and freezes a finished month so later edits cannot change it", async () => {
+    const { clinic, officer, admin } = await setup();
+    const nurse = await prisma.cadre.create({ data: { facilityId: clinic.id, name: "Nurse", code: "RN", sortOrder: 1 } });
+    await prisma.establishmentPost.create({ data: { facilityId: clinic.id, cadreId: nurse.id, approvedCount: 4 } });
+    for (let i = 0; i < 3; i++) await prisma.staff.create({ data: { facilityId: clinic.id, staffNo: `N${i}`, fullName: `Nurse ${i}`, status: "ACTIVE", cadreId: nurse.id } });
+    const last = await published(clinic.id, 1, 0.9, 3);
+    await as(admin).put("/api/facility/directorate", { scopes: ["ATTENDANCE", "STAFFING"] });
+    // The month ended and nothing was frozen yet: staffing is unknown for it rather than guessed.
+    expect((await as(officer).get("/api/district/scorecard")).body.facilities[0].month.staffing).toBeNull();
+    const { snapshotLastMonth } = await import("../src/lib/scorecard.js");
+    // Both clinics in the district are frozen, whatever they have shared.
+    expect(await snapshotLastMonth()).toBe(2);
+    expect(await snapshotLastMonth()).toBe(0);
+    let row = (await as(officer).get("/api/district/scorecard")).body.facilities[0];
+    expect(row.month.staffing).toBe(75);
+    expect(row.bands.staffing).toBe("WATCH");
+    // A later edit to the old roster does not move the frozen figure.
+    await prisma.roster.update({ where: { id: last.id }, data: { attendanceCompleteness: 0.2 } });
+    row = (await as(officer).get("/api/district/scorecard")).body.facilities[0];
+    expect(row.month.attendance).toBe(90);
   });
 });

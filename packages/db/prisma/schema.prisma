@@ -404,6 +404,7 @@ model Facility {
   handoverNotes       HandoverNote[]
   rosterReminders     RosterDeadlineReminder[]
   whatsappMessages    WhatsappMessage[]
+  scorecardSnapshots  ScorecardSnapshot[]
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -1808,4 +1809,17 @@ model WhatsappMessage {
 
   @@unique([staffId, dutyDate, kind])
   @@index([facilityId, createdAt])
+}
+
+/// A facility's scorecard figures for a finished month, frozen so that later edits to old rosters cannot change what was reported.
+model ScorecardSnapshot {
+  id         String   @id @default(cuid())
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id])
+  year       Int
+  month      Int
+  metrics    Json
+  takenAt    DateTime @default(now())
+
+  @@unique([facilityId, year, month])
 }

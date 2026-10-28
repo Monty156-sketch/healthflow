@@ -9,6 +9,7 @@
     "migrate": "node ../../scripts/db-guard.mjs develop && prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
     "seed": "node ../../scripts/db-guard.mjs develop && tsx prisma/seed.ts",
+    "seed:sample": "node ../../scripts/db-guard.mjs develop && tsx prisma/seed-sample.ts",
     "studio": "node ../../scripts/db-guard.mjs develop && prisma studio"
   },
   "dependencies": {

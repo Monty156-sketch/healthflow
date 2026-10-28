@@ -47,6 +47,34 @@ whatsappRouter.put("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
   res.json({ enabled: input.enabled });
 });
 
+// People with a phone number but no login of their own. They cannot switch reminders on themselves, so the administrator records
+// that the person agreed, and the record says who recorded it. A person with a login is never listed: that choice stays theirs.
+whatsappRouter.get("/people", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const { facilityId } = caller(req);
+  const logins = await prisma.userProfile.findMany({ where: { facilityId, active: true, staffId: { not: null } }, select: { staffId: true } });
+  const withLogin = new Set(logins.map((l) => l.staffId));
+  const staff = await prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, orderBy: { fullName: "asc" }, select: { id: true, fullName: true, staffNo: true, phone: true, whatsappOptIn: true } });
+  res.json({ people: staff.filter((s) => !withLogin.has(s.id) && normalisePhone(s.phone)).map((s) => ({ id: s.id, name: s.fullName, staffNo: s.staffNo, optIn: s.whatsappOptIn })) });
+});
+
+whatsappRouter.put("/people/:staffId", allowRoles(...ADMIN_ROLES), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(z.object({ optIn: z.boolean() }), req.body, res);
+  if (!input) return;
+  const staff = await prisma.staff.findFirst({ where: { id: String(req.params.staffId), facilityId: who.facilityId, status: "ACTIVE" }, select: { id: true, fullName: true, phone: true } });
+  if (!staff) return res.status(404).json({ error: "not_found" });
+  if ((await prisma.userProfile.count({ where: { facilityId: who.facilityId, staffId: staff.id, active: true } })) > 0) {
+    return res.status(409).json({ error: "has_login", message: `${staff.fullName} has their own login, so only they can choose this.` });
+  }
+  if (input.optIn && !normalisePhone(staff.phone)) return res.status(409).json({ error: "no_number", message: `${staff.fullName} has no usable mobile number.` });
+  await prisma.staff.update({ where: { id: staff.id }, data: { whatsappOptIn: input.optIn, whatsappOptInAt: input.optIn ? new Date() : null } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "whatsapp_opt_in_recorded", entityType: "Staff", entityId: staff.id,
+    summary: input.optIn ? `${who.displayName} recorded that ${staff.fullName}, who has no login, agreed to WhatsApp duty reminders.` : `${who.displayName} recorded that ${staff.fullName} no longer wants WhatsApp duty reminders.`,
+  });
+  res.json({ optIn: input.optIn });
+});
+
 // Proves the template is approved and the keys work: sends one real message to a number the administrator types.
 whatsappRouter.post("/test", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const who = caller(req);

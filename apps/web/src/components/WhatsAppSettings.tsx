@@ -36,6 +36,33 @@ function TestMessage({ onSent }: { onSent: () => void }) {
   );
 }
 
+interface Person { id: string; name: string; staffNo: string; optIn: boolean }
+
+/** People with a number but no login: the administrator records that they agreed. */
+function NoLogin() {
+  const { data, error, reload } = useResource<{ people: Person[] }>("/api/facility/whatsapp/people");
+  const [busy, setBusy] = useState<string | null>(null);
+  if (error || !data || data.people.length === 0) return null;
+  async function set(p: Person, optIn: boolean) {
+    setBusy(p.id);
+    try { await api.put(`/api/facility/whatsapp/people/${p.id}`, { optIn }); reload(); } finally { setBusy(null); }
+  }
+  return (
+    <div className="mt-5 border-t border-[var(--border)] pt-4">
+      <h3 className="mb-1 text-sm font-medium text-[var(--muted)]">People without a login</h3>
+      <p className="mb-2 text-sm text-[var(--muted)]">They cannot choose for themselves. Tick a person only after they have told you they want their duty reminders on WhatsApp. Your name is recorded against it.</p>
+      <ul className="divide-y divide-[var(--border)] text-[15px]">
+        {data.people.map((p) => (
+          <li key={p.id} className="flex min-h-11 items-center justify-between gap-3 py-1">
+            <span>{p.name} <span className="text-sm text-[var(--muted)]">{p.staffNo}</span></span>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-5" checked={p.optIn} disabled={busy === p.id} onChange={(e) => set(p, e.target.checked)} />Agreed</label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Whether the facility sends WhatsApp duty reminders, how many people chose them, and what went out. */
 export function WhatsAppSettings() {
   const { data, error, reload } = useResource<View>("/api/facility/whatsapp");
@@ -69,6 +96,7 @@ export function WhatsAppSettings() {
       </Button>
       <p className="mt-2 text-sm text-[var(--muted)]">Staff choose this for themselves under their account. You cannot switch it on for them. Numbers come from staff records.</p>
       {data.configured && <TestMessage onSent={reload} />}
+      <NoLogin />
       {data.recent.length > 0 && (
         <div className="mt-5" role="region" aria-label="Recent WhatsApp messages" tabIndex={0}>
           <h3 className="mb-2 text-sm font-medium text-[var(--muted)]">Recent messages (kept 90 days)</h3>

@@ -7,15 +7,15 @@ import { DistrictReading, type Reading } from "@/components/DistrictReading";
 import { Button, EmptyState, Field, Loading, LoadError, Notice, PageHeader, Panel, Select, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
 
 type Band = "GOOD" | "WATCH" | "CONCERN" | null;
-type Key = "coverage" | "publishedBeforeStart" | "attendance" | "blocking" | "warnings";
-interface Metrics { coverage: number | null; publishedBeforeStart: number | null; attendance: number | null; blocking: number | null; warnings: number | null }
+type Key = "coverage" | "publishedBeforeStart" | "attendance" | "staffing" | "blocking" | "warnings";
+interface Metrics { coverage: number | null; publishedBeforeStart: number | null; attendance: number | null; staffing: number | null; blocking: number | null; warnings: number | null }
 interface Row { facilityId: string; name: string; district: string | null; month: Metrics; previous: Metrics; change: Record<Key, number | null>; bands: Record<Key, Band>; concerns: number }
 interface Data {
   reading: Reading; month: string; label: string; previousLabel: string;
-  summary: { facilities: number; inConcern: number; coverage: number | null; previousCoverage: number | null; attendance: number | null; previousAttendance: number | null; publishedBeforeStart: number | null };
+  summary: { facilities: number; inConcern: number; coverage: number | null; previousCoverage: number | null; attendance: number | null; previousAttendance: number | null; publishedBeforeStart: number | null; staffing: number | null; previousStaffing: number | null };
   thresholds: Record<string, string>;
   facilities: Row[];
-  districts?: { district: string; facilities: number; coverage: number | null; previousCoverage: number | null; attendance: number | null; previousAttendance: number | null; publishedBeforeStart: number | null; blocking: number | null; inConcern: number }[];
+  districts?: { district: string; facilities: number; coverage: number | null; previousCoverage: number | null; attendance: number | null; previousAttendance: number | null; publishedBeforeStart: number | null; staffing: number | null; blocking: number | null; inConcern: number }[];
 }
 
 const TONE = { GOOD: "success", WATCH: "warning", CONCERN: "block" } as const;
@@ -88,12 +88,13 @@ export default function Scorecard() {
             <EmptyState title="Nothing to show">No facility has granted coverage, attendance or compliance yet.</EmptyState>
           ) : (
             <div className="space-y-6">
-              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                 {([
                   ["Facilities with a concern", `${data.summary.inConcern} of ${data.summary.facilities}`],
                   ["Days fully staffed (average)", data.summary.coverage === null ? "No data" : `${data.summary.coverage}%`],
                   ["Attendance recorded (average)", data.summary.attendance === null ? "No data" : `${data.summary.attendance}%`],
                   ["Rosters published before the month", data.summary.publishedBeforeStart === null ? "No data" : `${data.summary.publishedBeforeStart}%`],
+                  ["Approved posts filled (average)", data.summary.staffing === null ? "No data" : `${data.summary.staffing}%`],
                 ] as [string, string][]).map(([k, v]) => (
                   <div key={k} className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3"><dd className="figures text-2xl font-semibold">{v}</dd><dt className="text-sm text-[var(--muted)]">{k}</dt></div>
                 ))}
@@ -103,7 +104,7 @@ export default function Scorecard() {
                 <Panel title="Districts compared" description={`${data.label}, against ${data.previousLabel}. Averages of the facilities that shared each figure.`}>
                   <TableScroll label="Districts compared">
                     <table className="w-full min-w-[44rem] border-collapse text-[15px]">
-                      <thead><tr>{["District", "Facilities", "Days fully staffed", "Attendance recorded", "Published before the month", "Blocking findings", "With a concern"].map((h) => <th key={h} scope="col" className={TH}>{h}</th>)}</tr></thead>
+                      <thead><tr>{["District", "Facilities", "Days fully staffed", "Attendance recorded", "Published before the month", "Posts filled", "Blocking findings", "With a concern"].map((h) => <th key={h} scope="col" className={TH}>{h}</th>)}</tr></thead>
                       <tbody>
                         {data.districts.map((d) => (
                           <tr key={d.district}>
@@ -112,6 +113,7 @@ export default function Scorecard() {
                             <td className={`${TD} figures`}>{d.coverage === null ? "No data" : `${d.coverage}%`}{d.coverage !== null && d.previousCoverage !== null && <Change v={d.coverage - d.previousCoverage} unit=" points" />}</td>
                             <td className={`${TD} figures`}>{d.attendance === null ? "No data" : `${d.attendance}%`}{d.attendance !== null && d.previousAttendance !== null && <Change v={d.attendance - d.previousAttendance} unit=" points" />}</td>
                             <td className={`${TD} figures`}>{d.publishedBeforeStart === null ? "No data" : `${d.publishedBeforeStart}%`}</td>
+                            <td className={`${TD} figures`}>{d.staffing === null ? "No data" : `${d.staffing}%`}</td>
                             <td className={`${TD} figures`}>{d.blocking === null ? "No data" : d.blocking}</td>
                             <td className={`${TD} figures`}>{d.inConcern}</td>
                           </tr>
@@ -125,7 +127,7 @@ export default function Scorecard() {
               <Panel title="Facilities" description={`${data.label}, against ${data.previousLabel}.`}>
                 <TableScroll label="Facility scorecard">
                   <table className="w-full min-w-[56rem] border-collapse text-[15px]">
-                    <thead><tr>{["Facility", "Days fully staffed", "Published before the month", "Attendance recorded", "Blocking findings open", "Warnings open"].map((h) => <th key={h} scope="col" className={TH}>{h}</th>)}</tr></thead>
+                    <thead><tr>{["Facility", "Days fully staffed", "Published before the month", "Attendance recorded", "Posts filled", "Blocking findings open", "Warnings open"].map((h) => <th key={h} scope="col" className={TH}>{h}</th>)}</tr></thead>
                     <tbody>
                       {rows.map((r) => (
                         <tr key={r.facilityId}>
@@ -133,6 +135,7 @@ export default function Scorecard() {
                           <td className={TD}><Cell value={r.month.coverage} unit="%" band={r.bands.coverage} change={r.change.coverage} /></td>
                           <td className={TD}><Cell value={r.month.publishedBeforeStart} unit="%" band={r.bands.publishedBeforeStart} change={r.change.publishedBeforeStart} /></td>
                           <td className={TD}><Cell value={r.month.attendance} unit="%" band={r.bands.attendance} change={r.change.attendance} /></td>
+                          <td className={TD}><Cell value={r.month.staffing} unit="%" band={r.bands.staffing} change={r.change.staffing} /></td>
                           <td className={TD}><Cell value={r.month.blocking} unit="" band={r.bands.blocking} change={r.change.blocking} lowerIsBetter /></td>
                           <td className={TD}><Cell value={r.month.warnings} unit="" band={r.bands.warnings} change={r.change.warnings} lowerIsBetter /></td>
                         </tr>
@@ -140,7 +143,7 @@ export default function Scorecard() {
                     </tbody>
                   </table>
                 </TableScroll>
-                <p className="mt-3 text-sm text-[var(--muted)]">Measured against: days fully staffed, {data.thresholds.coverage}. Attendance recorded, {data.thresholds.attendance}. Published before the month, {data.thresholds.publishedBeforeStart}. Blocking findings, {data.thresholds.blocking}.</p>
+                <p className="mt-3 text-sm text-[var(--muted)]">Measured against: days fully staffed, {data.thresholds.coverage}. Attendance recorded, {data.thresholds.attendance}. Published before the month, {data.thresholds.publishedBeforeStart}. Posts filled, {data.thresholds.staffing}. Blocking findings, {data.thresholds.blocking}. Posts filled is counted on the day the month is frozen, so it has no earlier history.</p>
               </Panel>
             </div>
           )}
