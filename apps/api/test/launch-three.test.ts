@@ -116,7 +116,7 @@ describe("scheduler", () => {
     const first = await tick();
     expect(first).toEqual(["support-expiry", "overdue-invoices", "access-and-reminders", "ward-transfers", "credential-reminders", "retention-scan", "sms-log-cleanup"]);
     expect(await tick()).toEqual([]);
-    expect(await prisma.jobRun.count({ where: { ok: true } })).toBe(6);
+    expect(await prisma.jobRun.count({ where: { ok: true } })).toBe(7);
   });
 
   it("shows job status to the console", async () => {
