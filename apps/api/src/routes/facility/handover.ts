@@ -130,7 +130,7 @@ handoverRouter.post("/", async (req, res) => {
     const wards = await prisma.department.count({ where: { facilityId: who.facilityId, active: true, kind: "WARD" } });
     if (wards > 0) return res.status(400).json({ error: "invalid_input", fields: { ward: "Choose the ward." } });
   }
-  const named = await patientFields(who.facilityId, input);
+  const named = await patientFields(who.facilityId, { summary: input.summary, pending: input.pending, concerns: input.concerns });
   if (named) return res.status(400).json({ error: "invalid_input", fields: named });
   const note = await prisma.handoverNote.create({
     data: { facilityId: who.facilityId, departmentId, shiftId: shift.id, dutyDate: new Date(`${input.dutyDate}T00:00:00.000Z`), authorEmail: who.email, authorName: who.displayName, summary: input.summary, pending: input.pending, concerns: input.concerns, urgent: input.urgent },
@@ -177,7 +177,7 @@ handoverRouter.put("/:id", async (req, res) => {
   if (!canChange(who, note)) return res.status(403).json({ error: "forbidden", message: "A note can be changed by its writer for twelve hours, or by the administrator." });
   const input = parseOr400(body.pick({ summary: true, pending: true, concerns: true, urgent: true }), req.body, res);
   if (!input) return;
-  const named = await patientFields(who.facilityId, input);
+  const named = await patientFields(who.facilityId, { summary: input.summary, pending: input.pending, concerns: input.concerns });
   if (named) return res.status(400).json({ error: "invalid_input", fields: named });
   const updated = await prisma.handoverNote.update({ where: { id: note.id }, data: { summary: input.summary, pending: input.pending, concerns: input.concerns, urgent: input.urgent }, include });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "handover_changed", entityType: "HandoverNote", entityId: note.id, summary: `${who.displayName} changed a handover note by ${note.authorName}.` });

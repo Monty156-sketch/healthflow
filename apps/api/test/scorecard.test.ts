@@ -101,7 +101,8 @@ describe("district performance scorecard", () => {
     // The month ended and nothing was frozen yet: staffing is unknown for it rather than guessed.
     expect((await as(officer).get("/api/district/scorecard")).body.facilities[0].month.staffing).toBeNull();
     const { snapshotLastMonth } = await import("../src/lib/scorecard.js");
-    expect(await snapshotLastMonth()).toBe(1);
+    // Both clinics in the district are frozen, whatever they have shared.
+    expect(await snapshotLastMonth()).toBe(2);
     expect(await snapshotLastMonth()).toBe(0);
     let row = (await as(officer).get("/api/district/scorecard")).body.facilities[0];
     expect(row.month.staffing).toBe(75);
