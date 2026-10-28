@@ -32,8 +32,7 @@ describe("weekly rosters", () => {
     }
     const now = new Date();
     const roster = (await api.post("/api/facility/rosters", { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 })).body.roster as { id: string };
-    const gen = await api.post(`/api/facility/rosters/${roster.id}/generate`);
-    const monthlyDuty = await prisma.rosterAssignment.count({ where: { rosterId: roster.id, shift: { countsAsDuty: true } } });
+    await api.post(`/api/facility/rosters/${roster.id}/generate`);
     const from = today() + 1;
     const before = await prisma.rosterAssignment.count({ where: { rosterId: roster.id, dutyDate: { lt: new Date(from * DAY) } } });
 
@@ -42,7 +41,7 @@ describe("weekly rosters", () => {
     const drawn = await api.post("/api/facility/weekly-rosters", { startDate: iso(from) });
     expect(drawn.status).toBe(201);
     expect(drawn.body.week.days).toHaveLength(7);
-    expect(drawn.body.week.duties, `${gen.status} monthly=${monthlyDuty} ${JSON.stringify(drawn.body.week.debug)}`).toBeGreaterThan(0);
+    expect(drawn.body.week.duties).toBeGreaterThan(0);
     expect(drawn.body.week.from).toBe(iso(from));
     // Days before the week are exactly as they were.
     expect(await prisma.rosterAssignment.count({ where: { rosterId: roster.id, dutyDate: { lt: new Date(from * DAY) } } })).toBe(before);

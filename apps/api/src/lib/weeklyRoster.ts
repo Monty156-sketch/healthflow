@@ -1,8 +1,8 @@
 // Weekly rosters. Some units, public health above all, plan a week at a time. A week
 // is drawn into the unit's monthly roster, so attendance, swaps, leave and the
 // printed roster all keep working from one place. The roster engine is not
-// touched: it is asked for a seven day period, which it already accepts, and
-// only those seven days are written. The days outside the week stay as they were.
+// touched: it plans the month with everything outside the week held in place,
+// exactly as it does when leave is approved, and only the seven days are written.
 import { prisma } from "./prisma.js";
 import { writeAuditLog } from "./audit.js";
 import { notifyStaff } from "./notify.js";
@@ -73,8 +73,6 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     }
   }
 
-  const debug: unknown[] = [];
-  const dutyIds = (d: { shifts: { id: string; countsAsDuty: boolean }[] }) => new Set(d.shifts.filter((x) => x.countsAsDuty).map((x) => x.id));
   const unfilled: { date: string; shift: string }[] = [];
   const rosterIds: string[] = [];
   for (let i = 0; i < months.length; i++) {
@@ -91,21 +89,21 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     if (!data.shifts.some((s) => s.countsAsDuty && !s.isOnCall && (s.minStaff > 0 || (s.weekendMinStaff ?? 0) > 0))) {
       throw new WeekProblem(409, "no_demand", `No shift asks for anyone${dept ? ` in ${dept.name}` : ""} yet. Set how many people each shift needs on the roster page, then draw the week.`);
     }
-    const locked = data.current.filter((a) => a.locked && a.day >= lo && a.day <= hi);
-    const lockedKey = new Set(locked.map((a) => `${a.staffId}:${a.day}`));
+    // The engine plans the whole month, as it does for leave: everything outside the week stays where it is, and only the
+    // week is written. That way the month's own rules (days off, weekends, hours) still hold for the week drawn into it.
+    const dutyShifts = new Set(data.shifts.filter((x) => x.countsAsDuty && !x.isOnCall).map((x) => x.id));
+    const locked = data.current.filter((a) => (a.day < lo || a.day > hi ? dutyShifts.has(a.shiftId) || a.locked : a.locked));
+    const lockedKey = new Set(data.current.filter((a) => a.locked && a.day >= lo && a.day <= hi).map((a) => `${a.staffId}:${a.day}`));
     const result = generate({
       variation: variation ?? 0, partial: true,
       staff: data.staff, shifts: data.shifts, offShiftId: data.offShiftId, rules: data.rules, cycles: data.cycles, rotations: data.rotations, leave: data.leave, holidays: data.holidays,
-      period: { startDay: lo, endDay: hi }, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks,
-      // The unit's own earlier days this month count as history, so rest rules carry into the week.
-      history: [...data.history, ...data.current.filter((a) => a.day < lo)],
+      period: data.period, weekStartsOn: data.weekStartsOn, referenceWeeks: data.referenceWeeks, history: data.history,
       locked, cadreNames: data.cadreNames, settlement: await settlementFor(facilityId), holidayWorked: data.holidayWorked, daysOff: data.daysOff,
     });
     if (!result.feasible) {
       throw new WeekProblem(409, "not_feasible", `A lawful week cannot be drawn from ${sayDay(lo)} with the staff and shifts as they are. Nothing was changed. Check how many people each shift needs.`);
     }
 
-    debug.push({ lo, hi, cells: result.cells.length, fresh: result.cells.filter((c) => c.day >= lo && c.day <= hi).length, duty: result.cells.filter((c) => dutyIds(data).has(c.shiftId)).length, unf: result.unfilled.length, u0: result.unfilled.slice(0, 2), rules: data.rules.map((r) => `${r.code}:${r.threshold}:${r.severity}`).join(','), cycles: data.cycles.map((c) => `${c.name}:${c.consecutiveDuties}/${c.offDaysRequired}:${c.enforcement}`).join(','), rot: data.rotations.length, leave: data.leave.length, hist: data.history.length, off: data.offShiftId, shifts: data.shifts.map((x) => `${x.code}:${x.minStaff}:${x.countsAsDuty}:${x.isOnCall}`).join(','), s0: data.staff[0] ?? null, staff: data.staff.length, current: data.current.length, locked: locked.length });
     const hadDuties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
     const fresh = result.cells.filter((c) => c.day >= lo && c.day <= hi && !lockedKey.has(`${c.staffId}:${c.day}`));
     await prisma.$transaction(async (tx) => {
@@ -128,9 +126,8 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
 
     const shiftName = data.shiftName;
     for (const u of result.unfilled.filter((x) => x.day >= lo && x.day <= hi)) unfilled.push({ date: isoOf(u.day), shift: (u.shiftId && shiftName.get(u.shiftId)) || "a shift" });
-    const dutyShift = new Set(data.shifts.filter((s) => s.countsAsDuty && !s.isOnCall).map((s) => s.id));
     const mine = new Map<string, string[]>();
-    for (const c of fresh) if (dutyShift.has(c.shiftId)) mine.set(c.staffId, [...(mine.get(c.staffId) ?? []), `${shiftName.get(c.shiftId) ?? "duty"} on ${sayDay(c.day)}`]);
+    for (const c of fresh) if (dutyShifts.has(c.shiftId)) mine.set(c.staffId, [...(mine.get(c.staffId) ?? []), `${shiftName.get(c.shiftId) ?? "duty"} on ${sayDay(c.day)}`]);
     for (const [sid, list] of mine) {
       await notifyStaff(facilityId, sid, {
         type: "duty_changed", title: `Your duties for the week from ${sayDay(lo)}`,
@@ -145,5 +142,5 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
     });
   }
   const view = await weekView(facilityId, dept?.id ?? null, from);
-  return { ...view, unfilled, rosterIds, debug } as WeekView;
+  return { ...view, unfilled, rosterIds };
 }
