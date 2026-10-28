@@ -21,6 +21,8 @@ const OPEN = ["TRIAL", "ACTIVE"] as const;
 
 /** Takes a person's contact details and photo off a record that stays for the history. */
 export async function scrubStaff(tx: Prisma.TransactionClient, staffId: string, status: "INACTIVE" | "TRANSFERRED") {
+  // A licence number belongs to the person; it does not stay behind with the facility.
+  await tx.staffCredential.deleteMany({ where: { staffId } });
   await tx.staff.update({
     where: { id: staffId },
     data: { status, archivedAt: new Date(), phone: null, email: null, photoUrl: null, photoConsentId: null, emergencyContactName: null, emergencyContactPhone: null },

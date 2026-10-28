@@ -10,6 +10,7 @@ import { closeExpiredSessions } from "../routes/platformSupport.js";
 import { markOverdue } from "../routes/platformBilling.js";
 import { runAccessJob } from "./access.js";
 import { applyDueTransfers } from "../routes/facility/transfers.js";
+import { runCredentialReminders } from "./credentials.js";
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -26,6 +27,7 @@ export const JOBS: Job[] = [
   { name: "overdue-invoices", label: "Mark overdue invoices", everyMs: 6 * HOUR, run: async () => `${await markOverdue()} invoice(s) marked overdue.` },
   { name: "access-and-reminders", label: "Lock unpaid facilities and send payment reminders", everyMs: HOUR, run: async () => { const r = await runAccessJob(); return `${r.lapsed} locked, ${r.reminded} reminded.`; } },
   { name: "ward-transfers", label: "Move staff whose ward transfer is due", everyMs: 30 * MIN, run: async () => `${await applyDueTransfers()} transfer(s) done.` },
+  { name: "credential-reminders", label: "Remind staff whose licences are nearing their date", everyMs: 24 * HOUR, run: async () => `${await runCredentialReminders()} reminder(s) sent.` },
   { name: "retention-scan", label: "Retention scan", everyMs: 24 * HOUR, run: async () => JSON.stringify(await runRetentionJob()).slice(0, 500) },
   { name: "sms-log-cleanup", label: "Delete text message records older than 90 days", everyMs: 24 * HOUR, run: async () => `${(await prisma.smsMessage.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 90 * 86_400_000) } } })).count} record(s) removed.` },
 ];
