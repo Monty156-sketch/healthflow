@@ -67,7 +67,13 @@ describe("what each type of facility is offered at registration", () => {
     expect(centre.cadres).toContain("Physician Assistant");
     expect(hospital.departments).toContain("Theatre");
     expect(hospital.cadres).toContain("Specialist");
-    expect(portfolioFor("POLYCLINIC")).toEqual(hospital);
+    // A polyclinic has the wards but not the specialist units of a regional hospital.
+    const poly = portfolioFor("POLYCLINIC");
+    expect(poly.departments).toContain("Theatre");
+    expect(poly.departments).toContain("Male Medical Ward");
+    expect(poly.departments).not.toContain("Oncology");
+    expect(hospital.departments).toContain("Oncology");
+    expect(poly.cadres).toEqual(hospital.cadres);
     // Only a health centre is offered the roster units.
     expect(centre.departments).toContain("OPD");
     expect(centre.departments).not.toContain("Clinical Nurses");

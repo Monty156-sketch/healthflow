@@ -12,18 +12,24 @@ async function setup() {
   const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Kofi Bawa" } });
   const api = as(admin);
   const nurse = await prisma.cadre.create({ data: { facilityId: facility.id, name: "Nurse", code: "RN", sortOrder: 1 } });
-  for (let i = 1; i <= 17; i++) await prisma.staff.create({ data: { facilityId: facility.id, staffNo: `S${String(i).padStart(2, "0")}`, fullName: `Nurse ${i}`, status: "ACTIVE", cadreId: nurse.id } });
+  const people = [];
+  for (let i = 1; i <= 17; i++) people.push(await prisma.staff.create({ data: { facilityId: facility.id, staffNo: `S${String(i).padStart(2, "0")}`, fullName: `Nurse ${i}`, status: "ACTIVE", cadreId: nurse.id } }));
   const mk = (code: string, name: string, startTime: string, endTime: string, isOvernight: boolean, minStaff: number) =>
     api.post("/api/facility/shifts", { name, code, startTime, endTime, isOvernight, minStaff, colour: "#25619f" });
   await mk("A", "Morning", "08:00", "14:00", false, 3);
   await mk("M", "Afternoon", "14:00", "20:00", false, 2);
   await mk("N", "Night", "20:00", "08:00", true, 2);
-  return { api, facility, admin };
+  return { api, facility, admin, people };
 }
 
 describe("weekly rosters", () => {
   it("draws seven days into the monthly roster, leaves other days alone, and tells the people on it", async () => {
-    const { api, facility } = await setup();
+    const { api, facility, people } = await setup();
+    // Everyone is on the roster; link a login to every nurse so the notices have somewhere to go.
+    for (const p of people) {
+      const { user } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: `Login ${p.staffNo}` } });
+      await prisma.userProfile.update({ where: { id: user.id }, data: { staffId: p.id } });
+    }
     const now = new Date();
     const roster = (await api.post("/api/facility/rosters", { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1 })).body.roster as { id: string };
     await api.post(`/api/facility/rosters/${roster.id}/generate`);
