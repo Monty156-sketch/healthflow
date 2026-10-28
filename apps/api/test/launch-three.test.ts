@@ -114,16 +114,16 @@ describe("online payment", () => {
 describe("scheduler", () => {
   it("runs each due job once and records it", async () => {
     const first = await tick();
-    expect(first).toEqual(["support-expiry", "overdue-invoices", "access-and-reminders", "ward-transfers", "credential-reminders", "handover-cleanup", "retention-scan", "sms-log-cleanup"]);
+    expect(first).toEqual(["support-expiry", "overdue-invoices", "access-and-reminders", "ward-transfers", "credential-reminders", "roster-deadlines", "handover-cleanup", "retention-scan", "sms-log-cleanup"]);
     expect(await tick()).toEqual([]);
-    expect(await prisma.jobRun.count({ where: { ok: true } })).toBe(8);
+    expect(await prisma.jobRun.count({ where: { ok: true } })).toBe(9);
   });
 
   it("shows job status to the console", async () => {
     await tick();
     const { user: platform } = await makeUser({ role: "PLATFORM_ADMIN" });
     const res = await as(platform).get("/api/platform/health");
-    expect(res.body.jobs).toHaveLength(8);
+    expect(res.body.jobs).toHaveLength(9);
     expect(res.body.jobs.every((j: { late: boolean }) => !j.late)).toBe(true);
   });
 });

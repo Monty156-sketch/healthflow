@@ -3,6 +3,7 @@
 // work on plain data; this file loads the data, calls them, and stores the
 // result. Editing cells, review and publishing arrive with the roster
 // builder.
+import { isLate } from "../../lib/rosterDeadline.js";
 import { rostersByUnit, seedUnitDemand } from "../../lib/unitDemand.js";
 import { notifyRosterPublished } from "../../lib/rosterPublished.js";
 import { Router } from "express";
@@ -825,6 +826,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
       });
     }
   }
+  const deadlineDay = input.action === "publish" ? ((await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { rosterDeadlineDay: true } }))?.rosterDeadlineDay ?? null) : null;
   const snapshot = ["approve", "publish"].includes(input.action);
   const version = snapshot ? roster.version + 1 : roster.version;
   await prisma.$transaction(async (tx) => {
@@ -835,7 +837,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
         status: move.to, version,
         ...(input.action === "approve" ? { approvedBy: who.email } : {}),
         ...(input.action === "reopen" ? { approvedBy: null } : {}),
-        ...(input.action === "publish" ? { publishedAt: new Date() } : {}),
+        ...(input.action === "publish" ? { publishedAt: new Date(), publishedLate: isLate(new Date(), roster.year, roster.month, deadlineDay) } : {}),
       },
     });
   });

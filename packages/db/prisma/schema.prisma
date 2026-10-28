@@ -386,6 +386,8 @@ model Facility {
 
   /// Texts the staff who have a phone number when their duties change. Off until an administrator turns it on.
   smsEnabled                  Boolean       @default(false)
+  /// Day of the month before by which each month's roster must be published. Null means no deadline.
+  rosterDeadlineDay           Int?
   active                      Boolean       @default(true)
   createdAt                   DateTime      @default(now())
   updatedAt                   DateTime      @updatedAt
@@ -399,6 +401,7 @@ model Facility {
   movesIn             StaffMove[] @relation("MoveTo")
   credentials         StaffCredential[]
   handoverNotes       HandoverNote[]
+  rosterReminders     RosterDeadlineReminder[]
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -803,6 +806,8 @@ model Roster {
   generationSeconds      Float?
   attendanceCompleteness Float?
   hasUnresolvedConflicts Boolean      @default(false)
+  /// Set when it was published after the facility's deadline.
+  publishedLate          Boolean      @default(false)
   notes                  String?
   createdAt              DateTime     @default(now())
   updatedAt              DateTime     @updatedAt
@@ -1762,4 +1767,20 @@ model HandoverRead {
   readAt     DateTime     @default(now())
 
   @@unique([noteId, readerEmail])
+}
+
+/// One reminder sent about one unit's roster for one month at one stage, so it is never sent twice.
+model RosterDeadlineReminder {
+  id         String   @id @default(cuid())
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id])
+  /// The ward's id, or "ALL" for a facility with one roster.
+  unitKey    String
+  year       Int
+  month      Int
+  /// 7, 3 or 1 days ahead, or -1 once past the deadline.
+  stage      Int
+  sentAt     DateTime @default(now())
+
+  @@unique([facilityId, unitKey, year, month, stage])
 }
