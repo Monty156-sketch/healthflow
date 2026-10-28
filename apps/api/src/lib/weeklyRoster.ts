@@ -105,7 +105,7 @@ export async function drawWeek(facilityId: string, departmentId: string | null, 
       throw new WeekProblem(409, "not_feasible", `A lawful week cannot be drawn from ${sayDay(lo)} with the staff and shifts as they are. Nothing was changed. Check how many people each shift needs.`);
     }
 
-    debug.push({ lo, hi, cells: result.cells.length, fresh: result.cells.filter((c) => c.day >= lo && c.day <= hi).length, duty: result.cells.filter((c) => dutyIds(data).has(c.shiftId)).length, unf: result.unfilled.length, staff: data.staff.length, current: data.current.length, locked: locked.length });
+    debug.push({ lo, hi, cells: result.cells.length, fresh: result.cells.filter((c) => c.day >= lo && c.day <= hi).length, duty: result.cells.filter((c) => dutyIds(data).has(c.shiftId)).length, unf: result.unfilled.length, u0: result.unfilled.slice(0, 2), rules: data.rules.map((r) => `${r.code}:${r.threshold}:${r.severity}`).join(','), cycles: data.cycles.map((c) => `${c.name}:${c.consecutiveDuties}/${c.offDaysRequired}:${c.enforcement}`).join(','), rot: data.rotations.length, leave: data.leave.length, hist: data.history.length, off: data.offShiftId, shifts: data.shifts.map((x) => `${x.code}:${x.minStaff}:${x.countsAsDuty}:${x.isOnCall}`).join(','), s0: data.staff[0] ?? null, staff: data.staff.length, current: data.current.length, locked: locked.length });
     const hadDuties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
     const fresh = result.cells.filter((c) => c.day >= lo && c.day <= hi && !lockedKey.has(`${c.staffId}:${c.day}`));
     await prisma.$transaction(async (tx) => {
