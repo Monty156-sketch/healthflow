@@ -63,6 +63,20 @@ There is no free bulk SMS service in Ghana that is fit for a live system. Two wa
 
 Either way, prove it: after setting the variables, a facility administrator opens Staff, Text messages, types a number and presses "Send test text". The test and its result are recorded.
 
+## WhatsApp duty reminders
+
+Off until PS Tech sets it up. Nothing is sent without all of: the server keys, the facility switch (Settings, WhatsApp duty reminders), and each person's own choice (Account, WhatsApp duty reminders).
+
+1. Create a Meta business account and a WhatsApp Business Platform app (developers.facebook.com), add a business phone number, and get a permanent access token.
+2. Create and submit this message template, category Utility, language English (`en`), name `duty_reminder`. It must be approved before anything can be sent:
+
+   `Hello {{1}}, you are on {{2}} duty today at {{3}}. Turn these reminders off under Account in HealthFlow.`
+
+3. On Render set `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_ID` (the phone number ID, not the number). Optional: `WHATSAPP_TEMPLATE` and `WHATSAPP_TEMPLATE_LANG` if the template is named differently.
+4. An administrator opens Settings, WhatsApp duty reminders, sends a test message to their own phone, then turns the facility switch on.
+
+Reminders go out from 05:00 (Ghana time) on the day of the duty, once per person, for published rosters only. A failed message is tried again on the next hourly run, three times at most. Records are kept 90 days. Meta bills per conversation; check their current price list before enabling for a large facility. Replying STOP to the message is not wired up; people switch it off in the app.
+
 ## Staging and safe databases
 
 Local development, the tests and production used to share one database. Three guards now stop that:

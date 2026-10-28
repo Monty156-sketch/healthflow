@@ -439,6 +439,40 @@ function NotificationsPanel() {
   );
 }
 
+function WhatsAppPanel() {
+  const { data, error, reload } = useResource<{ optIn: boolean; number: string | null; facilityOn: boolean }>("/api/facility/me/whatsapp");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  if (error || !data || !data.facilityOn) return null;
+
+  async function change(optIn: boolean) {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.put("/api/facility/me/whatsapp", { optIn });
+      reload();
+    } catch (e) {
+      setProblem(e instanceof ApiError && typeof e.body === "object" && e.body && "message" in e.body ? String((e.body as { message: string }).message) : "That could not be saved. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="WhatsApp duty reminders" description="One message each morning on the days you are on duty, naming your shift.">
+      {problem && (
+        <div className="mb-3">
+          <Notice tone="block">{problem}</Notice>
+        </div>
+      )}
+      <Checkbox label="Send my duty reminders on WhatsApp" checked={data.optIn} disabled={busy} onChange={change} />
+      <p className="ml-8 text-sm text-[var(--muted)]">
+        {data.number ? `Messages go to the mobile number your facility has for you, ${data.number}. If that is not your WhatsApp number, ask your administrator to correct it first.` : "Your facility has no usable mobile number for you, so none can be sent."} Only you can switch this on, and you can switch it off at any time.
+      </p>
+    </Panel>
+  );
+}
+
 function TextsPanel() {
   const { data, error, reload } = useResource<{ optOut: boolean; hasPhone: boolean }>("/api/facility/me/sms-opt-out");
   const [busy, setBusy] = useState(false);
@@ -497,6 +531,7 @@ export default function AccountPage() {
           <PasswordPanel />
           {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <NotificationsPanel />}
           {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <TextsPanel />}
+          {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <WhatsAppPanel />}
         </div>
         <SessionsPanel />
       </div>
