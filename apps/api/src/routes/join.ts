@@ -16,7 +16,7 @@ import { codeProblem, normaliseCode } from "../lib/accessCode.js";
 import { notifyDeciders, notifyWard } from "../lib/notify.js";
 import { parseOr400, optionalText, requiredText } from "../lib/validate.js";
 import { currentNotice } from "./facility/privacy.js";
-import { unitForCadre } from "../lib/dutyPlan.js";
+import { publicHealthUnitForCadre, unitForCadre } from "../lib/dutyPlan.js";
 import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
 import { ensureSupportUnits } from "../lib/supportUnits.js";
 import { nameKey } from "../lib/inCharges.js";
@@ -109,6 +109,13 @@ joinRouter.post("/register", async (req, res) => {
     input.departmentText = null;
     input.position = listed.rank;
   }
+  // Someone whose cadre belongs to one public health unit goes straight into it, when the facility has that unit and they did not choose a ward.
+  if (!input.departmentId && !input.departmentText && input.cadreId) {
+    const cadre = await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId }, select: { name: true } });
+    const unitName = publicHealthUnitForCadre(cadre?.name);
+    const unit = unitName ? await prisma.department.findFirst({ where: { facilityId, name: { equals: unitName, mode: "insensitive" }, active: true }, select: { id: true } }) : null;
+    if (unit) input.departmentId = unit.id;
+  }
   const dept = input.departmentId ? await prisma.department.findFirst({ where: { id: input.departmentId, facilityId, active: true }, select: { id: true, kind: true } }) : null;
   if (input.departmentId && !dept) fields.departmentId = "Choose a department from the list.";
   const byWard = WARD_FACILITY_TYPES.includes(code.facility.facilityType);
@@ -117,7 +124,7 @@ joinRouter.post("/register", async (req, res) => {
   // A health centre rosters by unit: a nurse goes to OPD, a midwife to Maternity, public health staff to Public Health.
   if (code.facility.facilityType === "HEALTH_CENTRE" && input.cadreId) {
     const cadre = await prisma.cadre.findFirst({ where: { id: input.cadreId, facilityId }, select: { name: true } });
-    const unit = unitForCadre(cadre?.name);
+    const unit = publicHealthUnitForCadre(cadre?.name) && input.departmentId ? null : unitForCadre(cadre?.name);
     if (unit) {
       const have = await prisma.department.findFirst({ where: { facilityId, name: { equals: unit.name, mode: "insensitive" }, active: true }, select: { id: true } });
       const target = have ?? (await prisma.department.create({ data: { facilityId, name: unit.name, runsNights: unit.runsNights }, select: { id: true } }));
