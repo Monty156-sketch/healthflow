@@ -388,6 +388,7 @@ model Facility {
   smsEnabled                  Boolean       @default(false)
   /// Day of the month before by which each month's roster must be published. Null means no deadline.
   rosterDeadlineDay           Int?
+  whatsappEnabled             Boolean       @default(false)
   active                      Boolean       @default(true)
   createdAt                   DateTime      @default(now())
   updatedAt                   DateTime      @updatedAt
@@ -402,6 +403,7 @@ model Facility {
   credentials         StaffCredential[]
   handoverNotes       HandoverNote[]
   rosterReminders     RosterDeadlineReminder[]
+  whatsappMessages    WhatsappMessage[]
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -555,6 +557,9 @@ model Staff {
   requestedInCharge    Boolean  @default(false)
   phoneVerified        Boolean  @default(false)
   smsOptOut            Boolean  @default(false)
+  /// The person's own choice to get their duty of the day on WhatsApp. Only they can switch it on.
+  whatsappOptIn        Boolean  @default(false)
+  whatsappOptInAt      DateTime?
   phone                String?
   email                String?
   cadreId              String?
@@ -1783,4 +1788,24 @@ model RosterDeadlineReminder {
   sentAt     DateTime @default(now())
 
   @@unique([facilityId, unitKey, year, month, stage])
+}
+
+/// A WhatsApp message to one person about one day. One row per person, day and kind, so a reminder is never sent twice.
+model WhatsappMessage {
+  id         String    @id @default(cuid())
+  facilityId String
+  facility   Facility  @relation(fields: [facilityId], references: [id])
+  staffId    String
+  toPhone    String
+  dutyDate   DateTime  @db.Date
+  kind       String
+  body       String
+  status     SmsStatus
+  attempts   Int       @default(1)
+  error      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([staffId, dutyDate, kind])
+  @@index([facilityId, createdAt])
 }

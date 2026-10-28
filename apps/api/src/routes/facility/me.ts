@@ -1,6 +1,7 @@
 // A member of staff's own screens: Today, what is held about them, and their
 // data rights. The staff id always comes from the account, never the request.
 // Nothing here names another member of staff.
+import { maskPhone } from "../../lib/whatsapp.js";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
@@ -210,6 +211,32 @@ meRouter.put("/sms-opt-out", async (req, res) => {
     summary: input.optOut ? `${who.displayName} stopped text messages to their own phone.` : `${who.displayName} allowed text messages to their own phone again.`,
   });
   res.json({ optOut: input.optOut });
+});
+
+meRouter.get("/whatsapp", async (req, res) => {
+  const who = caller(req);
+  if (!who.staffId) return res.json({ optIn: false, number: null, facilityOn: false });
+  const [s, f] = await Promise.all([
+    prisma.staff.findUnique({ where: { id: who.staffId }, select: { whatsappOptIn: true, phone: true } }),
+    prisma.facility.findUnique({ where: { id: who.facilityId }, select: { whatsappEnabled: true } }),
+  ]);
+  res.json({ optIn: s?.whatsappOptIn ?? false, number: maskPhone(s?.phone), facilityOn: f?.whatsappEnabled ?? false });
+});
+
+// Only the person can switch this on, from their own sign-in, after seeing which number it will go to.
+meRouter.put("/whatsapp", async (req, res) => {
+  const who = caller(req);
+  if (!who.staffId) return res.status(404).json({ error: "not_found" });
+  const input = parseOr400(z.object({ optIn: z.boolean() }), req.body, res);
+  if (!input) return;
+  const s = await prisma.staff.findUnique({ where: { id: who.staffId }, select: { phone: true } });
+  if (input.optIn && !maskPhone(s?.phone)) return res.status(409).json({ error: "no_number", message: "Your facility has no usable mobile number for you. Ask your administrator to add it first." });
+  await prisma.staff.update({ where: { id: who.staffId }, data: { whatsappOptIn: input.optIn, whatsappOptInAt: input.optIn ? new Date() : null } });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "whatsapp_opt_in_changed", entityType: "Staff", entityId: who.staffId,
+    summary: input.optIn ? `${who.displayName} asked for their duty reminders on WhatsApp.` : `${who.displayName} stopped their WhatsApp duty reminders.`,
+  });
+  res.json({ optIn: input.optIn });
 });
 
 meRouter.get("/notification-preferences", async (req, res) => {
