@@ -91,7 +91,7 @@ describe("sign-in hardening", () => {
 
   it("matches email addresses regardless of capital letters", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     const r = await post("/api/auth/login", { email: user.userEmail.toUpperCase(), password: PASSWORD });
     expect(r.status).toBe(200);
   });
@@ -100,7 +100,7 @@ describe("sign-in hardening", () => {
 describe("sessions", () => {
   it("lists live sessions, marks this device, and signs out the others", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     const phone = await signIn(user.userEmail, PASSWORD, {}, "Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile");
     const laptop = await signIn(user.userEmail, PASSWORD, {}, "Mozilla/5.0 (Windows NT 10.0) Chrome/130.0");
 
@@ -119,8 +119,8 @@ describe("sessions", () => {
 
   it("cannot sign out someone else's session", async () => {
     const facility = await makeFacility();
-    const a = (await makeUser({ role: "SUPERVISOR", facilityId: facility.id })).user;
-    const b = (await makeUser({ role: "SUPERVISOR", facilityId: facility.id })).user;
+    const a = (await makeUser({ role: "STAFF", facilityId: facility.id })).user;
+    const b = (await makeUser({ role: "STAFF", facilityId: facility.id })).user;
     await signIn(b.userEmail, PASSWORD);
     const bSession = await prisma.refreshToken.findFirstOrThrow({ where: { userProfileId: b.id } });
     expect((await as(a).post(`/api/auth/sessions/${bSession.id}/revoke`)).status).toBe(404);
@@ -130,7 +130,7 @@ describe("sessions", () => {
 describe("changing a password", () => {
   it("needs the current password, refuses weak ones, and signs out other devices", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id, withStaff: { fullName: "Ama Owusu" } });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Ama Owusu" } });
     const other = await signIn(user.userEmail, PASSWORD);
     const here = await signIn(user.userEmail, PASSWORD);
     const api = withToken(here.accessToken, here.cookie);
@@ -197,20 +197,22 @@ describe("managing two-step sign-in", () => {
     expect(summary.body.account.recoveryCodesLeft).toBe(9);
   });
 
-  it("an admin can never turn it off; a supervisor can", async () => {
+  it("admins, in-charges and supervisors can never turn it off; other staff can", async () => {
     const facility = await makeFacility();
-    const admin = (await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, mfa: true })).user;
-    const supervisor = (await makeUser({ role: "SUPERVISOR", facilityId: facility.id, mfa: true })).user;
-    expect((await as(admin).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(403);
-    expect((await as(supervisor).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(200);
-    expect((await prisma.userProfile.findUniqueOrThrow({ where: { id: supervisor.id } })).mfaEnabled).toBe(false);
+    for (const role of ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"] as const) {
+      const user = (await makeUser({ role, facilityId: facility.id, mfa: true })).user;
+      expect((await as(user).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(403);
+    }
+    const nurse = (await makeUser({ role: "STAFF", facilityId: facility.id, mfa: true })).user;
+    expect((await as(nurse).post("/api/auth/account/mfa/disable", { currentPassword: PASSWORD })).status).toBe(200);
+    expect((await prisma.userProfile.findUniqueOrThrow({ where: { id: nurse.id } })).mfaEnabled).toBe(false);
   });
 });
 
 describe("password reset", () => {
   it("answers the same for unknown and known emails", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     const known = await post("/api/auth/forgot-password", { email: user.userEmail });
     const unknown = await post("/api/auth/forgot-password", { email: "nobody@example.test" });
     expect(known.status).toBe(202);
@@ -222,7 +224,7 @@ describe("password reset", () => {
   it("an admin-issued link works once, ends every session, and is audit-logged", async () => {
     const facility = await makeFacility();
     const admin = (await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Kofi Bawa" } })).user;
-    const { user: nurse, staff } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id, withStaff: { fullName: "Abena Dery" } });
+    const { user: nurse, staff } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Abena Dery" } });
     const session = await signIn(nurse.userEmail, PASSWORD);
 
     const issued = await as(admin).post(`/api/facility/staff/${staff!.id}/reset-link`);
@@ -250,7 +252,7 @@ describe("password reset", () => {
 
   it("an expired link is refused", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     const now = Date.now();
     const spy = vi.spyOn(Date, "now").mockReturnValue(now - 61 * 60 * 1000);
     const { token } = makeResetToken(user.id, user.passwordHash);

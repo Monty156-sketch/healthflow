@@ -46,18 +46,18 @@ describe("sign-in", () => {
 
   it("refresh restores the signed-in user, not only a token", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     const signedIn = await login({ email: user.userEmail, password: PASSWORD });
     expect(signedIn.status).toBe(200);
 
     const refreshed = await request(app).post("/api/auth/refresh").set("Cookie", cookieFrom(signedIn));
     expect(refreshed.status).toBe(200);
-    expect(refreshed.body.user).toMatchObject({ id: user.id, email: user.userEmail, role: "SUPERVISOR" });
+    expect(refreshed.body.user).toMatchObject({ id: user.id, email: user.userEmail, role: "STAFF" });
   });
 
   it("a transferred staff member cannot sign in", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     await prisma.userProfile.update({ where: { id: user.id }, data: { active: false } });
     const res = await login({ email: user.userEmail, password: PASSWORD });
     expect(res.status).toBe(403);
@@ -66,7 +66,7 @@ describe("sign-in", () => {
 
   it("locks the account after 5 wrong passwords", async () => {
     const facility = await makeFacility();
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     for (let i = 0; i < 5; i++) {
       const r = await login({ email: user.userEmail, password: "wrong password" });
       expect(r.status).toBe(401);

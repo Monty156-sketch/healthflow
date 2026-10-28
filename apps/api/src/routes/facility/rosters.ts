@@ -539,12 +539,12 @@ rostersRouter.delete("/:id", allowRoles(...ROSTER_ROLES), async (req, res) => {
   const [attendance, swaps] = await Promise.all([prisma.attendance.count({ where: { rosterId: roster.id } }), prisma.dutySwap.count({ where: { rosterId: roster.id } })]);
   if (attendance || swaps) return res.status(409).json({ error: "in_use", message: "This roster already has attendance or swap requests, so it cannot be deleted." });
   const duties = await prisma.rosterAssignment.count({ where: { rosterId: roster.id } });
-  await prisma.$transaction([
-    prisma.complianceFinding.deleteMany({ where: { rosterId: roster.id } }),
-    prisma.rosterVersionSnapshot.deleteMany({ where: { rosterId: roster.id } }),
-    prisma.rosterAssignment.deleteMany({ where: { rosterId: roster.id } }),
-    prisma.roster.delete({ where: { id: roster.id } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.complianceFinding.deleteMany({ where: { rosterId: roster.id } });
+    await tx.rosterVersionSnapshot.deleteMany({ where: { rosterId: roster.id } });
+    await tx.rosterAssignment.deleteMany({ where: { rosterId: roster.id } });
+    await tx.roster.delete({ where: { id: roster.id } });
+  });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "roster_deleted", entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} deleted the ${roster.status.toLowerCase().replace("_", " ")} ${monthName(roster)} roster (${duties} ${duties === 1 ? "duty" : "duties"}).`,

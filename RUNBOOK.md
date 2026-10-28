@@ -83,6 +83,30 @@ Reminders go out from 05:00 (Ghana time) on the day of the duty, once per person
 - Accepted risk, reviewed 2026-10-28: GHSA-mrhx-c7xc-m3w5 (zod can use a lot of memory validating huge arrays). The only fix is zod 4, a large migration. The API rejects bodies over 100 KB, which bounds the arrays zod ever sees. Remove the entry under `pnpm.auditConfig` in `package.json` when the API moves to zod 4.
 - Failed sign-ins: 15 or more across all accounts in ten minutes emails the owner (at most once an hour). A locked administrator or district officer account emails the owner and the person. Counters are in server memory, so they restart with the server.
 
+## Row-level security
+
+The database refuses to show or change one facility's rows to work done for another facility, even if a route forgets its `facilityId` filter. It covers the tables that carry a facility (staff, rosters, leave, attendance, notifications, credentials, handover notes, and so on). Sign-in, registration, schedulers, district and platform work, and the few routes that cross facilities (transfers, staff moves, deployments, district grants) run as trusted system work and are not narrowed.
+
+It is **off until you switch it on**. The migration only enables the policies; the policies do nothing for the table owner, which is the role the app connects as today. To turn it on:
+
+1. In Neon, make a branch of production first (Branches, Create branch). Practise the steps below on the branch.
+2. In the Neon SQL editor, create a role that does not own the tables (change the password, keep it out of chat and out of git):
+
+```sql
+CREATE ROLE healthflow_app LOGIN PASSWORD '<new strong password>';
+GRANT USAGE ON SCHEMA public TO healthflow_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO healthflow_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO healthflow_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO healthflow_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO healthflow_app;
+```
+
+3. In Render, set `MIGRATE_DATABASE_URL` to the current owner connection string (what `DATABASE_URL` is today). Migrations on deploy use it.
+4. Set `DATABASE_URL` to the same host with the `healthflow_app` user and password, and set `RLS_ENFORCE=on`. Redeploy.
+5. Check the roster, leave, staff, handover and login pages work. If anything fails with an empty result or a permission error, set `RLS_ENFORCE=off` and redeploy; the app returns to normal at once.
+
+Costs and limits: with it on, each database call also sets the facility in the same transaction, which adds a small amount of work per query. Raw SQL outside the Prisma model calls is not narrowed. Tables with an optional facility (user profiles, audit log, refresh tokens, error reports) and tables used across facilities are left open on purpose. Test the cross-facility pages (transfers, deployments, district oversight) on the branch before production.
+
 ## Staging and safe databases
 
 Local development, the tests and production used to share one database. Three guards now stop that:

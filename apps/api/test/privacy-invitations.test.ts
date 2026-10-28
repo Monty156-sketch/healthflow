@@ -208,7 +208,7 @@ describe("inviting by email", () => {
     expect((await api.post(`/api/facility/invitations/${pending.id}/revoke`)).status).toBe(200);
     expect((await request(app).get(`/api/invitations/check?token=${tokenOf(again.body.url)}`)).body.status).toBe("invalid");
 
-    const { user } = await makeUser({ role: "SUPERVISOR", facilityId: facility.id });
+    const { user } = await makeUser({ role: "STAFF", facilityId: facility.id });
     expect((await as(user).post("/api/facility/invitations", { fullName: "A B", email: "ab@sombo.test", role: "STAFF" })).status).toBe(403);
     expect((await as(user).get("/api/facility/invitations")).status).toBe(403);
   });

@@ -29,7 +29,7 @@ services:
     buildCommand: >-
       NODE_ENV=development npx --yes pnpm@10.28.0 install --frozen-lockfile &&
       npx --yes pnpm@10.28.0 --filter @healthflow/db generate &&
-      DATABASE_URL="$(echo "$DATABASE_URL" | sed 's/-pooler//')" npx --yes pnpm@10.28.0 --filter @healthflow/db migrate:deploy &&
+      DATABASE_URL="$(echo "${MIGRATE_DATABASE_URL:-$DATABASE_URL}" | sed 's/-pooler//')" npx --yes pnpm@10.28.0 --filter @healthflow/db migrate:deploy &&
       npx --yes pnpm@10.28.0 --filter @healthflow/api build
 
     startCommand: node apps/api/dist/server.js

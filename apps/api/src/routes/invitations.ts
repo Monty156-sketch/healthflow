@@ -66,12 +66,12 @@ async function issueInvitation(
 
   const raw = randomToken(32);
   const expiresAt = new Date(Date.now() + INVITATION_DAYS * 24 * 60 * 60 * 1000);
-  await prisma.$transaction([
-    prisma.staffInvitation.updateMany({
+  await prisma.$transaction(async (tx) => {
+    await tx.staffInvitation.updateMany({
       where: { facilityId: who.facilityId, staffId: s.id, status: "PENDING" },
       data: { status: "REVOKED" },
-    }),
-    prisma.staffInvitation.create({
+    });
+    await tx.staffInvitation.create({
       data: {
         facilityId: who.facilityId,
         staffId: s.id,
@@ -83,8 +83,8 @@ async function issueInvitation(
         sentAt: new Date(),
         expiresAt,
       },
-    }),
-  ]);
+    });
+  });
 
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { name: true } });
   const url = appUrl(`/invite?token=${encodeURIComponent(raw)}`);

@@ -128,8 +128,8 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
             )}
           </Field>
           {(role === "ROSTER_MANAGER" || role === "SUPERVISOR") && <WardSelect value={ward} onChange={setWard} allLabel="Every roster" label="Rosters they work on" />}
-          {role === "FACILITY_ADMIN" && (
-            <p className="text-sm text-[var(--muted)]">Facility admins must set up two-step sign-in before their first session.</p>
+          {(role === "FACILITY_ADMIN" || role === "ROSTER_MANAGER" || role === "SUPERVISOR") && (
+            <p className="text-sm text-[var(--muted)]">Facility admins, in-charges and supervisors must set up two-step sign-in before their first session.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={send}>

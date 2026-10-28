@@ -17,6 +17,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { Role } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
 import { writeAuditLog } from "../lib/audit.js";
+import { inFacility } from "../lib/tenant.js";
 
 export interface FacilityCaller {
   userId: string;
@@ -118,7 +119,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     const c = await supportCaller(req, res, profile.userEmail, profile.id, sessionHeader);
     if (!c) return;
     req.caller = c;
-    return next();
+    return inFacility(c.facilityId, next);
   }
   if (profile.scopeType !== "FACILITY" || !profile.facilityId) {
     return res.status(403).json({ error: "no_facility_access" });
@@ -143,7 +144,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     staffId: profile.staffId,
     departmentId: profile.role === "FACILITY_ADMIN" ? null : profile.departmentId,
   };
-  next();
+  inFacility(profile.facilityId, next);
 }
 
 export function allowRoles(...roles: Role[]) {
