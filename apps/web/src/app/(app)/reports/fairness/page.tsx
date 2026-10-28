@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { showDate } from "@/lib/format";
 import type { FairMeans, FairnessReport } from "@/lib/types";
-import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel } from "@/components/ui";
+import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, Select } from "@/components/ui";
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const MEASURES: { key: keyof FairMeans; label: string }[] = [
@@ -43,7 +43,8 @@ export default function FairnessPage() {
   const facility = useFacility();
   const [month, setMonth] = useState(thisMonth());
   const [ward, setWard] = useState("");
-  const q = `month=${month}${ward ? `&ward=${ward}` : ""}`;
+  const [span, setSpan] = useState("3");
+  const q = `month=${month}&span=${span}${ward ? `&ward=${ward}` : ""}`;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const { data, error, reload } = useResource<FairnessReport>(`/api/facility/reports/fairness?${q}`);
@@ -65,12 +66,23 @@ export default function FairnessPage() {
     <>
       <PageHeader
         title={manager ? "Fairness report" : "Why this duty"}
-        description={manager ? "Three months up to the month chosen, because one month is too short to judge fairness. Published and approved rosters only." : "Your duties over three months against the average for your cadre. You see yourself only, not your colleagues."}
+        description={manager ? "Three, six or twelve months up to the month chosen, because one month is too short to judge fairness. Published and approved rosters only. People well away from their cadre average are marked." : "Your duties over three months against the average for your cadre. You see yourself only, not your colleagues."}
       />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="max-w-[12rem]">
           <Field label="Up to and including">{(a) => <Input {...a} type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />}</Field>
         </div>
+        {manager && (
+          <div className="max-w-[10rem]">
+            <Field label="Period">{(a) => (
+              <Select {...a} value={span} onChange={(e) => setSpan(e.target.value)}>
+                <option value="3">3 months</option>
+                <option value="6">6 months</option>
+                <option value="12">12 months</option>
+              </Select>
+            )}</Field>
+          </div>
+        )}
         {manager && <WardSelect value={ward} onChange={setWard} />}
         {manager && <Button variant="secondary" disabled={busy} onClick={csv}>{busy ? "Preparing CSV…" : "Download CSV"}</Button>}
       </div>
@@ -80,7 +92,7 @@ export default function FairnessPage() {
       ) : !data ? (
         <Loading label="Working out the figures" />
       ) : data.monthsCovered === 0 ? (
-        <EmptyState title="No approved roster in these three months">Fairness is worked out from approved or published rosters.</EmptyState>
+        <EmptyState title="No approved roster in this period">Fairness is worked out from approved or published rosters.</EmptyState>
       ) : (
         <div className="space-y-6">
           <p className="text-[15px] text-[var(--muted)]">
@@ -102,9 +114,18 @@ export default function FairnessPage() {
                 <li>Who is eligible for the shift, by cadre and department.</li>
                 <li>Who is on leave, and who has other approved time away.</li>
                 <li>The rest rules: the minimum rest between duties, a weekly rest, and limits on duty days and nights in a row.</li>
-                <li>Then an even spread of nights, weekends and holidays across everyone left, counted over three months.</li>
+                <li>Then an even spread of nights, weekends and holidays across everyone left, counted over the period.</li>
               </ol>
               <p className="mt-3 text-sm text-[var(--muted)]">If a figure looks wrong, tell your in-charge.</p>
+            </Panel>
+          )}
+          {manager && data.cadres && data.cadres.some((c) => c.people.some((p) => p.flags?.length)) && (
+            <Panel title="Worth a look" description="These people are well above or below their cadre average. It may be right (leave, a transfer, a part-month), so check before changing anything.">
+              <ul className="divide-y divide-[var(--border)]">
+                {data.cadres.flatMap((c) => c.people.filter((p) => p.flags?.length).map((p) => (
+                  <li key={p.staffId} className="py-2 text-[15px]"><strong>{p.name}</strong> <span className="text-[var(--muted)]">({c.cadre})</span>: {p.flags!.join(". ")}.</li>
+                )))}
+              </ul>
             </Panel>
           )}
           {data.cadres?.map((c) => {
@@ -115,7 +136,7 @@ export default function FairnessPage() {
                 <ul className="space-y-5">
                   {c.people.map((p) => (
                     <li key={p.staffId}>
-                      <p className="mb-1 text-[15px] font-medium">{p.name}</p>
+                      <p className="mb-1 text-[15px] font-medium">{p.name}{p.flags && p.flags.length > 0 && <span className="ml-2 rounded-[var(--radius)] border border-[var(--border-strong)] px-1.5 py-0.5 text-xs font-normal text-[var(--muted)]">Worth a look</span>}</p>
                       <div className="space-y-1.5">
                         {MEASURES.map((m) => (
                           <Bar key={m.key} label={m.label} value={p[m.key]} mean={c.means[m.key]} max={max} />

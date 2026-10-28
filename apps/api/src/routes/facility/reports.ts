@@ -6,14 +6,16 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
-import { complianceForRosters, fairnessFigures, rostersForMonth } from "../../lib/reportStats.js";
+import { complianceForRosters, fairnessFigures, fairnessFlags, rostersForMonth } from "../../lib/reportStats.js";
 import { compliancePdf } from "../../lib/compliancePdf.js";
+import { allowanceSheet } from "../../lib/allowances.js";
+import { allowanceWorkbook } from "../../lib/allowanceExcel.js";
 
 export const reportsRouter = Router();
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
-const monthInput = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a month."), ward: z.string().optional() });
+const monthInput = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a month."), ward: z.string().optional(), span: z.enum(["3", "6", "12"]).default("3").transform(Number) });
 const title = (y: number, m: number) => `${MONTHS[m - 1]} ${y}`;
 const csvCell = (v: string | number | null) => {
   const s = v === null ? "" : String(v);
@@ -94,10 +96,10 @@ reportsRouter.get("/fairness", async (req, res) => {
   const q = monthInput.safeParse(req.query);
   if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a month." });
   const [y, m] = q.data.month.split("-").map(Number);
-  const f = await fairnessFigures(who.facilityId, y, m, wardOf(who, q.data.ward));
+  const f = await fairnessFigures(who.facilityId, y, m, wardOf(who, q.data.ward), q.data.span);
   const manager = READ_ROLES.includes(who.role);
-  const base = { month: q.data.month, period: f.period, monthsCovered: f.monthsCovered, monthsAsked: f.monthsAsked, manager };
-  if (manager) return res.json({ ...base, cadres: f.byCadre.map((c) => ({ cadre: c.cadre, means: c.means, sentence: c.sentence, people: c.people })) });
+  const base = { month: q.data.month, period: f.period, monthsCovered: f.monthsCovered, monthsAsked: f.monthsAsked, span: q.data.span, manager };
+  if (manager) return res.json({ ...base, cadres: f.byCadre.map((c) => ({ cadre: c.cadre, means: c.means, sentence: c.sentence, people: c.people.map((p) => ({ ...p, flags: fairnessFlags(p, c.means, c.people.length) })) })) });
   // A member of staff sees themselves against the average for their cadre, and no one else.
   if (!who.staffId) return res.json({ ...base, mine: null });
   const cadreId = f.cadreOf.get(who.staffId);
@@ -111,11 +113,60 @@ reportsRouter.get("/fairness.csv", allowRoles(...READ_ROLES), async (req, res) =
   const q = monthInput.safeParse(req.query);
   if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a month." });
   const [y, m] = q.data.month.split("-").map(Number);
-  const f = await fairnessFigures(who.facilityId, y, m, wardOf(who, q.data.ward));
-  const lines: (string | number | null)[][] = [["Cadre", "Name", "Night duties", "Weekend duties", "Holiday duties", "Total duties", "Hours", "Duties against cadre mean"]];
-  for (const c of f.byCadre) for (const p of c.people) lines.push([c.cadre, p.name, p.nights, p.weekends, p.holidays, p.duties, p.hours, Math.round((p.duties - c.means.duties) * 10) / 10]);
+  const f = await fairnessFigures(who.facilityId, y, m, wardOf(who, q.data.ward), q.data.span);
+  const lines: (string | number | null)[][] = [["Cadre", "Name", "Night duties", "Weekend duties", "Holiday duties", "Total duties", "Hours", "Duties against cadre mean", "Needs a look"]];
+  for (const c of f.byCadre) for (const p of c.people) lines.push([c.cadre, p.name, p.nights, p.weekends, p.holidays, p.duties, p.hours, Math.round((p.duties - c.means.duties) * 10) / 10, fairnessFlags(p, c.means, c.people.length).join("; ")]);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="fairness-${q.data.month}.csv"`);
   res.setHeader("Cache-Control", "no-store");
   res.send("﻿" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n"));
+});
+
+// ------------------------------------------------------------- duty days and allowances
+
+async function sheetFor(who: ReturnType<typeof caller>, q: { month: string; ward?: string }) {
+  const [y, m] = q.month.split("-").map(Number);
+  return allowanceSheet(who.facilityId, y, m, wardOf(who, q.ward));
+}
+
+reportsRouter.get("/allowances", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const q = monthInput.safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a month." });
+  const sheet = await sheetFor(who, q.data);
+  if (!sheet) return res.json({ month: q.data.month, sheet: null });
+  res.json({ month: q.data.month, sheet });
+});
+
+reportsRouter.get("/allowances.csv", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const q = monthInput.safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a month." });
+  const sheet = await sheetFor(who, q.data);
+  if (!sheet) return res.status(404).json({ error: "not_found", message: "There is no roster for that month." });
+  const head = ["Staff no", "Name", "Cadre", ...(sheet.hasWards ? ["Ward"] : []), "Duty days", ...sheet.shifts.map((s) => s.name), "Nights", "Weekend duties", "Holiday duties", "Hours", "Present", "Late", "Absent", "Excused", "On leave", "Official", "Not recorded"];
+  const lines: (string | number | null)[][] = [head];
+  for (const p of sheet.rows) lines.push([p.staffNo, p.name, p.cadre, ...(sheet.hasWards ? [p.ward] : []), p.duties, ...sheet.shifts.map((s) => p.byShift[s.id] ?? 0), p.nights, p.weekends, p.holidays, p.hours, p.present, p.late, p.absent, p.excused, p.onLeave, p.official, p.unrecorded]);
+  const t = sheet.totals;
+  lines.push(["Total", "", "", ...(sheet.hasWards ? [""] : []), t.duties, ...sheet.shifts.map((s) => t.byShift[s.id] ?? 0), t.nights, t.weekends, t.holidays, t.hours, t.present, t.late, t.absent, t.excused, t.onLeave, t.official, t.unrecorded]);
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a CSV${sheet.final ? "" : " while some rosters were still drafts"}.` });
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="duty-days-${q.data.month}.csv"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send("\uFEFF" + lines.map((l) => l.map(csvCell).join(",")).join("\r\n"));
+});
+
+reportsRouter.get("/allowances.xlsx", allowRoles(...READ_ROLES), async (req, res) => {
+  const who = caller(req);
+  const q = monthInput.safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "invalid_input", message: "Choose a month." });
+  const sheet = await sheetFor(who, q.data);
+  if (!sheet) return res.status(404).json({ error: "not_found", message: "There is no roster for that month." });
+  const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { name: true } });
+  const buf = await allowanceWorkbook(sheet, facility.name, who.displayName, new Date().toISOString().slice(0, 10));
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a workbook${sheet.final ? "" : " while some rosters were still drafts"}.` });
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="duty-days-${q.data.month}.xlsx"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.send(buf);
 });
