@@ -77,6 +77,12 @@ Off until PS Tech sets it up. Nothing is sent without all of: the server keys, t
 
 Reminders go out from 05:00 (Ghana time) on the day of the duty, once per person, for published rosters only. A failed message is tried again on the next hourly run, three times at most. Records are kept 90 days. Meta bills per conversation; check their current price list before enabling for a large facility. Replying STOP to the message is not wired up; people switch it off in the app.
 
+## Security watch
+
+- Dependabot opens weekly update pull requests. `.github/workflows/security.yml` audits production packages every Monday and fails on a high or critical finding, which sends a notice.
+- Accepted risk, reviewed 2026-10-28: GHSA-mrhx-c7xc-m3w5 (zod can use a lot of memory validating huge arrays). The only fix is zod 4, a large migration. The API rejects bodies over 100 KB, which bounds the arrays zod ever sees. Remove the entry under `pnpm.auditConfig` in `package.json` when the API moves to zod 4.
+- Failed sign-ins: 15 or more across all accounts in ten minutes emails the owner (at most once an hour). A locked administrator or district officer account emails the owner and the person. Counters are in server memory, so they restart with the server.
+
 ## Staging and safe databases
 
 Local development, the tests and production used to share one database. Three guards now stop that:
