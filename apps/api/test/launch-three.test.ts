@@ -114,7 +114,7 @@ describe("online payment", () => {
 describe("scheduler", () => {
   it("runs each due job once and records it", async () => {
     const first = await tick();
-    expect(first).toEqual(["support-expiry", "overdue-invoices", "access-and-reminders", "ward-transfers", "retention-scan", "sms-log-cleanup"]);
+    expect(first).toEqual(["support-expiry", "overdue-invoices", "access-and-reminders", "ward-transfers", "credential-reminders", "retention-scan", "sms-log-cleanup"]);
     expect(await tick()).toEqual([]);
     expect(await prisma.jobRun.count({ where: { ok: true } })).toBe(6);
   });
@@ -123,7 +123,7 @@ describe("scheduler", () => {
     await tick();
     const { user: platform } = await makeUser({ role: "PLATFORM_ADMIN" });
     const res = await as(platform).get("/api/platform/health");
-    expect(res.body.jobs).toHaveLength(6);
+    expect(res.body.jobs).toHaveLength(7);
     expect(res.body.jobs.every((j: { late: boolean }) => !j.late)).toBe(true);
   });
 });
