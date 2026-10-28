@@ -10,6 +10,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireDistrictOfficer } from "../middleware/districtAccess.js";
 import { sayDay } from "../engine/time.js";
 import { mean, scorecard, type Row } from "../lib/scorecard.js";
+import { csvCell } from "../lib/csvSafe.js";
 
 export const districtRouter = Router();
 districtRouter.use(requireAuth, requireDistrictOfficer);
@@ -298,7 +299,7 @@ districtRouter.get("/report-pack", async (req, res) => {
 
 districtRouter.get("/report-pack.csv", async (req, res) => {
   const pack = await reportPack(req);
-  const esc = (v: unknown) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
+  const esc = csvCell;
   const lines: string[] = [`District report pack,${esc(pack.district)},${pack.period},generated ${pack.generatedOn}`, ""];
   for (const [name, rows] of Object.entries(pack.sections)) {
     const list = rows as Record<string, unknown>[];
@@ -384,7 +385,7 @@ districtRouter.get("/scorecard", async (req, res) => {
 
 districtRouter.get("/scorecard.csv", async (req, res) => {
   const s = await scorecardFor(req);
-  const esc = (v: unknown) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
+  const esc = csvCell;
   const n = (v: number | null) => (v === null ? "" : v);
   const lines = [
     `Performance scorecard,${esc(req.district!.districtName)},${s.label},compared with ${s.previousLabel}`,

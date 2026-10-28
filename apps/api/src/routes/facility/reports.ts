@@ -10,6 +10,7 @@ import { complianceForRosters, fairnessFigures, fairnessFlags, rostersForMonth }
 import { compliancePdf } from "../../lib/compliancePdf.js";
 import { allowanceSheet } from "../../lib/allowances.js";
 import { allowanceWorkbook } from "../../lib/allowanceExcel.js";
+import { csvCell } from "../../lib/csvSafe.js";
 
 export const reportsRouter = Router();
 
@@ -17,10 +18,6 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 const monthInput = z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose a month."), ward: z.string().optional(), span: z.enum(["3", "6", "12"]).default("3").transform(Number) });
 const title = (y: number, m: number) => `${MONTHS[m - 1]} ${y}`;
-const csvCell = (v: string | number | null) => {
-  const s = v === null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
 
 /** A ward manager sees their own ward whatever they ask for; others can narrow to one ward or read the whole hospital. */
 const wardOf = (who: { departmentId?: string | null }, asked?: string) => who.departmentId ?? (asked || null);

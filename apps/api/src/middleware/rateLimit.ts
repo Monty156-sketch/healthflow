@@ -1,5 +1,5 @@
 import rateLimit from "express-rate-limit";
-import { clientIp } from "../lib/clientIp.js";
+import { rateKey } from "../lib/clientIp.js";
 
 // Five attempts an hour, per the spec's registration/verification rate
 // limit (Part 6, section 10). Applied per client IP; account lockout (the
@@ -9,7 +9,7 @@ export const authAttemptLimiter = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
   message: { error: "too_many_attempts", retryAfterMinutes: 60 },
 });
 
@@ -22,7 +22,7 @@ export const loginLimiter = rateLimit({
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
   message: { error: "too_many_attempts", retryAfterMinutes: 15 },
 });
 
@@ -32,5 +32,5 @@ export const apiLimiter = rateLimit({
   limit: 600,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
 });

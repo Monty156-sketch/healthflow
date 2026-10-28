@@ -9,6 +9,7 @@ import { parseOr400 } from "../../lib/validate.js";
 import { notifyDeciders, notifyStaff } from "../../lib/notify.js";
 import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.js";
 import { sayDay } from "../../engine/time.js";
+import { staffInMyWard, wardStaffFilter } from "../../lib/wardScope.js";
 
 export const daysOffRouter = Router();
 export const restrictionsRouter = Router();
@@ -31,11 +32,11 @@ daysOffRouter.get("/", async (req, res) => {
   const decider = DECIDERS.includes(who.role);
   const from = new Date((Math.floor(Date.now() / DAY) - 31) * DAY);
   const rows = await prisma.dayOffRequest.findMany({
-    where: { facilityId: who.facilityId, date: { gte: from }, ...(decider ? {} : { staffId: who.staffId ?? "none" }) },
+    where: { facilityId: who.facilityId, date: { gte: from }, ...(decider ? { staff: wardStaffFilter(who) } : { staffId: who.staffId ?? "none" }) },
     include: { staff: { select: { fullName: true } } },
     orderBy: [{ status: "asc" }, { date: "asc" }],
   });
-  const people = decider ? await prisma.staff.findMany({ where: { facilityId: who.facilityId, status: "ACTIVE" }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }) : [];
+  const people = decider ? await prisma.staff.findMany({ where: { facilityId: who.facilityId, status: "ACTIVE", ...wardStaffFilter(who) }, select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }) : [];
   res.json({ requests: rows.map(present), decider, perMonth: DAYS_OFF_PER_MONTH, myStaffId: who.staffId, people: people.map((p) => ({ id: p.id, name: p.fullName })) });
 });
 
@@ -49,7 +50,7 @@ daysOffRouter.post("/", async (req, res) => {
   if (forOther && !DECIDERS.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "You can only ask for your own days off." });
   const staffId = input.staffId ?? who.staffId;
   if (!staffId) return res.status(400).json({ error: "no_staff_record", message: "Your account is not linked to a staff record. Ask your in-charge." });
-  const person = await prisma.staff.findFirst({ where: { id: staffId, facilityId: who.facilityId, status: "ACTIVE" }, select: { id: true, fullName: true } });
+  const person = await prisma.staff.findFirst({ where: { id: staffId, facilityId: who.facilityId, status: "ACTIVE", ...(forOther ? wardStaffFilter(who) : {}) }, select: { id: true, fullName: true } });
   if (!person) return res.status(404).json({ error: "not_found" });
   const date = new Date(`${input.date}T00:00:00Z`);
   if (dayOf(date) <= Math.floor(Date.now() / DAY)) return res.status(400).json({ error: "invalid_input", fields: { date: "Choose a day after today." } });
@@ -84,7 +85,7 @@ daysOffRouter.post("/:id/decide", allowRoles(...DECIDERS), async (req, res) => {
   const input = parseOr400(decideInput, req.body, res);
   if (!input) return;
   const row = await prisma.dayOffRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { staff: { select: { fullName: true } } } });
-  if (!row) return res.status(404).json({ error: "not_found" });
+  if (!row || !(await staffInMyWard(who, row.staffId))) return res.status(404).json({ error: "not_found" });
   if (row.status !== "REQUESTED") return res.status(409).json({ error: "already_decided", message: "This request has already been decided." });
   const updated = await prisma.dayOffRequest.update({
     where: { id: row.id }, data: { status: input.decision === "approve" ? "APPROVED" : "DECLINED", decidedBy: who.email, decidedAt: new Date() }, include: { staff: { select: { fullName: true } } },
@@ -99,7 +100,7 @@ daysOffRouter.post("/:id/withdraw", async (req, res) => {
   const who = caller(req);
   const row = await prisma.dayOffRequest.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
   if (!row) return res.status(404).json({ error: "not_found" });
-  if (row.staffId !== who.staffId && !DECIDERS.includes(who.role)) return res.status(404).json({ error: "not_found" });
+  if (row.staffId !== who.staffId && (!DECIDERS.includes(who.role) || !(await staffInMyWard(who, row.staffId)))) return res.status(404).json({ error: "not_found" });
   if (!["REQUESTED", "APPROVED"].includes(row.status)) return res.status(409).json({ error: "closed", message: "This request is already closed." });
   const updated = await prisma.dayOffRequest.update({ where: { id: row.id }, data: { status: "WITHDRAWN" } });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "day_off_withdrawn", entityType: "DayOffRequest", entityId: row.id, summary: `${who.displayName} withdrew the request for ${sayDay(dayOf(row.date))} off.` });
@@ -110,6 +111,7 @@ daysOffRouter.post("/:id/withdraw", async (req, res) => {
 
 restrictionsRouter.get("/:staffId/restrictions", allowRoles(...DECIDERS), async (req, res) => {
   const who = caller(req);
+  if (!(await staffInMyWard(who, String(req.params.staffId)))) return res.status(404).json({ error: "not_found" });
   const rows = await prisma.staffRestriction.findMany({ where: { facilityId: who.facilityId, staffId: String(req.params.staffId) }, orderBy: { startDate: "desc" } });
   res.json({ restrictions: rows.map((r) => ({ id: r.id, kind: r.kind, startDate: iso(r.startDate), endDate: iso(r.endDate), note: r.note })) });
 });
@@ -122,7 +124,7 @@ restrictionsRouter.post("/:staffId/restrictions", allowRoles(...DECIDERS), async
   const who = caller(req);
   const input = parseOr400(restrictionInput, req.body, res);
   if (!input) return;
-  const person = await prisma.staff.findFirst({ where: { id: String(req.params.staffId), facilityId: who.facilityId }, select: { id: true, fullName: true } });
+  const person = await prisma.staff.findFirst({ where: { id: String(req.params.staffId), facilityId: who.facilityId, ...wardStaffFilter(who) }, select: { id: true, fullName: true } });
   if (!person) return res.status(404).json({ error: "not_found" });
   const start = new Date(`${input.startDate}T00:00:00Z`);
   const end = new Date(`${input.endDate}T00:00:00Z`);
@@ -134,6 +136,7 @@ restrictionsRouter.post("/:staffId/restrictions", allowRoles(...DECIDERS), async
 
 restrictionsRouter.delete("/:staffId/restrictions/:id", allowRoles(...DECIDERS), async (req, res) => {
   const who = caller(req);
+  if (!(await staffInMyWard(who, String(req.params.staffId)))) return res.status(404).json({ error: "not_found" });
   const row = await prisma.staffRestriction.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId, staffId: String(req.params.staffId) }, include: { staff: { select: { fullName: true } } } });
   if (!row) return res.status(404).json({ error: "not_found" });
   await prisma.staffRestriction.delete({ where: { id: row.id } });

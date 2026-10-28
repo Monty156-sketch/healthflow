@@ -6,6 +6,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, READ_ROLES, ADMIN_ROLES } from "../../middleware/facilityAccess.js";
 import { assignCover, CoverError, coverOptions, respondToCover, syncCover } from "../../lib/cover.js";
+import { assignmentInMyWard, staffInMyWard, wardStaffFilter } from "../../lib/wardScope.js";
 import { expireLedger, openBalances, twinOf, writePair } from "../../lib/ledger.js";
 
 export const coverRouter = Router();
@@ -24,7 +25,9 @@ coverRouter.get("/options", allowRoles(...READ_ROLES), async (req, res) => {
   const q = z.object({ assignmentId: z.string() }).safeParse(req.query);
   if (!q.success) return res.status(400).json({ error: "invalid_input" });
   try {
-    res.json(await coverOptions(caller(req).facilityId, q.data.assignmentId));
+    const who = caller(req);
+    if (!(await assignmentInMyWard(who, q.data.assignmentId))) return res.status(404).json({ error: "not_found" });
+    res.json(await coverOptions(who.facilityId, q.data.assignmentId));
   } catch (e) {
     fail(res, e);
   }
@@ -36,6 +39,7 @@ coverRouter.post("/assign", allowRoles(...READ_ROLES), async (req, res) => {
   const who = caller(req);
   const input = parseOr400(assignInput, req.body, res);
   if (!input) return;
+  if (!(await assignmentInMyWard(who, input.assignmentId))) return res.status(404).json({ error: "not_found" });
   try {
     const out = await assignCover(who.facilityId, input.assignmentId, input.proposalId, { email: who.email, displayName: who.displayName }, input.owedBack);
     res.json({ ok: true, warnings: out.warnings });
@@ -66,7 +70,7 @@ coverRouter.get("/awaiting", async (req, res) => {
   const decider = READ_ROLES.includes(who.role);
   if (!decider && !who.staffId) return res.json({ cover: [] });
   const rows = await prisma.rosterAssignment.findMany({
-    where: { facilityId: who.facilityId, isCover: true, acknowledgementState: { in: ["AWAITING", "ESCALATED"] }, dutyDate: { gte: new Date(Math.floor(Date.now() / DAY) * DAY) }, roster: { status: "PUBLISHED" }, ...(decider ? {} : { staffId: who.staffId! }) },
+    where: { facilityId: who.facilityId, isCover: true, acknowledgementState: { in: ["AWAITING", "ESCALATED"] }, dutyDate: { gte: new Date(Math.floor(Date.now() / DAY) * DAY) }, roster: { status: "PUBLISHED" }, ...(decider ? (who.departmentId ? { staff: { departmentId: who.departmentId } } : {}) : { staffId: who.staffId! }) },
     include: { shift: true, staff: { select: { fullName: true } } }, orderBy: { dutyDate: "asc" },
   });
   const away = await prisma.staff.findMany({ where: { id: { in: rows.map((r) => r.coverForStaffId).filter(Boolean) as string[] } }, select: { id: true, fullName: true } });
@@ -84,13 +88,14 @@ coverRouter.get("/awaiting", async (req, res) => {
 ledgerRouter.use(allowRoles(...READ_ROLES));
 
 ledgerRouter.get("/", async (req, res) => {
-  const { facilityId } = caller(req);
+  const who = caller(req);
+  const { facilityId } = who;
   await expireLedger(facilityId);
   const [people, balances, entries] = await Promise.all([
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE" }, select: { id: true, fullName: true, cadre: { select: { name: true } } }, orderBy: { fullName: "asc" } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...wardStaffFilter(who) }, select: { id: true, fullName: true, cadre: { select: { name: true } } }, orderBy: { fullName: "asc" } }),
     openBalances(facilityId),
     prisma.dutyLedgerEntry.findMany({
-      where: { facilityId }, orderBy: { createdAt: "desc" }, take: 150,
+      where: { facilityId, ...(who.departmentId ? { staff: { departmentId: who.departmentId } } : {}) }, orderBy: { createdAt: "desc" }, take: 150,
       include: { staff: { select: { fullName: true } }, counterpartyStaff: { select: { fullName: true } } },
     }),
   ]);
@@ -124,7 +129,7 @@ ledgerRouter.post("/adjust", async (req, res) => {
   if (!input) return;
   if (input.debtorId === input.creditorId) return res.status(400).json({ error: "invalid_input", fields: { creditorId: "Choose two different people." } });
   const people = await prisma.staff.findMany({ where: { facilityId: who.facilityId, id: { in: [input.debtorId, input.creditorId] } }, select: { id: true, fullName: true } });
-  if (people.length !== 2) return res.status(404).json({ error: "not_found" });
+  if (people.length !== 2 || !(await staffInMyWard(who, input.debtorId)) || !(await staffInMyWard(who, input.creditorId))) return res.status(404).json({ error: "not_found" });
   const name = (id: string) => people.find((p) => p.id === id)!.fullName;
   await writePair({ facilityId: who.facilityId, debtorId: input.debtorId, creditorId: input.creditorId, duties: input.duties, reason: "MANUAL_ADJUSTMENT", description: input.note });
   await writeAuditLog({
@@ -143,7 +148,7 @@ ledgerRouter.post("/entries/:id/settle", async (req, res) => {
   const input = parseOr400(settleInput, req.body, res);
   if (!input) return;
   const e = await prisma.dutyLedgerEntry.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { staff: { select: { fullName: true } } } });
-  if (!e) return res.status(404).json({ error: "not_found" });
+  if (!e || !(await staffInMyWard(who, e.staffId))) return res.status(404).json({ error: "not_found" });
   if (!["OPEN", "PARTLY_SETTLED"].includes(e.status)) return res.status(409).json({ error: "closed", message: "This entry is already closed." });
   const left = e.duties - e.dutiesSettled;
   if (input.duties > left) return res.status(400).json({ error: "invalid_input", message: `Only ${left} ${left === 1 ? "duty is" : "duties are"} left on this entry.` });

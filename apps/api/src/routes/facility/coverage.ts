@@ -9,6 +9,7 @@ import { allowRoles, caller, READ_ROLES } from "../../middleware/facilityAccess.
 import { rostersForMonth } from "../../lib/reportStats.js";
 import { evidenceFor } from "../../lib/evidence.js";
 import { coverageFor } from "../district.js";
+import { csvCell } from "../../lib/csvSafe.js";
 
 export const coverageRouter = Router();
 coverageRouter.use(allowRoles(...READ_ROLES));
@@ -78,7 +79,6 @@ coverageRouter.get("/evidence", async (req, res) => {
   res.json({ note: EVIDENCE_NOTE, ...(await evidenceFor(who.facilityId, y, m)) });
 });
 
-const csvCell = (v: unknown) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
 
 /** The identifiable version needs the exporter to confirm the facility's written consent exists. */
 coverageRouter.get("/evidence.csv", async (req, res) => {

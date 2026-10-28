@@ -10,7 +10,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { hashPassword } from "../lib/password.js";
 import { checkPassword } from "../lib/passwordPolicy.js";
-import { clientIp } from "../lib/clientIp.js";
+import { rateKey } from "../lib/clientIp.js";
 import { appUrl, sendEmail } from "../lib/email.js";
 import { parseOr400 } from "../lib/validate.js";
 import { normalisePhone } from "../lib/sms.js";
@@ -39,7 +39,7 @@ const limiter = rateLimit({
   limit: process.env.NODE_ENV === "test" ? 1000 : 4,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
   message: { error: "too_many_attempts", message: "Too many registrations from this connection. Try again in an hour, or call 055 457 1800." },
 });
 

@@ -31,11 +31,16 @@ const body = z.object({
  * Which ward a request is about. Staff are held to their own ward. A ward manager to theirs.
  * The administrator and a supervisor choose. `null` is a facility with no wards, or all of them for a reader.
  */
-async function wardFor(req: Parameters<typeof caller>[0], asked: unknown): Promise<{ fixed: boolean; ward: string | null }> {
+async function wardFor(req: Parameters<typeof caller>[0], asked: unknown): Promise<{ fixed: boolean; ward: string | null; none?: boolean }> {
   const who = caller(req);
   if (who.departmentId) return { fixed: true, ward: who.departmentId };
   if (!isManager(who.role)) {
     const me = who.staffId ? await prisma.staff.findFirst({ where: { id: who.staffId, facilityId: who.facilityId }, select: { departmentId: true } }) : null;
+    if (!me?.departmentId) {
+      // Not placed on a ward yet. In a facility with wards that means no wards' notes, not all of them.
+      const wards = await prisma.department.count({ where: { facilityId: who.facilityId, active: true, kind: "WARD" } });
+      if (wards > 0) return { fixed: true, ward: null, none: true };
+    }
     return { fixed: true, ward: me?.departmentId ?? null };
   }
   return { fixed: false, ward: typeof asked === "string" && asked ? asked : null };
@@ -76,7 +81,8 @@ const include = { department: { select: { name: true } }, shift: { select: { nam
 /** The shifts to choose from and the wards the caller may look at. */
 handoverRouter.get("/options", async (req, res) => {
   const who = caller(req);
-  const { fixed, ward } = await wardFor(req, req.query.ward);
+  const { fixed, ward, none } = await wardFor(req, req.query.ward);
+  if (none) return res.json({ shifts: [], wards: [], fixed, ward });
   const [shifts, wards] = await Promise.all([
     prisma.shift.findMany({ where: { facilityId: who.facilityId, active: true, countsAsDuty: true, isOnCall: false }, orderBy: { sortOrder: "asc" }, select: { id: true, name: true, startTime: true, endTime: true } }),
     prisma.department.findMany({ where: { facilityId: who.facilityId, active: true, kind: "WARD", ...(fixed && ward ? { id: ward } : {}) }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
@@ -87,7 +93,8 @@ handoverRouter.get("/options", async (req, res) => {
 /** How many notes in the caller's ward are waiting to be read. */
 handoverRouter.get("/unread", async (req, res) => {
   const who = caller(req);
-  const { ward } = await wardFor(req, req.query.ward);
+  const { ward, none } = await wardFor(req, req.query.ward);
+  if (none) return res.json({ unread: 0 });
   const since = new Date(Math.floor(Date.now() / DAY) * DAY - 2 * DAY);
   const count = await prisma.handoverNote.count({
     where: { facilityId: who.facilityId, archivedAt: null, dutyDate: { gte: since }, ...(ward ? { departmentId: ward } : {}), authorEmail: { not: who.email }, reads: { none: { readerEmail: who.email } } },
@@ -98,7 +105,8 @@ handoverRouter.get("/unread", async (req, res) => {
 /** Recent notes for a ward, newest first. */
 handoverRouter.get("/", async (req, res) => {
   const who = caller(req);
-  const { ward } = await wardFor(req, req.query.ward);
+  const { ward, none } = await wardFor(req, req.query.ward);
+  if (none) return res.json({ notes: [] });
   const days = Math.min(Math.max(Number(req.query.days) || 3, 1), 14);
   const since = new Date(Math.floor(Date.now() / DAY) * DAY - (days - 1) * DAY);
   const notes = await prisma.handoverNote.findMany({
@@ -115,7 +123,8 @@ handoverRouter.post("/", async (req, res) => {
   const who = caller(req);
   const input = parseOr400(body, req.body, res);
   if (!input) return;
-  const { fixed, ward } = await wardFor(req, input.ward);
+  const { fixed, ward, none } = await wardFor(req, input.ward);
+  if (none) return res.status(403).json({ error: "no_ward", message: "You have not been placed on a ward yet. Ask your in-charge." });
   const departmentId = ward;
   const today = Math.floor(Date.now() / DAY);
   const day = Math.floor(Date.parse(input.dutyDate) / DAY);

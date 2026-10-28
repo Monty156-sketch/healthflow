@@ -318,6 +318,12 @@ authRouter.post("/refresh", async (req, res) => {
 
   const user = await prisma.userProfile.findUnique({ where: { id: outcome.userProfileId } });
   if (!user || !user.active) return res.status(403).json({ error: "account_inactive" });
+  // The two-step rule applies to a session that started before it did, or after support reset it.
+  if (ROLES_REQUIRING_MFA.includes(user.role) && !user.mfaEnabled) {
+    await revokeRefreshToken(raw, "two-step sign-in required");
+    res.clearCookie(REFRESH_COOKIE_NAME, refreshCookieOptions());
+    return res.status(403).json({ error: "mfa_setup_required" });
+  }
 
   await revokeRefreshToken(raw, "rotated");
   const refreshToken = await issueRefreshToken({

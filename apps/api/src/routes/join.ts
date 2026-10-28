@@ -10,7 +10,7 @@ import { prisma } from "../lib/prisma.js";
 import { hashPassword } from "../lib/password.js";
 import { checkPassword } from "../lib/passwordPolicy.js";
 import { writeAuditLog } from "../lib/audit.js";
-import { clientIp } from "../lib/clientIp.js";
+import { rateKey } from "../lib/clientIp.js";
 import { normalisePhone } from "../lib/sms.js";
 import { codeProblem, normaliseCode } from "../lib/accessCode.js";
 import { notifyDeciders, notifyWard } from "../lib/notify.js";
@@ -28,7 +28,7 @@ const limiter = rateLimit({
   limit: process.env.NODE_ENV === "test" ? 1000 : 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
   message: { error: "too_many_attempts", message: "Too many attempts from this connection. Try again in an hour, or ask your in-charge." },
 });
 joinRouter.use(limiter);

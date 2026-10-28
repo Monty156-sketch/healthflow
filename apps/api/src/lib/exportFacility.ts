@@ -2,6 +2,7 @@
 // them as CSV. A facility administrator can do this at any time, without a fee
 // and without asking. Credentials and secrets are never part of it.
 import { prisma } from "./prisma.js";
+import { csvCell } from "./csvSafe.js";
 
 export async function exportFacilityData(facilityId: string) {
   const w = { facilityId };
@@ -38,10 +39,7 @@ export async function exportFacilityData(facilityId: string) {
   };
 }
 
-const cell = (v: unknown) => {
-  const s = v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : typeof v === "object" ? JSON.stringify(v) : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
+const cell = (v: unknown) => csvCell(v instanceof Date ? v.toISOString() : v !== null && typeof v === "object" ? JSON.stringify(v) : v);
 
 export function rowsToCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return "No records\n";

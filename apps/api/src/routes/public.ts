@@ -8,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { sendEmail, appUrl } from "../lib/email.js";
 import { parseOr400 } from "../lib/validate.js";
-import { clientIp } from "../lib/clientIp.js";
+import { rateKey } from "../lib/clientIp.js";
 import { hashPassword } from "../lib/password.js";
 import { checkPassword } from "../lib/passwordPolicy.js";
 
@@ -22,7 +22,7 @@ const limiter = rateLimit({
   limit: process.env.NODE_ENV === "test" ? 1000 : 6,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => clientIp(req),
+  keyGenerator: (req) => rateKey(req),
   message: { error: "too_many_attempts", message: "Too many requests from this connection. Please try again in an hour, or call us." },
 });
 

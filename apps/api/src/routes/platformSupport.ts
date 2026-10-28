@@ -128,6 +128,8 @@ supportConsole.post("/users/:id/unlock", (req, res) =>
 supportConsole.post("/users/:id/reset-mfa", (req, res) =>
   userAction(req, res, String(req.params.id), "user_mfa_reset", async (u) => {
     await prisma.userProfile.update({ where: { id: u.id }, data: { mfaEnabled: false, mfaSecretEncrypted: null, recoveryCodesHashed: [] } });
+    // Anyone holding a session from before the reset has to sign in again.
+    await prisma.refreshToken.updateMany({ where: { userProfileId: u.id, revokedAt: null }, data: { revokedAt: new Date(), revokedReason: "two-step sign-in reset by PS Tech" } });
     return { summary: "reset two-step sign-in" };
   }));
 
