@@ -50,6 +50,12 @@ export async function notifyStaff(facilityId: string, staffId: string, n: NoteCo
   if (user) await send(facilityId, [{ email: user.userEmail, staffId: user.staffId }], n);
 }
 
+/** The facility administrators only. */
+export async function notifyAdmins(facilityId: string, n: NoteContent) {
+  const users = await prisma.userProfile.findMany({ where: { facilityId, active: true, role: "FACILITY_ADMIN" }, select: { userEmail: true, staffId: true } });
+  await send(facilityId, users.map((u) => ({ email: u.userEmail, staffId: u.staffId })), n);
+}
+
 /** The facility administrators, plus the in-charges of one ward when a ward is given. */
 export async function notifyWard(facilityId: string, departmentId: string | null, n: NoteContent) {
   // A ward with an in-charge decides for its own staff, so the administrator is not told. With no in-charge yet, the administrator is.

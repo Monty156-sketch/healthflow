@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useSave } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS } from "@/lib/format";
 import { SmsPanel } from "@/components/SmsPanel";
+import { RosterDeadline } from "@/components/RosterDeadline";
 import { GeofenceSettings } from "@/components/GeofenceSettings";
 import { Button, Checkbox, Field, Input, Notice, PageHeader, Panel, SaveStatus, Select } from "@/components/ui";
 
@@ -164,6 +165,7 @@ export default function FacilitySettingsPage() {
       {isAdmin && (
         <div className="mt-6 space-y-6">
           <GeofenceSettings />
+          <RosterDeadline />
           <SmsPanel />
         </div>
       )}
