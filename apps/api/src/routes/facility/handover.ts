@@ -50,15 +50,15 @@ async function knownNames(facilityId: string) {
     prisma.cadre.findMany({ where: { facilityId }, select: { name: true } }),
     prisma.staff.findMany({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, select: { fullName: true } }),
   ]);
-  return [f?.name ?? "", ...depts.map((d) => d.name), ...shifts.map((s) => s.name), ...cadres.map((c) => c.name), ...staff.map((s) => s.fullName)];
+  return { known: [f?.name ?? "", ...depts.map((d) => d.name), ...shifts.map((s) => s.name), ...cadres.map((c) => c.name)], people: staff.map((s) => s.fullName) };
 }
 
 /** Field errors for any of the three texts that seems to name a patient, or null when they are clean. */
 async function patientFields(facilityId: string, texts: Record<"summary" | "pending" | "concerns", string | null | undefined>) {
-  const known = await knownNames(facilityId);
+  const { known, people } = await knownNames(facilityId);
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(texts)) {
-    const problem = patientProblem(v, known);
+    const problem = patientProblem(v, known, people);
     if (problem) fields[k] = problem;
   }
   return Object.keys(fields).length ? fields : null;

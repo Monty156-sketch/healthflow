@@ -22,9 +22,11 @@ const words = (xs: string[]) => new Set(xs.flatMap((x) => x.toLowerCase().split(
  * What in the text looks like patient identity. `known` holds names the ward legitimately uses: its own name, shifts, cadres,
  * the facility and the staff, so "Female Ward" and "Night Shift" and a colleague's name are not flagged.
  */
-export function patientIdentifiers(text: string, known: string[] = []): PatientHit[] {
+export function patientIdentifiers(text: string, known: string[] = [], people: string[] = []): PatientHit[] {
   const hits: PatientHit[] = [];
   const allowed = words(known);
+  // A colleague is allowed only by full name. Their first name alone would let a patient with the same first name through.
+  const colleagues = new Set(people.map((x) => x.toLowerCase().replace(/\s+/g, " ").trim()));
   // Remove colleagues' titled names first so they do not count.
   const cleaned = text.replace(STAFF_TITLES, " ");
   for (const m of cleaned.matchAll(TITLED)) {
@@ -36,6 +38,7 @@ export function patientIdentifiers(text: string, known: string[] = []): PatientH
   for (const m of cleaned.matchAll(LONG_NUMBER)) hits.push({ text: m[0], why: "an ID, folder or card number" });
   for (const m of cleaned.matchAll(CAPITAL_PAIR)) {
     const parts = m[0].toLowerCase().split(/\s+/);
+    if (colleagues.has(parts.join(" "))) continue;
     if (parts.every((p) => allowed.has(p))) continue;
     if (parts.some((p) => allowed.has(p))) continue;
     if (parts.some((p) => COMMON.has(p))) continue;
@@ -51,9 +54,9 @@ const COMMON = new Set([
 ]);
 
 /** A sentence telling the writer what to change, or null when the text is clean. */
-export function patientProblem(text: string | null | undefined, known: string[]): string | null {
+export function patientProblem(text: string | null | undefined, known: string[], people: string[] = []): string | null {
   if (!text) return null;
-  const hits = patientIdentifiers(text, known);
+  const hits = patientIdentifiers(text, known, people);
   if (hits.length === 0) return null;
   const shown = hits.slice(0, 3).map((h) => `"${h.text}" (${h.why})`).join(", ");
   return `This looks like it names a patient: ${shown}. Use the bed number and say what needs doing, with no names, phone or ID numbers.`;
