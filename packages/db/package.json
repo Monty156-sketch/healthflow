@@ -13,7 +13,7 @@
     "studio": "node ../../scripts/db-guard.mjs develop && prisma studio"
   },
   "dependencies": {
-    "@prisma/client": "^6.1.0"
+    "@prisma/client": "^7.10.1"
   },
   "devDependencies": {
     "dotenv": "^16.4.5",
