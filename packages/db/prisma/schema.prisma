@@ -397,6 +397,7 @@ model Facility {
   deployments         Deployment[]
   movesOut            StaffMove[] @relation("MoveFrom")
   movesIn             StaffMove[] @relation("MoveTo")
+  credentials         StaffCredential[]
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -524,6 +525,8 @@ model Cadre {
   onRoster   Boolean   @default(true)
   /// Office hours: weekday day shift only, outside the duty cycles (pharmacy, laboratory, records).
   weekdaysOnly Boolean @default(false)
+  /// Licences and certificates everyone in this cadre must hold, by name (for example the council licence).
+  requiredCredentials String[] @default([])
 
   staff             Staff[]
   establishmentPosts EstablishmentPost[]
@@ -578,6 +581,7 @@ model Staff {
   dayOffRequests       DayOffRequest[]
   transfers            WardTransfer[]
   facilityMoves        StaffMove[]
+  credentials          StaffCredential[]
   deployments          DeploymentMember[]
   archivedAt           DateTime?
   createdAt            DateTime         @default(now())
@@ -1687,5 +1691,34 @@ model DeploymentMember {
   returnedBy   String?
 
   @@unique([deploymentId, staffId])
+  @@index([staffId])
+}
+
+/// A licence, registration or certificate a member of staff holds, with the date it lapses.
+/// Only the number and dates are kept here, never a scan of the document.
+model StaffCredential {
+  id            String    @id @default(cuid())
+  facilityId    String
+  facility      Facility  @relation(fields: [facilityId], references: [id])
+  staffId       String
+  staff         Staff     @relation(fields: [staffId], references: [id])
+  kind          String
+  number        String?
+  issuer        String?
+  issuedOn      DateTime? @db.Date
+  expiresOn     DateTime? @db.Date
+  /// For a certificate that does not lapse.
+  noExpiry      Boolean   @default(false)
+  /// Who at the facility checked the original, and when. Empty until someone has.
+  verifiedBy    String?
+  verifiedAt    DateTime?
+  /// The last reminder sent: 60, 30 or 7 days ahead, or -1 once it has lapsed. Reset when the date changes.
+  remindedStage Int       @default(0)
+  addedBy       String
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([facilityId, expiresOn])
   @@index([staffId])
 }
