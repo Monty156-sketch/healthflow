@@ -398,6 +398,7 @@ model Facility {
   movesOut            StaffMove[] @relation("MoveFrom")
   movesIn             StaffMove[] @relation("MoveTo")
   credentials         StaffCredential[]
+  handoverNotes       HandoverNote[]
   shifts              Shift[]
   shiftRotations      ShiftRotation[]
   constraintRules     ConstraintRule[]
@@ -506,6 +507,7 @@ model Department {
   transfersOut WardTransfer[] @relation("TransferFrom")
   transfersIn  WardTransfer[] @relation("TransferTo")
   inCharges    WardInCharge[]
+  handoverNotes HandoverNote[]
 
   @@index([facilityId])
 }
@@ -666,6 +668,7 @@ model Shift {
   id             String   @id @default(cuid())
   facilityId     String
   facility       Facility @relation(fields: [facilityId], references: [id])
+  handoverNotes  HandoverNote[]
   deploymentMembers DeploymentMember[]
   name           String
   code           String
@@ -1721,4 +1724,42 @@ model StaffCredential {
 
   @@index([facilityId, expiresOn])
   @@index([staffId])
+}
+
+/// What the outgoing shift leaves for the incoming one on a ward. No patient names: bed numbers and what needs doing.
+model HandoverNote {
+  id           String      @id @default(cuid())
+  facilityId   String
+  facility     Facility    @relation(fields: [facilityId], references: [id])
+  /// The ward. Null for a facility with no wards.
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  /// The shift being handed over, and the day it started.
+  shiftId      String
+  shift        Shift       @relation(fields: [shiftId], references: [id])
+  dutyDate     DateTime    @db.Date
+  authorEmail  String
+  authorName   String
+  summary      String
+  pending      String?
+  concerns     String?
+  /// The writer marked it as needing attention first.
+  urgent       Boolean     @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  reads        HandoverRead[]
+
+  @@index([facilityId, departmentId, dutyDate])
+}
+
+model HandoverRead {
+  id         String       @id @default(cuid())
+  noteId     String
+  note       HandoverNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  readerEmail String
+  readerName String
+  readAt     DateTime     @default(now())
+
+  @@unique([noteId, readerEmail])
 }
