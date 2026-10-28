@@ -92,7 +92,7 @@ export async function takeSnapshot(facilityId: string, year: number, month: numb
   const exists = await prisma.scorecardSnapshot.findUnique({ where: { facilityId_year_month: { facilityId, year, month } }, select: { id: true } });
   if (exists) return false;
   const metrics = await computeMetrics(facilityId, year, month, now, true);
-  await prisma.scorecardSnapshot.createMany({ data: [{ facilityId, year, month, metrics }], skipDuplicates: true });
+  await prisma.scorecardSnapshot.createMany({ data: [{ facilityId, year, month, metrics: { ...metrics } as Record<string, number | null> }], skipDuplicates: true });
   return true;
 }
 
