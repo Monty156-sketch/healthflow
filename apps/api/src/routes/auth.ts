@@ -1,6 +1,7 @@
 // Signing in and out, sessions, two-step sign-in enrolment at sign-in, and
 // password reset. The session cookie is scoped to /api/auth, which is why
 // everything that needs it lives here.
+import { noteLockout, noteSignInFailure } from "../lib/securityAlerts.js";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import QRCode from "qrcode";
@@ -77,6 +78,7 @@ async function nameOf(user: Pick<UserProfile, "staffId" | "userEmail">): Promise
 
 /** Wrong passwords and wrong codes both count towards the lockout. */
 async function recordFailure(user: UserProfile, what: "password" | "code") {
+  noteSignInFailure();
   const failedAttempts = user.failedAttempts + 1;
   const lockingNow = failedAttempts >= LOCKOUT_AFTER_FAILED_ATTEMPTS;
   await prisma.userProfile.update({
@@ -86,6 +88,7 @@ async function recordFailure(user: UserProfile, what: "password" | "code") {
       lockedUntil: lockingNow ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null,
     },
   });
+  if (lockingNow) noteLockout({ email: user.userEmail, role: user.role, privileged: ROLES_REQUIRING_MFA.includes(user.role) }, LOCKOUT_MINUTES);
   await writeAuditLog({
     facilityId: user.facilityId,
     actorEmail: user.userEmail,
@@ -169,6 +172,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   if (!user) {
     // Do the same hashing work so response time does not reveal which emails exist.
     await verifyPassword(await dummyHash(), password);
+    noteSignInFailure();
     return res.status(401).json({ error: "invalid_credentials" });
   }
 
