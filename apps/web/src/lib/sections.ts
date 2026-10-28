@@ -90,6 +90,7 @@ export const SECTIONS: Section[] = [
       { href: "/district", label: "Overview", roles: DISTRICT },
       { href: "/district/facilities", label: "Facilities", roles: DISTRICT },
       { href: "/district/districts", label: "Districts", roles: DISTRICT, level: "REGION" },
+      { href: "/district/scorecard", label: "Scorecard", roles: DISTRICT },
       { href: "/district/coverage", label: "Coverage monitor", roles: DISTRICT },
       { href: "/district/establishment", label: "Establishment", roles: DISTRICT },
       { href: "/district/attendance", label: "Attendance", roles: DISTRICT },

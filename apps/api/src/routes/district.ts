@@ -9,6 +9,7 @@ import { agencyOf, officesUnder, auditDistrictRead, grantedFor, readingUnder, su
 import { requireAuth } from "../middleware/auth.js";
 import { requireDistrictOfficer } from "../middleware/districtAccess.js";
 import { sayDay } from "../engine/time.js";
+import { mean, scorecard, type Row } from "../lib/scorecard.js";
 
 export const districtRouter = Router();
 districtRouter.use(requireAuth, requireDistrictOfficer);
@@ -309,6 +310,86 @@ districtRouter.get("/report-pack.csv", async (req, res) => {
   }
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="district-report-pack-${pack.period}.csv"`);
+  res.send(lines.join("\n"));
+});
+
+// ------------------------------------------------------------- performance scorecard
+
+/** A month as `YYYY-MM`, no later than this month and no earlier than two years back. Defaults to last month. */
+function scorecardMonth(raw: unknown) {
+  const now = new Date();
+  const fallback = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const m = typeof raw === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(raw) ? { year: Number(raw.slice(0, 4)), month: Number(raw.slice(5)) } : { year: fallback.getUTCFullYear(), month: fallback.getUTCMonth() + 1 };
+  const index = m.year * 12 + m.month;
+  const current = now.getUTCFullYear() * 12 + now.getUTCMonth() + 1;
+  return index > current || index < current - 24 ? { year: fallback.getUTCFullYear(), month: fallback.getUTCMonth() + 1 } : m;
+}
+
+const label = (y: number, m: number) => new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+
+async function scorecardFor(req: Request) {
+  const { year, month } = scorecardMonth(req.query.month);
+  // Each figure is read under its own permission, and each read is written to the facility's audit log.
+  const [coverage, attendance, compliance] = await Promise.all([
+    read(req, "COVERAGE", "the performance scorecard"),
+    read(req, "ATTENDANCE", "the performance scorecard"),
+    read(req, "COMPLIANCE", "the performance scorecard"),
+  ]);
+  const rows = await scorecard(year, month, coverage, attendance, compliance);
+  const prev = new Date(Date.UTC(year, month - 2, 1));
+  return { year, month, rows, coverage, attendance, compliance, label: label(year, month), previousLabel: label(prev.getUTCFullYear(), prev.getUTCMonth() + 1) };
+}
+
+/** Per district, for a regional office comparing the districts that report to it. */
+function byDistrict(rows: Row[]) {
+  const groups = new Map<string, Row[]>();
+  for (const r of rows) groups.set(r.district ?? "No district", [...(groups.get(r.district ?? "No district") ?? []), r]);
+  return [...groups.entries()].map(([district, list]) => ({
+    district, facilities: list.length,
+    coverage: mean(list.map((r) => r.month.coverage)), previousCoverage: mean(list.map((r) => r.previous.coverage)),
+    attendance: mean(list.map((r) => r.month.attendance)), previousAttendance: mean(list.map((r) => r.previous.attendance)),
+    publishedBeforeStart: mean(list.map((r) => r.month.publishedBeforeStart)),
+    blocking: list.every((r) => r.month.blocking === null) ? null : list.reduce((n, r) => n + (r.month.blocking ?? 0), 0),
+    inConcern: list.filter((r) => r.concerns > 0).length,
+  })).sort((a, b) => b.inConcern - a.inConcern || a.district.localeCompare(b.district));
+}
+
+districtRouter.get("/scorecard", async (req, res) => {
+  const s = await scorecardFor(req);
+  const all = new Map([...s.coverage, ...s.attendance, ...s.compliance].map((g) => [g.facilityId, g]));
+  const level = (await prisma.district.findUnique({ where: { id: req.district!.districtId }, select: { level: true } }))?.level;
+  res.json({
+    reading: {
+      scope: "COVERAGE",
+      facilities: [...all.values()].map((g) => ({ id: g.facilityId, name: g.name })),
+      sentence: all.size
+        ? `Reading ${all.size} ${all.size === 1 ? "facility" : "facilities"}. Each figure comes from the permission that covers it. A figure a facility has not shared is left blank.`
+        : "No facility has granted coverage, attendance or compliance, so there is nothing to show.",
+    },
+    month: `${s.year}-${String(s.month).padStart(2, "0")}`, label: s.label, previousLabel: s.previousLabel,
+    summary: {
+      facilities: s.rows.length, inConcern: s.rows.filter((r) => r.concerns > 0).length,
+      coverage: mean(s.rows.map((r) => r.month.coverage)), previousCoverage: mean(s.rows.map((r) => r.previous.coverage)),
+      attendance: mean(s.rows.map((r) => r.month.attendance)), previousAttendance: mean(s.rows.map((r) => r.previous.attendance)),
+      publishedBeforeStart: mean(s.rows.map((r) => r.month.publishedBeforeStart)),
+    },
+    thresholds: { coverage: "Good from 90%, watch from 75%", attendance: "Good from 90%, watch from 70%", publishedBeforeStart: "Good at 100%, watch from 50%", blocking: "Good at none, watch up to 2" },
+    facilities: s.rows,
+    ...(level === "REGION" ? { districts: byDistrict(s.rows) } : {}),
+  });
+});
+
+districtRouter.get("/scorecard.csv", async (req, res) => {
+  const s = await scorecardFor(req);
+  const esc = (v: unknown) => (/[",\n]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
+  const n = (v: number | null) => (v === null ? "" : v);
+  const lines = [
+    `Performance scorecard,${esc(req.district!.districtName)},${s.label},compared with ${s.previousLabel}`,
+    "Facility,District,Days fully staffed %,Change,Published before month began %,Attendance recorded %,Change,Blocking findings open,Warnings open",
+    ...s.rows.map((r) => [r.name, r.district ?? "", n(r.month.coverage), n(r.change.coverage), n(r.month.publishedBeforeStart), n(r.month.attendance), n(r.change.attendance), n(r.month.blocking), n(r.month.warnings)].map(esc).join(",")),
+  ];
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="scorecard-${s.year}-${String(s.month).padStart(2, "0")}.csv"`);
   res.send(lines.join("\n"));
 });
 

@@ -65,7 +65,7 @@ export default function DistrictDashboard() {
             </TableScroll>
           </Panel>
           <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[15px]">
-            {[["/district/coverage", "Coverage monitor"], ["/district/establishment", "Establishment"], ["/district/attendance", "Attendance"], ["/district/compliance", "Compliance"], ["/district/reports", "Report pack"]].map(([h, l]) => (
+            {[["/district/scorecard", "Performance scorecard"], ["/district/coverage", "Coverage monitor"], ["/district/establishment", "Establishment"], ["/district/attendance", "Attendance"], ["/district/compliance", "Compliance"], ["/district/reports", "Report pack"]].map(([h, l]) => (
               <li key={h}><Link href={h} className="text-[var(--accent-text)] underline-offset-2 hover:underline">{l}</Link></li>
             ))}
           </ul>
