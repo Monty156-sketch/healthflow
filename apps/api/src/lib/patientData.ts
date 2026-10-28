@@ -10,7 +10,7 @@ const TITLED = new RegExp(`\\b(?:${TITLE_WORDS.map(caseless).join("|")})\\.?\\s+
 const NAMED = /\b(?:patient|pt|client|case|mother|baby|child|man|woman|boy|girl)\s+(?:is\s+)?(?:named|called|name\s+is|by\s+name)\b|\bname\s*(?:is|:)\s*[A-Za-z]/gi;
 const PHONE = /(?:\+?233|\b0)[\s-]?\d{2}[\s-]?\d{3}[\s-]?\d{4}\b/g;
 const LONG_NUMBER = /\b\d{7,}\b|\bGHA[-\s]?\d{6,}\b|\b(?:NHIS|folder|file|card|reg(?:istration)?)\s*(?:no\.?|number|#|:)?\s*[A-Z]*[-\s]?\d{4,}\b/gi;
-const CAPITAL_PAIR = /(?<![.!?]\s)(?<!^)\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/g;
+const CAPITAL_PAIR = /\b[A-Z][a-z]{2,}\s+[A-Z][a-z]{2,}\b/g;
 // Titles that belong to staff are fine; "Dr Mensah" is a colleague, not a patient.
 const STAFF_TITLES = /\b(?:dr|doctor|nurse|midwife|sister|matron|sr|snr|pa|ps)\.?\s+[A-Z][a-z]+/g;
 
