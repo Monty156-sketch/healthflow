@@ -42,6 +42,9 @@ export const ROLES_REQUIRING_MFA: AppRole[] = [
   "FACILITY_ADMIN",
   "PLATFORM_ADMIN",
   "DISTRICT_OFFICER",
+  // In-charges and supervisors see every staff record on their ward and decide the roster.
+  "ROSTER_MANAGER",
+  "SUPERVISOR",
 ];
 
 // Design tokens — Part 2 of the documentation's standing instructions.
