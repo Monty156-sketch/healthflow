@@ -57,10 +57,10 @@ regionRouter.post("/districts/:id/approve", async (req, res) => {
   if (!hit) return;
   const { office, d } = hit;
   if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved." });
-  await prisma.$transaction([
-    prisma.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } }),
-    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } });
+    await tx.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } });
+  });
   const claimed = await claimFacilitiesFor(d);
   await writeAuditLog({ facilityId: null, actorEmail: res.locals.email, action: "district_approved_by_region", entityType: "District", entityId: d.id, summary: `${office.name} approved the district ${d.name}.${claimed ? ` ${claimed} waiting ${claimed === 1 ? "facility was" : "facilities were"} linked to it.` : ""}` });
   if (d.contactEmail) void sendEmail({ to: d.contactEmail, subject: "Your HealthFlow district is approved", text: `Dear ${d.contactName ?? "officer"},\n\n${office.name} has approved ${d.name} on HealthFlow. Sign in at ${appUrl("/district/login")} with the email and password you registered with.\n\nPS Tech, Wa, Upper West Region, Ghana` });
@@ -74,10 +74,10 @@ regionRouter.post("/districts/:id/decline", async (req, res) => {
   if (!hit) return;
   const { office, d } = hit;
   if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved." });
-  await prisma.$transaction([
-    prisma.district.update({ where: { id: d.id }, data: { status: "DECLINED", active: false, declineReason: input.reason || null } }),
-    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: false } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.district.update({ where: { id: d.id }, data: { status: "DECLINED", active: false, declineReason: input.reason || null } });
+    await tx.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: false } });
+  });
   await writeAuditLog({ facilityId: null, actorEmail: res.locals.email, action: "district_declined_by_region", entityType: "District", entityId: d.id, summary: `${office.name} declined the district ${d.name}${input.reason ? `. Reason: ${input.reason}` : ""}.` });
   if (d.contactEmail) void sendEmail({ to: d.contactEmail, subject: "Your HealthFlow district registration", text: `Dear ${d.contactName ?? "officer"},\n\n${office.name} did not approve ${d.name} on HealthFlow${input.reason ? `. Reason: ${input.reason}` : ""}. Please contact them, or call PS Tech on 055 457 1800.\n\nPS Tech, Wa, Upper West Region, Ghana` });
   res.json({ ok: true });

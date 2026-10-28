@@ -682,10 +682,10 @@ staffRouter.post("/:id/consents/:consentId/withdraw", allowRoles(...ADMIN_ROLES)
 
   const isPhoto = record.consentType === "PHOTOGRAPH";
   const hadPhoto = isPhoto && Boolean(s.photoUrl);
-  await prisma.$transaction([
-    prisma.consentRecord.update({ where: { id: record.id }, data: { withdrawnAt: new Date() } }),
-    ...(isPhoto ? [prisma.staff.update({ where: { id: s.id }, data: { photoUrl: null, photoConsentId: null } })] : []),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.consentRecord.update({ where: { id: record.id }, data: { withdrawnAt: new Date() } });
+    if (isPhoto) await tx.staff.update({ where: { id: s.id }, data: { photoUrl: null, photoConsentId: null } });
+  });
   await writeAuditLog({
     facilityId: who.facilityId,
     actorEmail: who.email,

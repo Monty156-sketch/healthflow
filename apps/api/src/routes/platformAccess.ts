@@ -51,10 +51,10 @@ accessConsole.post("/facilities/:id/approve", async (req, res) => {
   if (f.status !== "PENDING" && f.status !== "DECLINED") return res.status(409).json({ error: "not_waiting", message: "This facility is not waiting for approval." });
   const now = new Date();
   const ends = new Date(now.getTime() + input.trialDays * DAY);
-  await prisma.$transaction([
-    prisma.facility.update({ where: { id: f.id }, data: { status: "TRIAL", trialEndsAt: ends, accessNote: null } }),
-    prisma.subscription.updateMany({ where: { facilityId: f.id }, data: { status: "TRIAL", trialEndsAt: ends, currentPeriodStart: now, currentPeriodEnd: ends } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.facility.update({ where: { id: f.id }, data: { status: "TRIAL", trialEndsAt: ends, accessNote: null } });
+    await tx.subscription.updateMany({ where: { facilityId: f.id }, data: { status: "TRIAL", trialEndsAt: ends, currentPeriodStart: now, currentPeriodEnd: ends } });
+  });
   await platformAudit(req, "facility_approved", `${liveUser(req).displayName} approved ${f.name}. The ${input.trialDays} day trial runs to ${isoDay(ends)}.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   const a = await adminOf(f.id);
   if (a) void sendEmail({ to: a.userEmail, subject: `${f.name} is approved on HealthFlow`, text: `Dear ${a.staff?.fullName ?? "administrator"},\n\n${f.name} is approved. Your ${input.trialDays} day trial starts today and runs to ${isoDay(ends)}. Sign in at ${appUrl("/login")}, then give your staff the access code from the Staff access page.\n\nPS Tech, Wa, Upper West Region, Ghana. 055 457 1800.` });
@@ -86,10 +86,12 @@ accessConsole.post("/facilities/:id/extend", async (req, res) => {
   const until = new Date(`${input.until}T23:59:59Z`);
   if (until.getTime() <= Date.now()) return res.status(400).json({ error: "invalid_input", fields: { until: "Choose a date in the future." } });
   const trial = Boolean(f.subscription?.trialEndsAt) || (!f.subscription && f.status === "TRIAL");
-  await prisma.$transaction([
-    prisma.facility.update({ where: { id: f.id }, data: { trialEndsAt: trial ? until : null, ...(f.status === "SUSPENDED" ? {} : { status: trial ? "TRIAL" : "ACTIVE", accessNote: null }) } }),
-    ...(f.subscription ? [prisma.subscription.update({ where: { id: f.subscription.id }, data: trial ? { trialEndsAt: until, currentPeriodEnd: until, ...(f.status === "SUSPENDED" ? {} : { status: "TRIAL" as const }) } : { currentPeriodEnd: until, ...(f.status === "SUSPENDED" ? {} : { status: "ACTIVE" as const }) } })] : []),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.facility.update({ where: { id: f.id }, data: { trialEndsAt: trial ? until : null, ...(f.status === "SUSPENDED" ? {} : { status: trial ? "TRIAL" : "ACTIVE", accessNote: null }) } });
+    if (f.subscription) {
+      await tx.subscription.update({ where: { id: f.subscription.id }, data: trial ? { trialEndsAt: until, currentPeriodEnd: until, ...(f.status === "SUSPENDED" ? {} : { status: "TRIAL" as const }) } : { currentPeriodEnd: until, ...(f.status === "SUSPENDED" ? {} : { status: "ACTIVE" as const }) } });
+    }
+  });
   await platformAudit(req, "access_extended", `${liveUser(req).displayName} set ${f.name}'s access to run to ${input.until}: ${input.reason}.`, { facilityId: f.id, entityType: "Facility", entityId: f.id });
   res.json({ ok: true });
 });

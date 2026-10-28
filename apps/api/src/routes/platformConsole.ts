@@ -190,10 +190,10 @@ consoleRouter.post("/districts/:id/approve", async (req, res) => {
   const d = await prisma.district.findUnique({ where: { id: String(req.params.id) } });
   if (!d) return res.status(404).json({ error: "not_found" });
   if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved." });
-  await prisma.$transaction([
-    prisma.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } }),
-    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.district.update({ where: { id: d.id }, data: { status: "ACTIVE", active: true, approvedAt: new Date(), declineReason: null } });
+    await tx.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: true } });
+  });
   const claimed = await claimFacilitiesFor(d);
   await platformAudit(req, "district_approved", `${liveUser(req).displayName} approved the district ${d.name}. Its officer can now sign in.${claimed ? ` ${claimed} ${claimed === 1 ? "facility that had chosen" : "facilities that had chosen"} this district ${claimed === 1 ? "was" : "were"} linked to it.` : ""}`, { entityType: "District", entityId: d.id });
   if (d.contactEmail) {
@@ -208,10 +208,10 @@ consoleRouter.post("/districts/:id/decline", async (req, res) => {
   const d = await prisma.district.findUnique({ where: { id: String(req.params.id) } });
   if (!d) return res.status(404).json({ error: "not_found" });
   if (d.status === "ACTIVE") return res.status(409).json({ error: "already_active", message: "This district is already approved. Deactivate its officers instead." });
-  await prisma.$transaction([
-    prisma.district.update({ where: { id: d.id }, data: { status: "DECLINED", active: false, declineReason: input.reason || null } }),
-    prisma.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: false } }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await tx.district.update({ where: { id: d.id }, data: { status: "DECLINED", active: false, declineReason: input.reason || null } });
+    await tx.userProfile.updateMany({ where: { role: "DISTRICT_OFFICER", scopeType: "DISTRICT", scopeId: d.id }, data: { active: false } });
+  });
   await platformAudit(req, "district_declined", `${liveUser(req).displayName} declined the district registration for ${d.name}${input.reason ? `. Reason: ${input.reason}` : ""}.`, { entityType: "District", entityId: d.id });
   res.json({ ok: true });
 });

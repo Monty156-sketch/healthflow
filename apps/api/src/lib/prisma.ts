@@ -1,6 +1,48 @@
 import { PrismaClient } from "@healthflow/db";
+import { rlsEnforced, settingsFor, tenantContext } from "./tenant.js";
 
-// One client per process, reused across requests — Render's free tier
-// sleeps between requests, so a fresh client on every cold start is
-// expected and fine; this just avoids creating one per request while warm.
-export const prisma = new PrismaClient();
+const base = new PrismaClient();
+
+// With RLS_ENFORCE=on, every query first tells Postgres which facility it is for, in the same
+// transaction, so the row-level security policies can refuse other facilities' rows.
+// With it off (the default) this is the plain client, exactly as before.
+function enforced(): PrismaClient {
+  const setContext = () => {
+    const s = settingsFor(tenantContext.getStore());
+    return base.$executeRaw`SELECT set_config('app.facility_id', ${s.facilityId}, true), set_config('app.bypass_rls', ${s.bypass}, true)`;
+  };
+
+  const extended = base.$extends({
+    query: {
+      $allModels: {
+        async $allOperations({ args, query }) {
+          const [, result] = await base.$transaction([setContext(), query(args)]);
+          return result;
+        },
+      },
+    },
+  });
+
+  return new Proxy(extended, {
+    get(target, prop) {
+      if (prop === "$transaction") {
+        return (arg: unknown, options?: unknown) => {
+          if (typeof arg !== "function") {
+            throw new Error("Use prisma.$transaction(async (tx) => ...) so row-level security applies to every statement.");
+          }
+          // The callback's client is the plain one, so it does not wrap each statement again.
+          return base.$transaction(async (tx) => {
+            const s = settingsFor(tenantContext.getStore());
+            await tx.$executeRaw`SELECT set_config('app.facility_id', ${s.facilityId}, true), set_config('app.bypass_rls', ${s.bypass}, true)`;
+            return (arg as (t: typeof tx) => Promise<unknown>)(tx);
+          }, options as never);
+        };
+      }
+      const value = Reflect.get(target, prop, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as unknown as PrismaClient;
+}
+
+// One client per process, reused across requests.
+export const prisma: PrismaClient = rlsEnforced() ? enforced() : base;
