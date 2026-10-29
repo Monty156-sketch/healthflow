@@ -78,6 +78,7 @@ export const SECTIONS: Section[] = [
       { href: "/platform/legal", label: "Legal documents", roles: PLATFORM },
       { href: "/platform/announcements", label: "Announcements", roles: PLATFORM },
       { href: "/platform/flags", label: "Feature flags", roles: PLATFORM },
+      { href: "/platform/feedback", label: "User feedback", roles: PLATFORM },
       { href: "/platform/errors", label: "Error reports", roles: PLATFORM },
       { href: "/platform/districts", label: "Districts", roles: PLATFORM },
       { href: "/platform/activity", label: "Activity", roles: PLATFORM },

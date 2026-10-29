@@ -21,6 +21,7 @@ export async function erasurePlan(staffId: string, facilityId: string): Promise<
   if (s.emergencyContactName || s.emergencyContactPhone) erase.push({ what: "Emergency contact" });
   if (s.photoUrl) erase.push({ what: "Photograph" });
   erase.push({ what: "Notifications sent to you" });
+  erase.push({ what: "Comments you sent to PS Tech as feedback" });
   const why = "An employment record the facility must keep for the retention period it has approved.";
   const retain: ErasurePlan["retain"] = [];
   if (duties) retain.push({ what: `${duties} recorded duties`, why });
@@ -34,6 +35,9 @@ export async function erasurePlan(staffId: string, facilityId: string): Promise<
 export async function applyErasure(staffId: string, facilityId: string) {
   await prisma.staff.update({ where: { id: staffId }, data: { phone: null, email: null, emergencyContactName: null, emergencyContactPhone: null, photoUrl: null, photoConsentId: null } });
   await prisma.notification.deleteMany({ where: { recipientStaffId: staffId, facilityId } });
+  // What they wrote to PS Tech in their own words goes too; the ratings stay.
+  const account = await prisma.userProfile.findUnique({ where: { staffId }, select: { id: true } });
+  if (account) await prisma.feedback.updateMany({ where: { userId: account.id, facilityId }, data: { message: null } });
 }
 
 export const planSentence = (p: ErasurePlan) =>

@@ -70,7 +70,8 @@ jobs:
   # security policy, a sign-in page that no longer works, an accessibility
   # regression on a public page.
   browser-tests:
-    runs-on: ubuntu-latest
+    # Pinned: on the newer ubuntu-latest image, installing the browser's system packages fails.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:

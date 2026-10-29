@@ -12,6 +12,7 @@ import { parseOr400 } from "../lib/validate.js";
 import { liveUser } from "../middleware/liveUser.js";
 import { billingConsole } from "./platformBilling.js";
 import { supportConsole } from "./platformSupport.js";
+import { feedbackConsole } from "./platformFeedback.js";
 import { accessConsole } from "./platformAccess.js";
 import { platformAudit } from "../lib/platformAudit.js";
 export { platformAudit };
@@ -24,6 +25,7 @@ export const consoleRouter = Router();
 consoleRouter.use(billingConsole);
 consoleRouter.use(supportConsole);
 consoleRouter.use(accessConsole);
+consoleRouter.use(feedbackConsole);
 
 const HOUR = 3_600_000;
 
