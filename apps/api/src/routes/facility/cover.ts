@@ -99,9 +99,12 @@ ledgerRouter.get("/", async (req, res) => {
       include: { staff: { select: { fullName: true } }, counterpartyStaff: { select: { fullName: true } } },
     }),
   ]);
+  // An in-charge sees the totals for their own ward only.
+  const inScope = new Set(people.map((p) => p.id));
   let debts = 0;
   let credits = 0;
-  for (const b of balances.values()) {
+  for (const [id, b] of balances) {
+    if (who.departmentId && !inScope.has(id)) continue;
     debts += b.owes;
     credits += b.owed;
   }

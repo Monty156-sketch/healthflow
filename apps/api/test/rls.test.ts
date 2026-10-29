@@ -51,6 +51,29 @@ describe("row-level security policies", () => {
   });
 });
 
+describe("row-level security on the remaining tables", () => {
+  it("hides other facilities' audit rows and lets everyone read national holidays", async () => {
+    await probeRole();
+    const a = await makeFacility("A Clinic");
+    const b = await makeFacility("B Clinic");
+    await prisma.auditLog.create({ data: { facilityId: a.id, action: "x", entityType: "T", summary: "A did something" } });
+    await prisma.auditLog.create({ data: { facilityId: b.id, action: "x", entityType: "T", summary: "B did something" } });
+    await prisma.auditLog.create({ data: { facilityId: null, action: "x", entityType: "T", summary: "Platform event" } });
+    const seen = await asProbe({ facility: a.id }, (tx) => tx.auditLog.findMany({ select: { summary: true } }));
+    expect(seen.map((r) => r.summary).sort()).toEqual(["A did something", "Platform event"]);
+    expect(await asProbe({}, (tx) => tx.auditLog.count())).toBe(1); // only the platform event
+    // A platform event can still be written from inside a facility.
+    await asProbe({ facility: a.id }, (tx) => tx.auditLog.create({ data: { facilityId: null, action: "y", entityType: "T", summary: "Another platform event" } }));
+    expect(await asProbe({ bypass: true }, (tx) => tx.auditLog.count())).toBe(4);
+
+    const day = new Date("2026-12-25");
+    await prisma.publicHoliday.create({ data: { facilityId: null, date: day, name: "Christmas", year: 2026 } });
+    await prisma.publicHoliday.create({ data: { facilityId: b.id, date: day, name: "B local day", year: 2026 } });
+    const holidays = await asProbe({ facility: a.id }, (tx) => tx.publicHoliday.findMany({ select: { name: true } }));
+    expect(holidays.map((h) => h.name)).toEqual(["Christmas"]);
+  });
+});
+
 describe("row-level security in the API client", () => {
   afterAll(() => {
     vi.unstubAllEnvs();
@@ -83,6 +106,13 @@ describe("row-level security in the API client", () => {
     // No context at all is treated as trusted system work (sign-in, schedulers).
     const none = await p.$transaction(async (tx) => setting(tx));
     expect(none[0].b).toBe("on");
+
+    // A facility route that has not chosen a facility yet sees nothing.
+    const { noFacilityYet } = await import("../src/lib/tenant.js");
+    const denied = await new Promise<{ f: string; b: string }>((resolve, reject) =>
+      noFacilityYet({} as never, {} as never, () => { p.$transaction(async (tx) => setting(tx)).then((r) => resolve(r[0]), reject); }),
+    );
+    expect(denied).toEqual({ f: "", b: "off" });
 
     expect(() => p.$transaction([p.staff.count()])).toThrow(/async \(tx\)/);
     await p.$disconnect();

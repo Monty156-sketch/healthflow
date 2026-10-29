@@ -85,7 +85,7 @@ Reminders go out from 05:00 (Ghana time) on the day of the duty, once per person
 
 ## Row-level security
 
-The database refuses to show or change one facility's rows to work done for another facility, even if a route forgets its `facilityId` filter. It covers the tables that carry a facility (staff, rosters, leave, attendance, notifications, credentials, handover notes, and so on). Sign-in, registration, schedulers, district and platform work, and the few routes that cross facilities (transfers, staff moves, deployments, district grants) run as trusted system work and are not narrowed.
+The database refuses to show or change one facility's rows to work done for another facility, even if a route forgets its `facilityId` filter. It covers the tables that carry a facility (staff, rosters, leave, attendance, notifications, credentials, handover notes, and so on). Sign-in, registration, schedulers, district and platform work, billing, and the few routes that cross facilities (transfers, staff moves, deployments, join, directorate) run as trusted system work and are not narrowed. A facility route that has not yet worked out who the caller is sees nothing, not everything.
 
 It is **off until you switch it on**. The migration only enables the policies; the policies do nothing for the table owner, which is the role the app connects as today. To turn it on:
 
@@ -105,7 +105,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO he
 4. Set `DATABASE_URL` to the same host with the `healthflow_app` user and password, and set `RLS_ENFORCE=on`. Redeploy.
 5. Check the roster, leave, staff, handover and login pages work. If anything fails with an empty result or a permission error, set `RLS_ENFORCE=off` and redeploy; the app returns to normal at once.
 
-Costs and limits: with it on, each database call also sets the facility in the same transaction, which adds a small amount of work per query. Raw SQL outside the Prisma model calls is not narrowed. Tables with an optional facility (user profiles, audit log, refresh tokens, error reports) and tables used across facilities are left open on purpose. Test the cross-facility pages (transfers, deployments, district oversight) on the branch before production.
+Costs and limits: with it on, each database call also sets the facility in the same transaction, which adds a small amount of work per query. Raw SQL outside the Prisma model calls is not narrowed. User profiles and refresh tokens are left open on purpose (sign-in, invitations and email checks look across facilities). Audit log, error reports and public holidays carry a facility only sometimes: a facility reads its own rows, platform events with no facility stay readable (the database needs that to hand back a row it just inserted), and national holidays are readable by all. The Facility table itself is not narrowed. Test the cross-facility pages (transfers, deployments, district oversight) on the branch before production.
 
 ## Staging and safe databases
 

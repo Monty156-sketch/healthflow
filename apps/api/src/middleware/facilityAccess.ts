@@ -17,7 +17,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { Role } from "@healthflow/db";
 import { prisma } from "../lib/prisma.js";
 import { writeAuditLog } from "../lib/audit.js";
-import { inFacility } from "../lib/tenant.js";
+import { asSystem, inFacility } from "../lib/tenant.js";
 
 export interface FacilityCaller {
   userId: string;
@@ -65,10 +65,11 @@ const SUPPORT_NEVER_PATTERNS = [/^\/api\/facility\/staff\/[^/]+\/(invite|reset-l
  * session ends by itself after an hour.
  */
 async function supportCaller(req: Request, res: Response, email: string, userId: string, sessionId: string) {
-  const s = await prisma.supportSession.findFirst({
+  // The caller is not inside a facility yet, so this lookup is system work.
+  const s = await asSystem(() => prisma.supportSession.findFirst({
     where: { id: sessionId, platformUserEmail: email, endedAt: null, expiresAt: { gt: new Date() } },
     include: { facility: { select: { status: true } } },
-  });
+  }));
   if (!s) {
     res.status(403).json({ error: "support_session_ended", message: "This support session has ended. Start another from Support access." });
     return null;
@@ -98,8 +99,9 @@ async function supportCaller(req: Request, res: Response, email: string, userId:
 export async function requireFacilityUser(req: Request, res: Response, next: NextFunction) {
   if (!req.auth) return res.status(401).json({ error: "unauthenticated" });
 
-  const profile = await prisma.userProfile.findUnique({
-    where: { id: req.auth.sub },
+  // Finding out who the caller is happens before any facility is chosen, so it is system work.
+  const profile = await asSystem(() => prisma.userProfile.findUnique({
+    where: { id: req.auth!.sub },
     select: {
       id: true,
       userEmail: true,
@@ -112,7 +114,7 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
       staff: { select: { fullName: true } },
       facility: { select: { status: true } },
     },
-  });
+  }));
 
   if (!profile || !profile.active) {
     return res.status(401).json({ error: "session_ended" });
