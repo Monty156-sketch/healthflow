@@ -58,3 +58,21 @@ describe("a ward in-charge stays in their ward", () => {
     expect(JSON.stringify(list)).not.toContain("Nurse S1");
   });
 });
+
+describe("duty ledger totals for an in-charge", () => {
+  it("count only their own ward", async () => {
+    const facility = await makeFacility("Ward Hospital");
+    const maternity = await prisma.department.create({ data: { facilityId: facility.id, name: "Maternity" } });
+    const surgery = await prisma.department.create({ data: { facilityId: facility.id, name: "Surgery" } });
+    const mk = (tag: string, departmentId: string) => prisma.staff.create({ data: { facilityId: facility.id, staffNo: tag, fullName: `Nurse ${tag}`, status: "ACTIVE", departmentId } });
+    const [m1, m2, s1, s2] = [await mk("M1", maternity.id), await mk("M2", maternity.id), await mk("S1", surgery.id), await mk("S2", surgery.id)];
+    const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Admin" }, mfa: true });
+    const { user: incharge } = await makeUser({ role: "ROSTER_MANAGER", facilityId: facility.id, withStaff: { fullName: "Sister Ama" }, mfa: true });
+    await prisma.userProfile.update({ where: { id: incharge.id }, data: { departmentId: maternity.id } });
+    const note = "Covered a night for her last week";
+    await as(admin).post("/api/facility/ledger/adjust", { debtorId: m1.id, creditorId: m2.id, duties: 1, note });
+    await as(admin).post("/api/facility/ledger/adjust", { debtorId: s1.id, creditorId: s2.id, duties: 3, note });
+    expect((await as(admin).get("/api/facility/ledger")).body.summary.openDebts).toBe(4);
+    expect((await as(incharge).get("/api/facility/ledger")).body.summary.openDebts).toBe(1);
+  });
+});

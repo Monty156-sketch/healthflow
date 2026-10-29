@@ -55,7 +55,7 @@ import { billingRouter } from "./billing.js";
 import { accessRouter } from "./access.js";
 import { staffImportRouter } from "./staffImport.js";
 import { coverageRouter } from "./coverage.js";
-import { systemScope } from "../../lib/tenant.js";
+import { noFacilityYet, systemScope } from "../../lib/tenant.js";
 import { requireFlag, flagsFor } from "../../lib/flags.js";
 import { dashboardRouter } from "./dashboard.js";
 import { meRouter } from "./me.js";
@@ -67,7 +67,7 @@ import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js"
 
 export const facilityRouter = Router();
 
-facilityRouter.use(requireAuth, requireFacilityUser);
+facilityRouter.use(noFacilityYet, requireAuth, requireFacilityUser);
 facilityRouter.use("/departments", departmentsRouter);
 facilityRouter.use("/cadres", cadresRouter);
 facilityRouter.use("/staff-import", staffImportRouter);
@@ -104,9 +104,10 @@ facilityRouter.use("/directorate", systemScope, requireFlag("district.oversight"
 facilityRouter.use("/dashboard", dashboardRouter);
 facilityRouter.use("/me", meRouter);
 facilityRouter.use("/geofence", geofenceRouter);
+// Billing stays system work: invoice numbers run in one sequence across all facilities.
 facilityRouter.use("/billing", systemScope, billingRouter);
-facilityRouter.use("/access", systemScope, accessRouter);
-facilityRouter.use("/notices", systemScope, noticesRouter);
+facilityRouter.use("/access", accessRouter);
+facilityRouter.use("/notices", noticesRouter);
 facilityRouter.use("/coverage", coverageRouter);
 facilityRouter.use("/ledger", ledgerRouter);
 facilityRouter.use("/reports", reportsRouter);
