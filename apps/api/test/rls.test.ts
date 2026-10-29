@@ -52,7 +52,7 @@ describe("row-level security policies", () => {
 });
 
 describe("row-level security on the remaining tables", () => {
-  it("keeps one facility's audit log to itself and lets everyone read national holidays", async () => {
+  it("hides other facilities' audit rows and lets everyone read national holidays", async () => {
     await probeRole();
     const a = await makeFacility("A Clinic");
     const b = await makeFacility("B Clinic");
@@ -60,9 +60,9 @@ describe("row-level security on the remaining tables", () => {
     await prisma.auditLog.create({ data: { facilityId: b.id, action: "x", entityType: "T", summary: "B did something" } });
     await prisma.auditLog.create({ data: { facilityId: null, action: "x", entityType: "T", summary: "Platform event" } });
     const seen = await asProbe({ facility: a.id }, (tx) => tx.auditLog.findMany({ select: { summary: true } }));
-    expect(seen.map((r) => r.summary)).toEqual(["A did something"]);
+    expect(seen.map((r) => r.summary).sort()).toEqual(["A did something", "Platform event"]);
     expect(await asProbe({}, (tx) => tx.auditLog.count())).toBe(0);
-    // A platform event can still be written from inside a facility, but not read back.
+    // A platform event can still be written from inside a facility.
     await asProbe({ facility: a.id }, (tx) => tx.auditLog.create({ data: { facilityId: null, action: "y", entityType: "T", summary: "Another platform event" } }));
     expect(await asProbe({ bypass: true }, (tx) => tx.auditLog.count())).toBe(4);
 
