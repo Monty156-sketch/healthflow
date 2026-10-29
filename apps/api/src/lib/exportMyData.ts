@@ -12,7 +12,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     where: { id: staffId, facilityId },
     include: { cadre: { select: { name: true } }, department: { select: { name: true } } },
   });
-  const [assignments, leave, attendance, swaps, consents, requests, ledger, profile, clocks] = await Promise.all([
+  const [assignments, leave, attendance, swaps, consents, requests, ledger, profile, clocks, feedback] = await Promise.all([
     prisma.rosterAssignment.findMany({ where: { staffId, facilityId }, include: { shift: { select: { name: true, startTime: true, endTime: true } }, roster: { select: { year: true, month: true, status: true } } }, orderBy: { dutyDate: "asc" } }),
     prisma.leaveRequest.findMany({ where: { staffId, facilityId }, include: { leaveType: { select: { name: true } } }, orderBy: { startDate: "asc" } }),
     prisma.attendance.findMany({ where: { staffId, facilityId }, orderBy: { dutyDate: "asc" } }),
@@ -22,6 +22,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     prisma.dutyLedgerEntry.findMany({ where: { staffId, facilityId }, orderBy: { id: "asc" } }),
     prisma.userProfile.findUnique({ where: { staffId }, select: { userEmail: true, role: true, lastSignInAt: true, privacyNoticeVersionAccepted: true, mfaEnabled: true } }),
     prisma.clockEvent.findMany({ where: { staffId, facilityId }, orderBy: { at: "asc" } }),
+    prisma.feedback.findMany({ where: { facilityId, user: { staffId } }, orderBy: { createdAt: "asc" } }),
   ]);
   // Not the duties' ids: a cover duty keeps its id when it moves to the next person, and its audit sentences
   // name the people who declined it and quote their reasons.
@@ -44,6 +45,7 @@ export async function exportMyData(staffId: string, facilityId: string) {
     clockedAtTheFacility: clocks.map((c) => ({ when: c.at, kind: c.kind === "IN" ? "clocked in" : "clocked out", metresFromCentre: c.distanceM })),
     swaps: swaps.map((s) => ({ type: s.swapType, yourRole: s.requesterStaffId === staffId ? "asked" : "asked of you", status: s.status, reason: s.reason, response: s.responseNote, decidedAt: s.decidedAt, decisionNote: s.decisionNote })),
     dutyBalance: ledger.map((e) => ({ type: e.entryType, duties: e.duties, settled: e.dutiesSettled, status: e.status, reason: e.reason, description: e.description })),
+    feedbackYouSent: feedback.map((f) => ({ when: f.createdAt, rating: f.rating, category: f.category, comment: f.message })),
     consents: consents.map((c) => ({ purpose: c.consentType, granted: c.granted, grantedAt: c.grantedAt, withdrawnAt: c.withdrawnAt })),
     dataRequests: requests.map((r) => ({ type: r.requestType, status: r.status, received: r.receivedAt, due: r.dueAt, completed: r.completedAt, description: r.description, outcome: r.outcomeNote })),
     historyOfChanges: audit.map((a) => ({ when: a.createdAt, what: a.summary })),

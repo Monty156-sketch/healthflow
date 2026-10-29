@@ -432,6 +432,7 @@ model Facility {
   establishmentPosts  EstablishmentPost[]
   auditLogs           AuditLog[]
   errorReports        ErrorReport[]
+  feedback            Feedback[]
   dutyLedgerEntries   DutyLedgerEntry[]
   accessCodes         FacilityAccessCode[]
   agreementAcceptances AgreementAcceptance[]
@@ -644,10 +645,13 @@ model UserProfile {
   privacyNoticeVersionAccepted  String?
   notificationPreferences       Json      @default("{}")
   active                        Boolean   @default(true)
+  /// When this person is next asked how HealthFlow is working for them. Null means a week after the account was made.
+  feedbackNextAt                DateTime?
   createdAt                     DateTime  @default(now())
   updatedAt                     DateTime  @updatedAt
 
   refreshTokens RefreshToken[]
+  feedback      Feedback[]
 
   @@index([facilityId])
 }
@@ -1233,6 +1237,34 @@ model ErrorReport {
   createdAt         DateTime          @default(now())
 
   @@index([facilityId])
+}
+
+enum FeedbackStatus {
+  NEW
+  READ
+  ACTIONED
+}
+
+/// What a signed-in person tells PS Tech about HealthFlow: a rating and, if they wish, a comment.
+model Feedback {
+  id          String         @id @default(cuid())
+  facilityId  String
+  facility    Facility       @relation(fields: [facilityId], references: [id])
+  userId      String
+  user        UserProfile    @relation(fields: [userId], references: [id])
+  role        Role
+  rating      Int            // 1 (poor) to 5 (excellent)
+  category    String         // GENERAL, IDEA, PROBLEM or PRAISE
+  message     String?
+  screen      String?
+  asked       Boolean        @default(false) // true when it came from the reminder, false when the person opened it themselves
+  status      FeedbackStatus @default(NEW)
+  note        String?        // PS Tech's own note, never shown to the person
+  createdAt   DateTime       @default(now())
+
+  @@index([facilityId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 // ---------------------------------------------------------------------------

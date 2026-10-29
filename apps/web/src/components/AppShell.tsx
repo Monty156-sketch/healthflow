@@ -16,6 +16,7 @@ import { SectionTabs } from "@/components/SectionTabs";
 import { SECTIONS, sectionFor } from "@/lib/sections";
 import { PlatformNotices } from "@/components/PlatformNotices";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
+import { FeedbackPrompt, GiveFeedback } from "@/components/Feedback";
 
 // ------------------------------------------------------------- facility context
 
@@ -149,7 +150,7 @@ const CONSOLE_GROUPS: { title: string; hrefs: string[] }[] = [
   { title: "Overview", hrefs: ["/platform"] },
   { title: "Facilities", hrefs: ["/platform/registrations", "/platform/facilities", "/platform/trials", "/platform/districts"] },
   { title: "Money", hrefs: ["/platform/renewals", "/platform/payments", "/platform/billing"] },
-  { title: "Support", hrefs: ["/platform/support", "/platform/errors", "/system-health", "/platform/activity"] },
+  { title: "Support", hrefs: ["/platform/support", "/platform/feedback", "/platform/errors", "/system-health", "/platform/activity"] },
   { title: "Settings", hrefs: ["/platform/users", "/platform/announcements", "/platform/flags", "/platform/legal"] },
 ];
 
@@ -305,6 +306,7 @@ function AccountBlock({
       </div>
       <div className="flex flex-wrap">
         <ReportProblem />
+        {role !== "PLATFORM_ADMIN" && role !== "DISTRICT_OFFICER" && <GiveFeedback />}
       </div>
       <p className="figures mt-2 text-[12px] text-[var(--muted)]">Build {process.env.NEXT_PUBLIC_BUILD}</p>
     </div>
@@ -477,6 +479,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ErrorCapture />
         <OfflineBanner />
         {ctx && <PlatformNotices />}
+        {ctx && role !== "PLATFORM_ADMIN" && <FeedbackPrompt />}
       </div>
       <div className="app-frame lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">
         {/* Wide screens: a fixed sidebar. */}

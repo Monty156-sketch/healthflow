@@ -63,6 +63,7 @@ import { geofenceRouter } from "./geofence.js";
 import { directorateRouter } from "./directorate.js";
 import { smsRouter } from "./sms.js";
 import { joinAdminRouter } from "./join.js";
+import { feedbackRouter } from "./feedback.js";
 import { staffInvitationRouter, invitationAdminRouter } from "../invitations.js";
 
 export const facilityRouter = Router();
@@ -110,6 +111,7 @@ facilityRouter.use("/access", accessRouter);
 facilityRouter.use("/notices", noticesRouter);
 facilityRouter.use("/coverage", coverageRouter);
 facilityRouter.use("/ledger", ledgerRouter);
+facilityRouter.use("/feedback", feedbackRouter);
 facilityRouter.use("/reports", reportsRouter);
 facilityRouter.use("/", leaveSettingsRouter);
 facilityRouter.use("/audit-log", auditRouter);

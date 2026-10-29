@@ -1,0 +1,75 @@
+// How HealthFlow is working for the people who use it. Everyone signed in is asked for a rating and
+// an optional comment: first a week after their account was made, then about once a month. "Not now"
+// asks again in a week. The button in the menu lets anyone send feedback at any time.
+// PS Tech reads all of it in the platform console.
+import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import { z } from "zod";
+import { prisma } from "../../lib/prisma.js";
+import { parseOr400 } from "../../lib/validate.js";
+import { caller } from "../../middleware/facilityAccess.js";
+
+export const feedbackRouter = Router();
+
+const DAY = 86_400_000;
+const FIRST_ASK_AFTER_DAYS = 7;
+const AFTER_FEEDBACK_DAYS = 30;
+const AFTER_LATER_DAYS = 7;
+
+export const FEEDBACK_CATEGORIES = ["GENERAL", "IDEA", "PROBLEM", "PRAISE"] as const;
+
+const limiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.caller?.userId ?? "unknown",
+  message: { error: "too_many_requests", message: "You have sent several already. Try again in an hour." },
+});
+
+/** True when this person should be asked now. PS Tech support working inside a facility is never asked. */
+feedbackRouter.get("/prompt", async (req, res) => {
+  const who = caller(req);
+  if (who.supportSessionId) return res.json({ due: false });
+  const me = await prisma.userProfile.findUnique({ where: { id: who.userId }, select: { feedbackNextAt: true, createdAt: true } });
+  if (!me) return res.json({ due: false });
+  const when = me.feedbackNextAt ?? new Date(me.createdAt.getTime() + FIRST_ASK_AFTER_DAYS * DAY);
+  res.json({ due: when.getTime() <= Date.now() });
+});
+
+const input = z
+  .object({
+    rating: z.number().int().min(1, "Choose a rating from 1 to 5.").max(5, "Choose a rating from 1 to 5."),
+    category: z.enum(FEEDBACK_CATEGORIES).default("GENERAL"),
+    message: z.string().trim().max(2000, "Keep it under 2000 characters.").optional().default(""),
+    screen: z.string().trim().max(200).optional(),
+    asked: z.boolean().optional().default(false),
+  })
+  .superRefine((v, ctx) => {
+    // A low score or a problem with nothing said cannot be acted on.
+    if ((v.rating <= 2 || v.category === "PROBLEM" || v.category === "IDEA") && v.message.length < 5) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["message"], message: "Say a little about it, so we know what to improve." });
+    }
+  });
+
+feedbackRouter.post("/", limiter, async (req, res) => {
+  const who = caller(req);
+  if (who.supportSessionId) return res.status(403).json({ error: "forbidden", message: "Feedback is sent by the facility's own users." });
+  const body = parseOr400(input, req.body, res);
+  if (!body) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.feedback.create({
+      data: { facilityId: who.facilityId, userId: who.userId, role: who.role, rating: body.rating, category: body.category, message: body.message || null, screen: body.screen ?? null, asked: body.asked },
+    });
+    await tx.userProfile.update({ where: { id: who.userId }, data: { feedbackNextAt: new Date(Date.now() + AFTER_FEEDBACK_DAYS * DAY) } });
+  });
+  res.status(201).json({ ok: true });
+});
+
+/** "Not now": ask again in a week. */
+feedbackRouter.post("/later", limiter, async (req, res) => {
+  const who = caller(req);
+  if (who.supportSessionId) return res.json({ ok: true });
+  await prisma.userProfile.update({ where: { id: who.userId }, data: { feedbackNextAt: new Date(Date.now() + AFTER_LATER_DAYS * DAY) } });
+  res.json({ ok: true });
+});
