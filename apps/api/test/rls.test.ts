@@ -61,7 +61,7 @@ describe("row-level security on the remaining tables", () => {
     await prisma.auditLog.create({ data: { facilityId: null, action: "x", entityType: "T", summary: "Platform event" } });
     const seen = await asProbe({ facility: a.id }, (tx) => tx.auditLog.findMany({ select: { summary: true } }));
     expect(seen.map((r) => r.summary).sort()).toEqual(["A did something", "Platform event"]);
-    expect(await asProbe({}, (tx) => tx.auditLog.count())).toBe(0);
+    expect(await asProbe({}, (tx) => tx.auditLog.count())).toBe(1); // only the platform event
     // A platform event can still be written from inside a facility.
     await asProbe({ facility: a.id }, (tx) => tx.auditLog.create({ data: { facilityId: null, action: "y", entityType: "T", summary: "Another platform event" } }));
     expect(await asProbe({ bypass: true }, (tx) => tx.auditLog.count())).toBe(4);
