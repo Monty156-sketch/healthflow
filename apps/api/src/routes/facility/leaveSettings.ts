@@ -150,11 +150,15 @@ leaveSettingsRouter.put("/entitlements", allowRoles(...ADMIN_ROLES), async (req,
   const staff = await prisma.staff.findMany({ where: { facilityId: who.facilityId, id: { in: input.entries.map((e) => e.staffId) } }, select: { id: true } });
   const ok = new Set(staff.map((s) => s.id));
   const rows = input.entries.filter((e) => ok.has(e.staffId));
-  await prisma.$transaction(rows.map((e) => prisma.leaveEntitlement.upsert({
-    where: { staffId_leaveTypeId_leaveYear: { staffId: e.staffId, leaveTypeId: type.id, leaveYear: input.year } },
-    create: { facilityId: who.facilityId, staffId: e.staffId, leaveTypeId: type.id, leaveYear: input.year, daysEntitled: e.daysEntitled, daysCarriedOver: e.daysCarriedOver },
-    update: { daysEntitled: e.daysEntitled, daysCarriedOver: e.daysCarriedOver },
-  })));
+  await prisma.$transaction(async (tx) => {
+    for (const e of rows) {
+      await tx.leaveEntitlement.upsert({
+        where: { staffId_leaveTypeId_leaveYear: { staffId: e.staffId, leaveTypeId: type.id, leaveYear: input.year } },
+        create: { facilityId: who.facilityId, staffId: e.staffId, leaveTypeId: type.id, leaveYear: input.year, daysEntitled: e.daysEntitled, daysCarriedOver: e.daysCarriedOver },
+        update: { daysEntitled: e.daysEntitled, daysCarriedOver: e.daysCarriedOver },
+      });
+    }
+  });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "entitlements_set", entityType: "LeaveEntitlement",
     summary: `${who.displayName} set ${type.name} leave entitlements for ${rows.length} ${rows.length === 1 ? "person" : "people"} for ${input.year}.`,
@@ -178,11 +182,15 @@ leaveSettingsRouter.post("/entitlements/set-all", allowRoles(...ADMIN_ROLES), as
   const staff = await prisma.staff.findMany({ where: { facilityId: who.facilityId, status: { in: ["ACTIVE", "ON_LEAVE"] } }, select: { id: true } });
   const have = new Set((await prisma.leaveEntitlement.findMany({ where: { facilityId: who.facilityId, leaveTypeId: type.id, leaveYear: input.year }, select: { staffId: true } })).map((e) => e.staffId));
   const targets = staff.filter((s) => !input.onlyUnset || !have.has(s.id));
-  await prisma.$transaction(targets.map((s) => prisma.leaveEntitlement.upsert({
-    where: { staffId_leaveTypeId_leaveYear: { staffId: s.id, leaveTypeId: type.id, leaveYear: input.year } },
-    create: { facilityId: who.facilityId, staffId: s.id, leaveTypeId: type.id, leaveYear: input.year, daysEntitled: input.daysEntitled },
-    update: { daysEntitled: input.daysEntitled },
-  })));
+  await prisma.$transaction(async (tx) => {
+    for (const s of targets) {
+      await tx.leaveEntitlement.upsert({
+        where: { staffId_leaveTypeId_leaveYear: { staffId: s.id, leaveTypeId: type.id, leaveYear: input.year } },
+        create: { facilityId: who.facilityId, staffId: s.id, leaveTypeId: type.id, leaveYear: input.year, daysEntitled: input.daysEntitled },
+        update: { daysEntitled: input.daysEntitled },
+      });
+    }
+  });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "entitlements_set_all", entityType: "LeaveEntitlement",
     summary: `${who.displayName} set ${type.name} leave to ${input.daysEntitled} days for ${targets.length} ${targets.length === 1 ? "person" : "people"} for ${input.year}${input.onlyUnset ? ", leaving anyone already set unchanged" : ""}.`,

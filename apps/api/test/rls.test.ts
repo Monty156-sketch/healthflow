@@ -74,6 +74,32 @@ describe("row-level security on the remaining tables", () => {
   });
 });
 
+describe("row-level security on accounts, tokens and the facility row", () => {
+  it("a facility sees only its own people, sign-in tokens and facility row", async () => {
+    await probeRole();
+    const a = await makeFacility("A Clinic");
+    const b = await makeFacility("B Clinic");
+    const { user: ua } = await makeUser({ role: "STAFF", facilityId: a.id });
+    const { user: ub } = await makeUser({ role: "STAFF", facilityId: b.id });
+    await makeUser({ role: "PLATFORM_ADMIN" });
+    for (const [u, f] of [[ua, a], [ub, b]] as const) {
+      await prisma.refreshToken.create({ data: { userProfileId: u.id, facilityId: f.id, tokenHash: `h-${u.id}`, expiresAt: new Date(Date.now() + 3600_000) } });
+    }
+    const people = await asProbe({ facility: a.id }, (tx) => tx.userProfile.findMany({ select: { userEmail: true } }));
+    expect(people.map((p) => p.userEmail)).toEqual([ua.userEmail]);
+    expect(await asProbe({ facility: a.id }, (tx) => tx.refreshToken.count())).toBe(1);
+    const rows = await asProbe({ facility: a.id }, (tx) => tx.facility.findMany({ select: { name: true } }));
+    expect(rows.map((r) => r.name)).toEqual(["A Clinic"]);
+    // Nothing set sees nothing; system work sees all.
+    expect(await asProbe({}, (tx) => tx.userProfile.count())).toBe(0);
+    expect(await asProbe({}, (tx) => tx.facility.count())).toBe(0);
+    expect(await asProbe({ bypass: true }, (tx) => tx.userProfile.count())).toBe(3);
+    // Another facility's account cannot be changed from here.
+    const hit = await asProbe({ facility: a.id }, (tx) => tx.userProfile.updateMany({ where: { id: ub.id }, data: { active: false } }));
+    expect(hit.count).toBe(0);
+  });
+});
+
 describe("row-level security in the API client", () => {
   afterAll(() => {
     vi.unstubAllEnvs();
@@ -82,6 +108,7 @@ describe("row-level security in the API client", () => {
 
   it("sets the facility for plain queries and for transactions, and refuses the array form", async () => {
     vi.stubEnv("RLS_ENFORCE", "on");
+    vi.stubEnv("RLS_TEST_UNSCOPED", "");
     vi.resetModules();
     const { prisma: p } = await import("../src/lib/prisma.js");
     const { tenantContext, asSystem } = await import("../src/lib/tenant.js");
@@ -95,17 +122,23 @@ describe("row-level security in the API client", () => {
       tx.$queryRaw<{ f: string; b: string }[]>`SELECT current_setting('app.facility_id', true) AS f, current_setting('app.bypass_rls', true) AS b`;
 
     // Queries still work through the wrapper (this connection owns the tables, so it is not restricted).
-    expect(await tenantContext.run({ facilityId: f.id }, () => p.staff.count())).toBe(2);
+    expect(await tenantContext.run({ facilityId: f.id }, async () => await p.staff.count({ where: { facilityId: f.id } }))).toBe(1);
 
-    const inside = await tenantContext.run({ facilityId: f.id }, () => p.$transaction(async (tx) => setting(tx)));
+    const inside = await tenantContext.run({ facilityId: f.id }, async () => await p.$transaction(async (tx) => setting(tx)));
     expect(inside[0]).toEqual({ f: f.id, b: "off" });
 
     const system = await asSystem(() => p.$transaction(async (tx) => setting(tx)));
     expect(system[0]).toEqual({ f: "", b: "on" });
 
-    // No context at all is treated as trusted system work (sign-in, schedulers).
+    // No context at all sees nothing: work that forgets to pick a scope fails closed.
     const none = await p.$transaction(async (tx) => setting(tx));
-    expect(none[0].b).toBe("on");
+    expect(none[0]).toEqual({ f: "", b: "off" });
+
+    // Raw SQL carries the same settings as everything else.
+    const rawIn = await tenantContext.run({ facilityId: f.id }, () => p.$queryRaw<{ f: string; b: string }[]>`SELECT current_setting('app.facility_id', true) AS f, current_setting('app.bypass_rls', true) AS b`);
+    expect(rawIn[0]).toEqual({ f: f.id, b: "off" });
+    const rawSys = await asSystem(() => p.$queryRawUnsafe<{ b: string }[]>(`SELECT current_setting('app.bypass_rls', true) AS b`));
+    expect(rawSys[0].b).toBe("on");
 
     // A facility route that has not chosen a facility yet sees nothing.
     const { noFacilityYet } = await import("../src/lib/tenant.js");

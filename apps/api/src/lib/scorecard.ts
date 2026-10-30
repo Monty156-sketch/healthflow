@@ -3,6 +3,7 @@
 // (coverage, attendance, compliance). A figure the facility has not shared is blank, never guessed. There is no single
 // composite score: one number hides which part is failing, and invites gaming.
 import { prisma } from "./prisma.js";
+import { asSystem, inFacilityRun } from "./tenant.js";
 import { coverageFor } from "../routes/district.js";
 import type { Granted } from "./district.js";
 
@@ -99,9 +100,9 @@ export async function takeSnapshot(facilityId: string, year: number, month: numb
 /** Freezes last month for every facility that belongs to a district. Safe to run daily. */
 export async function snapshotLastMonth(now = new Date()): Promise<number> {
   const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const facilities = await prisma.facility.findMany({ where: { active: true, districtId: { not: null }, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true } });
+  const facilities = await asSystem(() => prisma.facility.findMany({ where: { active: true, districtId: { not: null }, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true } }));
   let n = 0;
-  for (const f of facilities) if (await takeSnapshot(f.id, prev.getUTCFullYear(), prev.getUTCMonth() + 1, now)) n++;
+  for (const f of facilities) if (await inFacilityRun(f.id, () => takeSnapshot(f.id, prev.getUTCFullYear(), prev.getUTCMonth() + 1, now))) n++;
   return n;
 }
 

@@ -4,6 +4,7 @@
 // Nothing is sent unless the server has the keys, the facility has turned reminders on, and the person has opted in
 // themselves. Without keys this whole file does nothing. Every attempt is recorded.
 import { prisma } from "./prisma.js";
+import { asSystem, inFacilityRun } from "./tenant.js";
 import { normalisePhone, DAILY_LIMIT } from "./sms.js";
 
 export const whatsappConfigured = () => Boolean(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID);
@@ -50,9 +51,10 @@ export const maskPhone = (raw: string | null | undefined) => {
 export async function runWhatsappReminders(now = new Date()): Promise<number> {
   if (!whatsappConfigured() || now.getUTCHours() < REMINDER_HOUR) return 0;
   const today = new Date(Math.floor(now.getTime() / DAY) * DAY);
-  const facilities = await prisma.facility.findMany({ where: { whatsappEnabled: true, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true, name: true } });
+  const facilities = await asSystem(() => prisma.facility.findMany({ where: { whatsappEnabled: true, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true, name: true } }));
   let sent = 0;
-  for (const f of facilities) {
+  for (const f of facilities) sent += await inFacilityRun(f.id, async () => {
+    let n = 0;
     let budget = DAILY_LIMIT - (await prisma.whatsappMessage.count({ where: { facilityId: f.id, status: "SENT", dutyDate: today } }));
     const duties = await prisma.rosterAssignment.findMany({
       where: {
@@ -75,8 +77,9 @@ export async function runWhatsappReminders(now = new Date()): Promise<number> {
       const data = { facilityId: f.id, staffId, toPhone: to, dutyDate: today, kind: "duty_today", body: `Hello ${values[0]}, you are on ${values[1]} today at ${values[2]}.`, status: result.ok ? ("SENT" as const) : ("FAILED" as const), error: result.error ?? null };
       if (prior) await prisma.whatsappMessage.update({ where: { id: prior.id }, data: { ...data, attempts: prior.attempts + 1 } });
       else await prisma.whatsappMessage.create({ data });
-      if (result.ok) { sent++; budget--; }
+      if (result.ok) { n++; budget--; }
     }
-  }
+    return n;
+  });
   return sent;
 }

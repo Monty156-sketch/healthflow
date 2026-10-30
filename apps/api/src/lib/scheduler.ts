@@ -5,6 +5,7 @@
 // A job that is already recorded as started within its interval is not
 // started again, so a restart does not repeat work.
 import { prisma } from "./prisma.js";
+import { asSystem } from "./tenant.js";
 import { runRetentionJob } from "./retention.js";
 import { closeExpiredSessions } from "../routes/platformSupport.js";
 import { markOverdue } from "../routes/platformBilling.js";
@@ -40,7 +41,11 @@ export const JOBS: Job[] = [
 ];
 
 /** Runs one job now and records it. Never throws. */
-export async function runJob(job: Job): Promise<boolean> {
+export const runJob = (job: Job): Promise<boolean> => asSystem(() => runJobAsSystem(job));
+
+// Jobs start as trusted system work (they list facilities and sweep platform tables). Any job that works on one
+// facility's data narrows itself to that facility with inFacilityRun before it reads or writes it.
+async function runJobAsSystem(job: Job): Promise<boolean> {
   const row = await prisma.jobRun.create({ data: { name: job.name } });
   try {
     const detail = await job.run();
@@ -53,7 +58,9 @@ export async function runJob(job: Job): Promise<boolean> {
 }
 
 /** Runs every job whose interval has passed since it last started. */
-export async function tick(now = new Date()): Promise<string[]> {
+export const tick = (now = new Date()): Promise<string[]> => asSystem(() => tickAsSystem(now));
+
+async function tickAsSystem(now: Date): Promise<string[]> {
   const ran: string[] = [];
   for (const job of JOBS) {
     const last = await prisma.jobRun.findFirst({ where: { name: job.name }, orderBy: { startedAt: "desc" }, select: { startedAt: true } });

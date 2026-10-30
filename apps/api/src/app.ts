@@ -17,6 +17,7 @@ import { publicRouter } from "./routes/public.js";
 import { joinRouter } from "./routes/join.js";
 import { facilityRegisterRouter } from "./routes/facilityRegister.js";
 import { webhookRouter } from "./routes/webhooks.js";
+import { asSystem, systemScope } from "./lib/tenant.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 export function createApp() {
@@ -46,19 +47,19 @@ export function createApp() {
 
   // Under /api/auth because the session cookie is scoped to that path, and
   // the account routes need it to tell this device from the others.
-  app.use("/api/auth/account", accountRouter);
-  app.use("/api/auth", authRouter);
+  app.use("/api/auth/account", systemScope, accountRouter);
+  app.use("/api/auth", systemScope, authRouter);
   app.use("/api/facility", facilityRouter);
-  app.use("/api/invitations", invitationRouter);
-  app.use("/api/errors", errorReportRouter);
-  app.use("/api/public/join", joinRouter);
-  app.use("/api/public/register-facility", facilityRegisterRouter);
-  app.use("/api/public", publicRouter);
-  app.use("/api/region", regionRouter);
-  app.use("/api/district", districtRouter);
-  app.use("/api/internal", internalRouter);
-  app.use("/api/webhooks", webhookRouter);
-  app.use("/api/platform", platformRouter);
+  app.use("/api/invitations", systemScope, invitationRouter);
+  app.use("/api/errors", systemScope, errorReportRouter);
+  app.use("/api/public/join", systemScope, joinRouter);
+  app.use("/api/public/register-facility", systemScope, facilityRegisterRouter);
+  app.use("/api/public", systemScope, publicRouter);
+  app.use("/api/region", systemScope, regionRouter);
+  app.use("/api/district", systemScope, districtRouter);
+  app.use("/api/internal", systemScope, internalRouter);
+  app.use("/api/webhooks", systemScope, webhookRouter);
+  app.use("/api/platform", systemScope, platformRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
 
@@ -70,13 +71,16 @@ export function createApp() {
       return res.status(status).json({ error: status === 413 ? "too_large" : "invalid_body" });
     }
     // Two people registering the same email at the same moment: the database refuses the second, and it is told so plainly.
-    const dup = err as Error & { code?: string; meta?: { target?: unknown } };
-    if (dup.code === "P2002" && String(dup.meta?.target ?? "").includes("userEmail")) {
+    // With row-level security on, Postgres leaves the key out of its unique-violation message, so the field name can be missing;
+    // a clash on an account row with no named field is the email (the only other unique field there is the linked staff record).
+    const dup = err as Error & { code?: string; meta?: { target?: unknown; modelName?: string } };
+    const target = String(dup.meta?.target ?? "");
+    if (dup.code === "P2002" && (target.includes("userEmail") || (target === "" && dup.meta?.modelName === "UserProfile"))) {
       return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address." });
     }
     if (req.log) req.log.error(err);
     else console.error(err);
-    void recordServerError(req, err);
+    void asSystem(() => recordServerError(req, err));
     res.status(500).json({ error: "internal_error" });
   });
 

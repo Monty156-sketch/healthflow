@@ -5,13 +5,18 @@ import { vi } from "vitest";
 import { authenticator } from "otplib";
 import type { Role } from "@healthflow/db";
 import { createApp } from "../src/app.js";
-import { prisma } from "../src/lib/prisma.js";
+import { PrismaClient } from "@healthflow/db";
+import { prisma as appPrisma } from "../src/lib/prisma.js";
 import { hashPassword } from "../src/lib/password.js";
 import { encryptSecret } from "../src/lib/crypto.js";
 import { signAccessToken } from "../src/lib/tokens.js";
 
 export const app = createApp();
-export { prisma };
+// In the enforced run (RLS switched on) the app connects as a restricted role, but set-up and assertions need to
+// see every row, so they go through a client for the table owner. Otherwise it is the app's own client.
+export const prisma: PrismaClient = process.env.TEST_OWNER_DATABASE_URL
+  ? new PrismaClient({ datasourceUrl: process.env.TEST_OWNER_DATABASE_URL })
+  : appPrisma;
 
 /** Empties every table, keeping the migration history. */
 export async function resetDatabase() {
