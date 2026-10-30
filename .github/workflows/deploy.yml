@@ -45,7 +45,7 @@ jobs:
         if: steps.creds.outputs.have == 'true'
         with:
           version: 10.28.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.creds.outputs.have == 'true'
         with:
           node-version: 22
