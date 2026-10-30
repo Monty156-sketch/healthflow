@@ -14,7 +14,7 @@
   "dependencies": {
     "@healthflow/db": "workspace:*",
     "@healthflow/shared": "workspace:*",
-    "argon2": "^0.41.1",
+    "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -37,14 +37,14 @@
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.9.0",
-    "@types/pdfkit": "^0.17.6",
-    "@types/qrcode": "^1.5.5",
+    "@types/pdfkit": "^0.17.7",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^6.0.3",
     "eslint": "^9.15.0",
     "supertest": "^7.3.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.15.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "4.1.12"
   }
 }
