@@ -71,8 +71,11 @@ export function createApp() {
       return res.status(status).json({ error: status === 413 ? "too_large" : "invalid_body" });
     }
     // Two people registering the same email at the same moment: the database refuses the second, and it is told so plainly.
-    const dup = err as Error & { code?: string; meta?: { target?: unknown } };
-    if (dup.code === "P2002" && String(dup.meta?.target ?? "").includes("userEmail")) {
+    // With row-level security on, Postgres leaves the key out of its unique-violation message, so the field name can be missing;
+    // a clash on an account row with no named field is the email (the only other unique field there is the linked staff record).
+    const dup = err as Error & { code?: string; meta?: { target?: unknown; modelName?: string } };
+    const target = String(dup.meta?.target ?? "");
+    if (dup.code === "P2002" && (target.includes("userEmail") || (target === "" && dup.meta?.modelName === "UserProfile"))) {
       return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address." });
     }
     if (req.log) req.log.error(err);
