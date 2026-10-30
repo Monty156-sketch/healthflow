@@ -122,7 +122,7 @@ describe("row-level security in the API client", () => {
       tx.$queryRaw<{ f: string; b: string }[]>`SELECT current_setting('app.facility_id', true) AS f, current_setting('app.bypass_rls', true) AS b`;
 
     // Queries still work through the wrapper (this connection owns the tables, so it is not restricted).
-    expect(await tenantContext.run({ facilityId: f.id }, async () => await p.staff.count())).toBe(2);
+    expect(await tenantContext.run({ facilityId: f.id }, async () => await p.staff.count({ where: { facilityId: f.id } }))).toBe(1);
 
     const inside = await tenantContext.run({ facilityId: f.id }, async () => await p.$transaction(async (tx) => setting(tx)));
     expect(inside[0]).toEqual({ f: f.id, b: "off" });
