@@ -11,13 +11,19 @@ export const tenantContext = new AsyncLocalStorage<Tenant>();
 export const rlsEnforced = () => process.env.RLS_ENFORCE === "on";
 
 /** Run work as the system: schedulers, sign-in, registration, and flows that really cross facilities. */
-export function asSystem<T>(fn: () => T): T {
-  return tenantContext.run({ system: true }, fn);
+export function asSystem<T>(fn: () => T): Promise<Awaited<T>> {
+  return runIn({ system: true }, fn);
+}
+
+// Prisma queries are lazy: they start when awaited, not when created. Awaiting inside the scope makes the
+// query run with this scope's settings instead of whatever scope the caller later awaits it in.
+function runIn<T>(tenant: Tenant, fn: () => T): Promise<Awaited<T>> {
+  return tenantContext.run(tenant, async () => await fn());
 }
 
 /** Work for one facility, outside a request: a background job narrowing itself to the facility it is handling. */
-export function inFacilityRun<T>(facilityId: string, fn: () => T): T {
-  return tenantContext.run({ facilityId }, fn);
+export function inFacilityRun<T>(facilityId: string, fn: () => T): Promise<Awaited<T>> {
+  return runIn({ facilityId }, fn);
 }
 
 /** Express: sees no facility's rows. Set before sign-in is checked, so a route that forgets to pick a facility gets nothing instead of everything. */
