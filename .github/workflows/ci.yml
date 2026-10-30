@@ -117,7 +117,7 @@ jobs:
           RLS_TEST_UNSCOPED: "system"
         run: |
           set -o pipefail
-          pnpm test 2>&1 | tee /tmp/test.log || { grep -E "FAIL|Error|×|expected|Expected|Received|❯ test" /tmp/test.log | head -80 | sed 's/^/::error::/'; exit 1; }
+          pnpm test 2>&1 | tee /tmp/test.log || { sed 's/\x1b\[[0-9;]*m//g' /tmp/test.log | grep -E "Error|violates|permission denied|does not exist|expected" | grep -v "^ *at " | sort | uniq -c | sort -rn | head -40 | sed 's/^/::error::/'; exit 1; }
 
   # Real browser, real Worker, real API and database. It catches what unit
   # tests cannot: a page that does not hydrate, a script blocked by the
