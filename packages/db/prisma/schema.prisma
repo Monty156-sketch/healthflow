@@ -1239,6 +1239,27 @@ model ErrorReport {
   @@index([facilityId])
 }
 
+/// One try at sending an email, kept 30 days so System health can show whether email is getting through.
+/// Holds no address and no text, only the outcome.
+model EmailEvent {
+  id        String   @id @default(cuid())
+  outcome   String   // SENT, FAILED or NOT_CONFIGURED
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Short-lived marks for the security watch: a failed sign-in, or an alert already sent. Kept in the database so every API server sees the same count.
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  kind      String
+  key       String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
 enum FeedbackStatus {
   NEW
   READ

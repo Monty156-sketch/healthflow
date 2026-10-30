@@ -78,7 +78,7 @@ async function nameOf(user: Pick<UserProfile, "staffId" | "userEmail">): Promise
 
 /** Wrong passwords and wrong codes both count towards the lockout. */
 async function recordFailure(user: UserProfile, what: "password" | "code") {
-  noteSignInFailure();
+  await noteSignInFailure();
   const failedAttempts = user.failedAttempts + 1;
   const lockingNow = failedAttempts >= LOCKOUT_AFTER_FAILED_ATTEMPTS;
   await prisma.userProfile.update({
@@ -88,7 +88,7 @@ async function recordFailure(user: UserProfile, what: "password" | "code") {
       lockedUntil: lockingNow ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null,
     },
   });
-  if (lockingNow) noteLockout({ email: user.userEmail, role: user.role, privileged: ROLES_REQUIRING_MFA.includes(user.role) }, LOCKOUT_MINUTES);
+  if (lockingNow) await noteLockout({ email: user.userEmail, role: user.role, privileged: ROLES_REQUIRING_MFA.includes(user.role) }, LOCKOUT_MINUTES);
   await writeAuditLog({
     facilityId: user.facilityId,
     actorEmail: user.userEmail,
@@ -172,7 +172,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   if (!user) {
     // Do the same hashing work so response time does not reveal which emails exist.
     await verifyPassword(await dummyHash(), password);
-    noteSignInFailure();
+    await noteSignInFailure();
     return res.status(401).json({ error: "invalid_credentials" });
   }
 

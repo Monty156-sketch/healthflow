@@ -76,3 +76,68 @@ describe("duty ledger totals for an in-charge", () => {
     expect((await as(incharge).get("/api/facility/ledger")).body.summary.openDebts).toBe(1);
   });
 });
+
+describe("one account per email", () => {
+  const reg = (email: string, name = "Wa West") => ({
+    name, region: "Upper West", contactName: "Ama Dery", contactRole: "District Health Director",
+    contactEmail: email, contactPhone: "0240000000", officeAddress: "District Health Directorate, Wa", password: "river stone morning light",
+  });
+  const post = (body: object) => request(app).post("/api/public/districts/register").set("X-Forwarded-For", freshIp()).send(body);
+
+  it("tells a second registration, in any letter case, that the email already has an account", async () => {
+    expect((await post(reg("Dho@Example.com"))).status).toBe(201);
+    const again = await post(reg("DHO@example.COM", "Another District"));
+    expect(again.status).toBe(409);
+    expect(again.body.message).toMatch(/already has an account/i);
+    expect(await prisma.userProfile.count()).toBe(1);
+  });
+
+  it("answers two registrations sent at the same moment with one account and a plain 409", async () => {
+    const [a, b] = await Promise.all([post(reg("same@example.com", "District A")), post(reg("same@example.com", "District B"))]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    expect(await prisma.userProfile.count({ where: { userEmail: "same@example.com" } })).toBe(1);
+  });
+});
+
+describe("deployments for a ward in-charge", () => {
+  it("shows and confirms back only their own ward's people", async () => {
+    const facility = await makeFacility("Ward Hospital");
+    const maternity = await prisma.department.create({ data: { facilityId: facility.id, name: "Maternity" } });
+    const surgery = await prisma.department.create({ data: { facilityId: facility.id, name: "Surgery" } });
+    const mk = (tag: string, departmentId: string) => prisma.staff.create({ data: { facilityId: facility.id, staffNo: tag, fullName: `Nurse ${tag}`, status: "ACTIVE", departmentId } });
+    const [m1, s1] = [await mk("M1", maternity.id), await mk("S1", surgery.id)];
+    const { user: incharge } = await makeUser({ role: "ROSTER_MANAGER", facilityId: facility.id, withStaff: { fullName: "Sister Ama" }, mfa: true });
+    await prisma.userProfile.update({ where: { id: incharge.id }, data: { departmentId: maternity.id } });
+    const day = (n: number) => new Date(Date.UTC(2026, 9, 1 + n));
+    const dep = await prisma.deployment.create({
+      data: { facilityId: facility.id, name: "National exercise", startDate: day(0), endDate: day(3), createdBy: "admin@example.test", members: { create: [{ staffId: m1.id }, { staffId: s1.id }] } },
+      include: { members: true },
+    });
+    const api = as(incharge);
+    const list = (await api.get("/api/facility/deployments")).body.deployments;
+    expect(list).toHaveLength(1);
+    expect(list[0].members.map((m: { name: string }) => m.name)).toEqual(["Nurse M1"]);
+    const other = dep.members.find((m) => m.staffId === s1.id)!;
+    const refused = await api.post(`/api/facility/deployments/${dep.id}/back`, { memberIds: [other.id], date: new Date(Date.now() + 86_400_000).toISOString().slice(0, 10) });
+    expect(refused.status).toBe(409);
+    expect((await prisma.deploymentMember.findUniqueOrThrow({ where: { id: other.id } })).returnedOn).toBeNull();
+  });
+});
+
+describe("system health shows whether messages are getting through", () => {
+  it("counts email, text and WhatsApp outcomes from the last day", async () => {
+    const facility = await makeFacility("Wa Clinic");
+    const { user: platform } = await makeUser({ role: "PLATFORM_ADMIN" });
+    await prisma.emailEvent.createMany({ data: [{ outcome: "SENT" }, { outcome: "SENT" }, { outcome: "FAILED", error: "The provider refused the message" }] });
+    await prisma.emailEvent.create({ data: { outcome: "SENT", createdAt: new Date(Date.now() - 40 * 86_400_000) } });
+    await prisma.smsMessage.create({ data: { facilityId: facility.id, toPhone: "0240000000", type: "test", body: "x", status: "FAILED", error: "No credit" } });
+    const h = (await as(platform).get("/api/platform/health")).body;
+    expect(h.notifications.email).toMatchObject({ sent: 2, failed: 1, lastError: "The provider refused the message", configured: true });
+    expect(h.notifications.sms).toMatchObject({ sent: 0, failed: 1, lastError: "No credit" });
+    expect(h.notifications.whatsapp).toMatchObject({ sent: 0, failed: 0 });
+    // Old outcomes are tidied away.
+    expect(await prisma.emailEvent.count()).toBe(3);
+    await prisma.emailEvent.create({ data: { outcome: "NOT_CONFIGURED" } });
+    expect((await as(platform).get("/api/platform/health")).body.notifications.email.configured).toBe(false);
+  });
+});

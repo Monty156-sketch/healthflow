@@ -22,6 +22,7 @@ interface Health {
   api: { ok: boolean; upSinceSeconds: number };
   database: { ok: boolean; ms: number | null };
   errors: { last24h: number; open: number };
+  notifications: Record<"email" | "sms" | "whatsapp", { sent: number; failed: number; lastError: string | null; configured: boolean }>;
   jobs: { name: string; label: string; everyMinutes: number; lastRunAt: string | null; lastOk: boolean | null; lastDetail: string | null; failedLast7Days: number; late: boolean }[];
   reports: Report[];
 }
@@ -35,14 +36,14 @@ function upFor(seconds: number) {
   return `${Math.round(seconds / 86400)} days`;
 }
 
-function Check({ label, ok, detail }: { label: string; ok: boolean | null; detail: string }) {
+function Check({ label, ok, detail, idle }: { label: string; ok: boolean | null; detail: string; idle?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3 py-3">
       <div>
         <p className="font-medium">{label}</p>
         <p className="text-sm text-[var(--muted)]">{detail}</p>
       </div>
-      <StatusBadge tone={ok === null ? "neutral" : ok ? "success" : "block"}>{ok === null ? "Not built yet" : ok ? "Working" : "Down"}</StatusBadge>
+      <StatusBadge tone={ok === null ? "neutral" : ok ? "success" : "block"}>{ok === null ? (idle ? "Quiet" : "Not run yet") : ok ? "Working" : "Down"}</StatusBadge>
     </div>
   );
 }
@@ -85,7 +86,16 @@ export default function SystemHealthPage() {
             {data.jobs.map((j) => (
               <Check key={j.name} label={j.label} ok={j.lastRunAt === null ? null : !j.late && j.lastOk !== false} detail={j.lastRunAt === null ? "Has not run yet." : `Every ${j.everyMinutes >= 60 ? `${Math.round(j.everyMinutes / 60)} hours` : `${j.everyMinutes} minutes`}. Last ran ${new Date(j.lastRunAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}${j.lastOk === false ? `, and failed: ${j.lastDetail}` : j.late ? ", and is late" : ""}.${j.failedLast7Days ? ` ${j.failedLast7Days} failed in the last 7 days.` : ""}`} />
             ))}
-            <Check label="Notifications" ok={null} detail="Notices appear in the application. Email delivery is not tracked here." />
+            {([["email", "Email"], ["sms", "Text messages"], ["whatsapp", "WhatsApp reminders"]] as const).map(([key, label]) => {
+              const c = data.notifications[key];
+              const none = c.sent + c.failed === 0;
+              const ok = !c.configured ? false : none ? null : c.failed === 0 ? true : c.sent > 0 ? true : false;
+              const detail = !c.configured
+                ? "No email provider is set, so nothing is being sent."
+                : none ? "Nothing sent in the last 24 hours."
+                : `${c.sent} sent, ${c.failed} failed in the last 24 hours.${c.failed && c.lastError ? ` Last failure: ${c.lastError}` : ""}`;
+              return <Check key={key} label={label} ok={ok} detail={detail} idle={none && c.configured} />;
+            })}
           </div>
         </Panel>
         <Panel title="Errors">

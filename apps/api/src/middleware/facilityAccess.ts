@@ -49,8 +49,6 @@ const LOCKED_OK = ["/api/facility/access", "/api/facility/billing", "/api/facili
 /** A suspended facility reaches nothing but its own status. Only PS Tech can reinstate it. */
 const SUSPENDED_ONLY = ["/api/facility/access"];
 
-const SUSPENDED_OK = ["/api/facility/me/", "/api/facility/notifications", "/api/facility/billing"];
-
 /** What full-access support may not do even inside a session: hand out access, touch personal-data rights, billing, or take a copy of everything. */
 const SUPPORT_NEVER = ["/api/facility/privacy", "/api/facility/invitations", "/api/facility/billing", "/api/facility/notices/legal", "/api/facility/directorate", "/api/facility/me/"];
 const SUPPORT_NEVER_READ = ["/api/facility/privacy/export", "/api/facility/me/data"];
