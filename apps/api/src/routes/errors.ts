@@ -12,6 +12,8 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
 import { jobStatus } from "../lib/scheduler.js";
 import { sendEmail } from "../lib/email.js";
+import { patientProblem } from "../lib/patientData.js";
+import { knownNames } from "./facility/handover.js";
 
 // One alert email per ten minutes at most, so a failing route cannot flood the inbox.
 let lastAlert = 0;
@@ -88,6 +90,11 @@ errorReportRouter.post("/", reportLimiter, async (req, res) => {
   const me = liveUser(req);
   const input = parseOr400(reportInput, req.body, res);
   if (!input) return;
+  if (input.kind === "report" && me.facilityId) {
+    const { known, people } = await knownNames(me.facilityId);
+    const problem = patientProblem(input.description, known, people);
+    if (problem) return res.status(400).json({ error: "invalid_input", fields: { description: problem } });
+  }
   const report = await prisma.errorReport.create({
     data: {
       facilityId: me.facilityId,

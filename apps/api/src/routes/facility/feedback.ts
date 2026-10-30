@@ -8,6 +8,9 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { caller } from "../../middleware/facilityAccess.js";
+import { patientProblem } from "../../lib/patientData.js";
+import { emailFeedback } from "../../lib/feedbackAlert.js";
+import { knownNames } from "./handover.js";
 
 export const feedbackRouter = Router();
 
@@ -17,6 +20,9 @@ const AFTER_FEEDBACK_DAYS = 30;
 const AFTER_LATER_DAYS = 7;
 
 export const FEEDBACK_CATEGORIES = ["GENERAL", "IDEA", "PROBLEM", "PRAISE"] as const;
+
+/** Words people use about HealthFlow itself, so "Roster Page" is not read as a name. */
+const APP_WORDS = ["HealthFlow", "PS Tech", "Roster", "Page", "Leave", "Request", "Duty", "Swap", "Cover", "Ledger", "Days Off", "Attendance", "Handover", "Notes", "Staff", "List", "Report", "Billing", "Dashboard", "Log In", "Sign In", "Password", "Reset", "Link", "Email", "Phone", "App", "Screen", "Button", "Menu"];
 
 const limiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -57,12 +63,18 @@ feedbackRouter.post("/", limiter, async (req, res) => {
   if (who.supportSessionId) return res.status(403).json({ error: "forbidden", message: "Feedback is sent by the facility's own users." });
   const body = parseOr400(input, req.body, res);
   if (!body) return;
+  // Patient details must not reach PS Tech. Names the facility uses (wards, shifts, colleagues) are not mistaken for one.
+  const { known, people } = await knownNames(who.facilityId);
+  const problem = patientProblem(body.message, [...known, ...APP_WORDS], people);
+  if (problem) return res.status(400).json({ error: "invalid_input", fields: { message: problem } });
   await prisma.$transaction(async (tx) => {
     await tx.feedback.create({
       data: { facilityId: who.facilityId, userId: who.userId, role: who.role, rating: body.rating, category: body.category, message: body.message || null, screen: body.screen ?? null, asked: body.asked },
     });
     await tx.userProfile.update({ where: { id: who.userId }, data: { feedbackNextAt: new Date(Date.now() + AFTER_FEEDBACK_DAYS * DAY) } });
   });
+  const facility = await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { name: true } });
+  emailFeedback({ rating: body.rating, category: body.category, message: body.message || null, facility: facility?.name ?? "", from: who.email, role: who.role, screen: body.screen ?? null });
   res.status(201).json({ ok: true });
 });
 
