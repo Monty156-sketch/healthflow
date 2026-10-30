@@ -17,6 +17,7 @@ import { publicRouter } from "./routes/public.js";
 import { joinRouter } from "./routes/join.js";
 import { facilityRegisterRouter } from "./routes/facilityRegister.js";
 import { webhookRouter } from "./routes/webhooks.js";
+import { asSystem, systemScope } from "./lib/tenant.js";
 import { apiLimiter } from "./middleware/rateLimit.js";
 
 export function createApp() {
@@ -46,19 +47,19 @@ export function createApp() {
 
   // Under /api/auth because the session cookie is scoped to that path, and
   // the account routes need it to tell this device from the others.
-  app.use("/api/auth/account", accountRouter);
-  app.use("/api/auth", authRouter);
+  app.use("/api/auth/account", systemScope, accountRouter);
+  app.use("/api/auth", systemScope, authRouter);
   app.use("/api/facility", facilityRouter);
-  app.use("/api/invitations", invitationRouter);
-  app.use("/api/errors", errorReportRouter);
-  app.use("/api/public/join", joinRouter);
-  app.use("/api/public/register-facility", facilityRegisterRouter);
-  app.use("/api/public", publicRouter);
-  app.use("/api/region", regionRouter);
-  app.use("/api/district", districtRouter);
-  app.use("/api/internal", internalRouter);
-  app.use("/api/webhooks", webhookRouter);
-  app.use("/api/platform", platformRouter);
+  app.use("/api/invitations", systemScope, invitationRouter);
+  app.use("/api/errors", systemScope, errorReportRouter);
+  app.use("/api/public/join", systemScope, joinRouter);
+  app.use("/api/public/register-facility", systemScope, facilityRegisterRouter);
+  app.use("/api/public", systemScope, publicRouter);
+  app.use("/api/region", systemScope, regionRouter);
+  app.use("/api/district", systemScope, districtRouter);
+  app.use("/api/internal", systemScope, internalRouter);
+  app.use("/api/webhooks", systemScope, webhookRouter);
+  app.use("/api/platform", systemScope, platformRouter);
 
   app.use((_req, res) => res.status(404).json({ error: "not_found" }));
 
@@ -76,7 +77,7 @@ export function createApp() {
     }
     if (req.log) req.log.error(err);
     else console.error(err);
-    void recordServerError(req, err);
+    void asSystem(() => recordServerError(req, err));
     res.status(500).json({ error: "internal_error" });
   });
 

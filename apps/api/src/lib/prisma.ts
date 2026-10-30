@@ -38,6 +38,15 @@ function enforced(): PrismaClient {
           }, options as never);
         };
       }
+      if (prop === "$queryRaw" || prop === "$queryRawUnsafe" || prop === "$executeRaw" || prop === "$executeRawUnsafe") {
+        // Raw SQL runs in its own transaction with the same facility settings, so the policies apply to it too.
+        return (...args: unknown[]) =>
+          base.$transaction(async (tx) => {
+            const s = settingsFor(tenantContext.getStore());
+            await tx.$executeRaw`SELECT set_config('app.facility_id', ${s.facilityId}, true), set_config('app.bypass_rls', ${s.bypass}, true)`;
+            return (tx as unknown as Record<string, (...a: unknown[]) => unknown>)[prop](...args);
+          });
+      }
       const value = Reflect.get(target, prop, target);
       return typeof value === "function" ? value.bind(target) : value;
     },

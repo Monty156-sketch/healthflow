@@ -1,6 +1,7 @@
 // Licences and certificates. A licence that has lapsed is a problem for the patient, the nurse and the
 // facility alike, so the dates are watched here and the people who can act are told in good time.
 import { prisma } from "./prisma.js";
+import { asSystem, inFacilityRun } from "./tenant.js";
 import { notifyDeciders, notifyStaff } from "./notify.js";
 
 /** Suggestions for the kind of credential. A facility may type any other. */
@@ -43,9 +44,16 @@ const order = (s: number) => (s === 0 ? 0 : s === 60 ? 1 : s === 30 ? 2 : s === 
  * facility's managers one summary per facility. Returns how many people were told.
  */
 export async function runCredentialReminders(now = new Date()): Promise<number> {
+  const facilities = await asSystem(() => prisma.facility.findMany({ select: { id: true } }));
+  let told = 0;
+  for (const f of facilities) told += await inFacilityRun(f.id, () => remindFacility(f.id, now));
+  return told;
+}
+
+async function remindFacility(facilityId: string, now: Date): Promise<number> {
   const today = Math.floor(now.getTime() / DAY);
   const rows = await prisma.staffCredential.findMany({
-    where: { archivedAt: null, noExpiry: false, expiresOn: { not: null, lte: new Date((today + 60) * DAY) }, staff: { status: "ACTIVE" } },
+    where: { facilityId, archivedAt: null, noExpiry: false, expiresOn: { not: null, lte: new Date((today + 60) * DAY) }, staff: { status: "ACTIVE" } },
     include: { staff: { select: { fullName: true } } },
   });
   let told = 0;

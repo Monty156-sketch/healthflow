@@ -3,6 +3,7 @@
 // each kind, and what was deleted and who confirmed it is written to the audit
 // log. The audit log itself is never deleted (the database does not allow it).
 import { prisma } from "./prisma.js";
+import { asSystem, inFacilityRun } from "./tenant.js";
 import { writeAuditLog } from "./audit.js";
 import { notifyDeciders } from "./notify.js";
 import { RETENTION_LABEL } from "../routes/facility/privacy.js";
@@ -63,11 +64,11 @@ export async function expiredFor(facilityId: string): Promise<Expired[]> {
 
 /** The monthly scan. Looks, tells the administrator, deletes nothing. */
 export async function runRetentionJob(): Promise<{ facilities: number; notified: number }> {
-  const facilities = await prisma.facility.findMany({ where: { active: true }, select: { id: true } });
+  const facilities = await asSystem(() => prisma.facility.findMany({ where: { active: true }, select: { id: true } }));
   let notified = 0;
-  for (const f of facilities) {
+  for (const f of facilities) notified += await inFacilityRun(f.id, async () => {
     const due = (await expiredFor(f.id)).filter((e) => e.removable && e.count > 0);
-    if (due.length === 0) continue;
+    if (due.length === 0) return 0;
     await notifyDeciders(f.id, {
       type: "retention_due",
       title: "Records have passed their retention period",
@@ -75,8 +76,8 @@ export async function runRetentionJob(): Promise<{ facilities: number; notified:
       linkUrl: "/privacy-and-data",
       severity: "ACTION",
     });
-    notified++;
-  }
+    return 1;
+  });
   return { facilities: facilities.length, notified };
 }
 

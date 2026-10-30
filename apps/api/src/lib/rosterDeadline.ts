@@ -1,6 +1,7 @@
 // The date by which each month's roster must be published, and the reminders that go to whoever owes it.
 // A facility sets one day of the month before (for example the 25th). A roster for November is due by 25 October.
 import { prisma } from "./prisma.js";
+import { asSystem, inFacilityRun } from "./tenant.js";
 import { notifyAdmins, notifyWard } from "./notify.js";
 import { rostersByUnit } from "./unitDemand.js";
 import { WARD_FACILITY_TYPES } from "../routes/facility/rosters.js";
@@ -53,9 +54,10 @@ export async function standing(facilityId: string, unit: Unit, year: number, mon
 
 /** Reminds each unit's owner as the deadline nears and once when it passes. Returns how many reminders went out. */
 export async function runRosterDeadlineReminders(now = new Date()): Promise<number> {
-  const facilities = await prisma.facility.findMany({ where: { rosterDeadlineDay: { not: null }, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true, facilityType: true, rosterDeadlineDay: true } });
+  const facilities = await asSystem(() => prisma.facility.findMany({ where: { rosterDeadlineDay: { not: null }, status: { in: ["TRIAL", "ACTIVE"] } }, select: { id: true, facilityType: true, rosterDeadlineDay: true } }));
   let sent = 0;
-  for (const f of facilities) {
+  for (const f of facilities) sent += await inFacilityRun(f.id, async () => {
+    let n = 0;
     const units = await unitsOf(f.id, f.facilityType);
     for (const t of targets(now)) {
       const stage = stageFor(daysToDeadline(t.year, t.month, f.rosterDeadlineDay!, now));
@@ -73,9 +75,10 @@ export async function runRosterDeadlineReminders(now = new Date()): Promise<numb
           : { title: `${where} for ${s.label} is due ${stage === 1 ? "tomorrow or sooner" : `in ${stage} days or fewer`}`, body: `Publish by ${s.deadline}. It is ${s.status}.`, severity: stage === 1 ? ("ACTION" as const) : ("INFO" as const) };
         await notifyWard(f.id, u.departmentId, { type: "roster_deadline", ...note, linkUrl: "/roster" });
         if (stage === -1) await notifyAdmins(f.id, { type: "roster_deadline", ...note, linkUrl: "/roster" });
-        sent++;
+        n++;
       }
     }
-  }
+    return n;
+  });
   return sent;
 }
