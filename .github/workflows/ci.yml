@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.0
 
@@ -89,7 +89,7 @@ jobs:
       DATABASE_URL: "postgresql://ci:ci@localhost:5432/healthflow_test"
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.0
       - uses: actions/setup-node@v4
@@ -150,7 +150,7 @@ jobs:
       WEB_ORIGIN: "http://localhost:8787"
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.0
       - uses: actions/setup-node@v4
