@@ -1,8 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const sent = vi.hoisted(() => vi.fn());
+vi.mock("../src/lib/email.js", async (orig) => ({ ...(await orig<typeof import("../src/lib/email.js")>()), sendEmail: sent }));
 import request from "supertest";
 import { app, as, freshIp, makeFacility, makeUser, prisma, resetDatabase, tokenFor } from "./helpers.js";
 
-beforeEach(resetDatabase);
+beforeEach(async () => {
+  sent.mockReset();
+  sent.mockResolvedValue(true);
+  await resetDatabase();
+});
 
 const DAY = 86_400_000;
 
@@ -80,5 +87,39 @@ describe("feedback in the platform console", () => {
     expect(prompt.body.due).toBe(false);
     const post = await request(app).post("/api/facility/feedback").set("Authorization", `Bearer ${tokenFor(platform)}`).set("X-Forwarded-For", freshIp()).set("x-support-session", s.id).send({ rating: 5 });
     expect(post.status).toBe(403);
+  });
+});
+
+describe("feedback text and email", () => {
+  it("refuses a comment that names a patient or gives a phone or ID number, and says what to change", async () => {
+    const { staff } = await world();
+    for (const message of ["Mrs Abena was on the wrong bed in the roster", "Call me on 0244123456 about this", "The patient named Kwame could not be found", "Card GHA-123456789-1 would not load"]) {
+      const r = await as(staff).post("/api/facility/feedback", { rating: 3, message });
+      expect(r.status, message).toBe(400);
+      expect(r.body.fields.message).toMatch(/names a patient/i);
+    }
+    expect(await prisma.feedback.count()).toBe(0);
+    // Nothing was saved, so the person is still due to be asked.
+    expect((await as(staff).post("/api/facility/feedback", { rating: 3, message: "The Roster Page loads slowly in the morning." })).status).toBe(201);
+  });
+
+  it("does the same for Report a problem", async () => {
+    const { staff } = await world();
+    const r = await as(staff).post("/api/errors", { kind: "report", screen: "/roster", description: "Patient called Yaw is missing from the ward list" });
+    expect(r.status).toBe(400);
+    expect(r.body.fields.description).toMatch(/names a patient/i);
+    expect((await as(staff).post("/api/errors", { kind: "report", screen: "/roster", description: "The roster page shows an error when I open it." })).status).toBe(201);
+  });
+
+  it("emails the owners every piece of feedback, high or low", async () => {
+    const { staff } = await world();
+    await as(staff).post("/api/facility/feedback", { rating: 5, message: "Very good." });
+    await as(staff).post("/api/facility/feedback", { rating: 1, message: "Does not work for us." });
+    expect(sent).toHaveBeenCalledTimes(2);
+    const mail = sent.mock.calls.map((c) => c[0]);
+    expect(mail[0].subject).toMatch(/5 out of 5 from Wa Clinic/);
+    expect(mail[1].subject).toMatch(/1 out of 5/);
+    expect(mail[1].text).toContain("Does not work for us.");
+    expect(mail[1].text).toContain("/platform/feedback");
   });
 });

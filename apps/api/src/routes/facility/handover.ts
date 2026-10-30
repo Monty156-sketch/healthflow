@@ -47,7 +47,7 @@ async function wardFor(req: Parameters<typeof caller>[0], asked: unknown): Promi
 }
 
 /** Names the ward legitimately uses, so they are not mistaken for a patient's name. */
-async function knownNames(facilityId: string) {
+export async function knownNames(facilityId: string) {
   const [f, depts, shifts, cadres, staff] = await Promise.all([
     prisma.facility.findUnique({ where: { id: facilityId }, select: { name: true } }),
     prisma.department.findMany({ where: { facilityId }, select: { name: true } }),
