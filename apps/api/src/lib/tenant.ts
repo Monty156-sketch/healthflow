@@ -18,7 +18,7 @@ export function asSystem<T>(fn: () => T): Promise<Awaited<T>> {
 // Prisma queries are lazy: they start when awaited, not when created. Awaiting inside the scope makes the
 // query run with this scope's settings instead of whatever scope the caller later awaits it in.
 function runIn<T>(tenant: Tenant, fn: () => T): Promise<Awaited<T>> {
-  return tenantContext.run(tenant, async () => await fn());
+  return tenantContext.run(tenant, async () => await fn()) as Promise<Awaited<T>>;
 }
 
 /** Work for one facility, outside a request: a background job narrowing itself to the facility it is handling. */
