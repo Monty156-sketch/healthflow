@@ -6,7 +6,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
-import { Button, Field, Notice, Select, Textarea } from "@/components/ui";
+import { Button, Checkbox, Field, Notice, Select, Textarea } from "@/components/ui";
 
 const RATINGS = [
   { value: 1, label: "Poor" },
@@ -32,6 +32,8 @@ function FeedbackDialog({ open, asked, onClose, onLater, onSent }: { open: boole
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [canConfirm, setCanConfirm] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   useEffect(() => {
     const d = ref.current;
@@ -45,13 +47,16 @@ function FeedbackDialog({ open, asked, onClose, onLater, onSent }: { open: boole
     setBusy(true);
     setError(undefined);
     try {
-      await api.post("/api/facility/feedback", { rating, category, message, screen: pathname, asked });
+      await api.post("/api/facility/feedback", { rating, category, message, screen: pathname, asked, confirmNoPatientDetails: confirmed });
       setRating(null);
       setMessage("");
       setCategory("GENERAL");
+      setConfirmed(false);
+      setCanConfirm(false);
       onSent();
     } catch (e) {
-      const body = e instanceof ApiError ? (e.body as { fields?: { message?: string; rating?: string }; message?: string }) : undefined;
+      const body = e instanceof ApiError ? (e.body as { fields?: { message?: string; rating?: string }; message?: string; canConfirm?: boolean }) : undefined;
+      setCanConfirm(Boolean(body?.canConfirm));
       setError(body?.fields?.message ?? body?.fields?.rating ?? body?.message ?? "Your feedback could not be sent. Your text is still here; try again.");
     } finally {
       setBusy(false);
@@ -106,8 +111,11 @@ function FeedbackDialog({ open, asked, onClose, onLater, onSent }: { open: boole
             )}
           </Field>
           <Field label="Your comment" optional hint="Do not include patient details." error={error}>
-            {(a) => <Textarea {...a} rows={4} maxLength={2000} value={message} onChange={(e) => setMessage(e.target.value)} />}
+            {(a) => <Textarea {...a} rows={4} maxLength={2000} value={message} onChange={(e) => { setMessage(e.target.value); setConfirmed(false); }} />}
           </Field>
+          {canConfirm && (
+            <Checkbox label="This is not about a patient. These are not patient details." checked={confirmed} onChange={setConfirmed} />
+          )}
         </div>
 
         <div className="mt-5 flex flex-wrap justify-end gap-2">

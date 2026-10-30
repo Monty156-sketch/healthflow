@@ -12,7 +12,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
 import { jobStatus } from "../lib/scheduler.js";
 import { sendEmail } from "../lib/email.js";
-import { patientProblem } from "../lib/patientData.js";
+import { patientCheck } from "../lib/patientData.js";
 import { knownNames } from "./facility/handover.js";
 
 // One alert email per ten minutes at most, so a failing route cannot flood the inbox.
@@ -75,6 +75,7 @@ const reportInput = z
     screen: z.string().trim().max(200).optional(),
     description: z.string().trim().max(2000).optional(),
     context: z.unknown().optional(),
+    confirmNoPatientDetails: z.boolean().optional().default(false),
   })
   .superRefine((v, ctx) => {
     if (v.kind === "report" && (!v.description || v.description.length < 10)) {
@@ -92,8 +93,8 @@ errorReportRouter.post("/", reportLimiter, async (req, res) => {
   if (!input) return;
   if (input.kind === "report" && me.facilityId) {
     const { known, people } = await knownNames(me.facilityId);
-    const problem = patientProblem(input.description, known, people);
-    if (problem) return res.status(400).json({ error: "invalid_input", fields: { description: problem } });
+    const check = patientCheck(input.description, known, people);
+    if (check && !(check.canConfirm && input.confirmNoPatientDetails)) return res.status(400).json({ error: "invalid_input", fields: { description: check.problem }, canConfirm: check.canConfirm });
   }
   const report = await prisma.errorReport.create({
     data: {
@@ -126,6 +127,30 @@ platformRouter.use(consoleRouter);
 
 const startedAt = Date.now();
 
+type Channel = { sent: number; failed: number; lastError: string | null; configured: boolean };
+
+const total = (rows: { _count: { _all: number } }[]) => rows.reduce((t, r) => t + r._count._all, 0);
+
+/** How email, text messages and WhatsApp did over the last 24 hours. */
+async function deliveryStatus(): Promise<{ email: Channel; sms: Channel; whatsapp: Channel }> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Email outcomes are kept 30 days; this is where the old ones are tidied away.
+  await prisma.emailEvent.deleteMany({ where: { createdAt: { lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } } }).catch(() => undefined);
+  const [emailRows, emailFail, smsRows, smsFail, waRows, waFail] = await Promise.all([
+    prisma.emailEvent.groupBy({ by: ["outcome"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.emailEvent.findFirst({ where: { outcome: "FAILED", createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, select: { error: true } }),
+    prisma.smsMessage.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.smsMessage.findFirst({ where: { status: "FAILED", createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, select: { error: true } }),
+    prisma.whatsappMessage.groupBy({ by: ["status"], where: { createdAt: { gte: since } }, _count: { _all: true } }),
+    prisma.whatsappMessage.findFirst({ where: { status: "FAILED", createdAt: { gte: since } }, orderBy: { createdAt: "desc" }, select: { error: true } }),
+  ]);
+  return {
+    email: { sent: total(emailRows.filter((r) => r.outcome === "SENT")), failed: total(emailRows.filter((r) => r.outcome === "FAILED")), lastError: emailFail?.error ?? null, configured: !emailRows.some((r) => r.outcome === "NOT_CONFIGURED") },
+    sms: { sent: total(smsRows.filter((r) => r.status === "SENT")), failed: total(smsRows.filter((r) => r.status === "FAILED")), lastError: smsFail?.error ?? null, configured: true },
+    whatsapp: { sent: total(waRows.filter((r) => r.status === "SENT")), failed: total(waRows.filter((r) => r.status === "FAILED")), lastError: waFail?.error ?? null, configured: true },
+  };
+}
+
 platformRouter.get("/health", async (_req, res) => {
   const t0 = Date.now();
   let database: { ok: boolean; ms: number | null } = { ok: true, ms: null };
@@ -149,9 +174,8 @@ platformRouter.get("/health", async (_req, res) => {
     api: { ok: true, upSinceSeconds: Math.round((Date.now() - startedAt) / 1000) },
     database,
     errors: { last24h, open },
-    // Not built yet; listed so the screen shows what it will cover.
     jobs: await jobStatus(),
-    notifications: { status: "none_yet" },
+    notifications: await deliveryStatus(),
     reports: recent.map((r) => ({
       id: r.id,
       createdAt: r.createdAt,

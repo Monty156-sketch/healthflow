@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { patientIdentifiers, patientProblem } from "../src/lib/patientData.js";
+import { patientCheck, patientIdentifiers, patientProblem } from "../src/lib/patientData.js";
 
 const known = ["Female Ward", "Night", "Sombo Health Centre", "Staff Nurse"];
 const people = ["Ama Mensah", "Kofi Bawa"];
@@ -37,5 +37,20 @@ describe("patient identity in handover text", () => {
   it("blocks two capitalised words that are not a known ward, shift or colleague", () => {
     expect(patientIdentifiers("Waiting for Kwame Boateng to be collected", known, people).length).toBeGreaterThan(0);
     expect(patientIdentifiers("Waiting for Female Ward porter", known, people)).toEqual([]);
+  });
+});
+
+describe("names in feedback text", () => {
+  it("catches a lone common first name but lets a colleague's full name and ordinary phrases through", () => {
+    expect(patientIdentifiers("Fatima was rude to me", known, people).length).toBeGreaterThan(0);
+    expect(patientIdentifiers("Please ask Kofi Bawa to check the Roster Page", known, people)).toEqual([]);
+    expect(patientIdentifiers("The Roster Page is slow and Please Call me back", known, people)).toEqual([]);
+  });
+
+  it("lets the writer confirm a guess about a name, but never a phone number or a named patient", () => {
+    expect(patientCheck("Fatima was rude to me", known, people)?.canConfirm).toBe(true);
+    expect(patientCheck("Call 0241234567", known, people)?.canConfirm).toBe(false);
+    expect(patientCheck("The patient named Kofi is stable", known, people)?.canConfirm).toBe(false);
+    expect(patientCheck("Swaps are easy now.", known, people)).toBeNull();
   });
 });

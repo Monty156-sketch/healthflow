@@ -7,6 +7,8 @@
 // depend on email have a non-email path (for password reset: a facility admin
 // issues the link).
 
+import { prisma } from "./prisma.js";
+
 export interface Email {
   to: string;
   subject: string;
@@ -102,15 +104,28 @@ async function sendViaResend(message: Email): Promise<boolean> {
   return true;
 }
 
+/** Notes the outcome for System health. Never throws and never holds an address or text. */
+async function noteOutcome(outcome: "SENT" | "FAILED" | "NOT_CONFIGURED", error?: string) {
+  try {
+    await prisma.emailEvent.create({ data: { outcome, error: error?.slice(0, 200) ?? null } });
+  } catch {
+    // Keeping count must never stop an email.
+  }
+}
+
 export async function sendEmail(message: Email): Promise<boolean> {
   if (!emailConfigured()) {
     console.warn(`Email not sent (no email provider is set): "${message.subject}"`);
+    await noteOutcome("NOT_CONFIGURED");
     return false;
   }
   try {
-    return gmailConfigured() ? await sendViaGmail(message) : await sendViaResend(message);
+    const ok = gmailConfigured() ? await sendViaGmail(message) : await sendViaResend(message);
+    await noteOutcome(ok ? "SENT" : "FAILED", ok ? undefined : "The provider refused the message");
+    return ok;
   } catch (err) {
     console.error("Email could not be sent:", (err as Error).message);
+    await noteOutcome("FAILED", (err as Error).message);
     return false;
   }
 }

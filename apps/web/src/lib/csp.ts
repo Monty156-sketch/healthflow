@@ -6,9 +6,9 @@
 // that nonce (and scripts those scripts load, through 'strict-dynamic').
 // An injected <script> or an inline handler has no nonce and does not run.
 //
-// Styles still allow inline: React and the charts set style attributes, and a
-// style attribute cannot carry a nonce. A style cannot run code, so this is
-// the smaller risk, and it is the one part of the policy that is not strict.
+// Style elements are held to the same nonce. Only style attributes stay open:
+// React sets them on elements, and an attribute cannot carry a nonce. They
+// cannot run code or load anything from elsewhere.
 
 interface Rewriter {
   on(selector: string, handlers: { element(el: { setAttribute(name: string, value: string): void }): void }): Rewriter;
@@ -27,7 +27,8 @@ export function policyFor(nonce: string): string {
   return [
     "default-src 'self'",
     `script-src 'nonce-${nonce}' 'strict-dynamic'`,
-    "style-src 'self' 'unsafe-inline'",
+    `style-src 'self' 'nonce-${nonce}'`,
+    "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self'",
@@ -49,6 +50,7 @@ export function withScriptPolicy(response: Response): Response {
   const nonce = makeNonce();
   const rewritten = new HTMLRewriter()
     .on("script", { element: (el) => el.setAttribute("nonce", nonce) })
+    .on("style", { element: (el) => el.setAttribute("nonce", nonce) })
     // A script that is preloaded is held to the same policy as one that runs.
     .on('link[rel="preload"][as="script"], link[rel="modulepreload"]', { element: (el) => el.setAttribute("nonce", nonce) })
     .transform(response);

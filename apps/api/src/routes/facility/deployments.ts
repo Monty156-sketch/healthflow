@@ -49,14 +49,16 @@ deploymentsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
     where: { facilityId: who.facilityId },
     orderBy: [{ status: "asc" }, { startDate: "desc" }],
     take: 50,
-    include: { members: { include: { staff: { select: { fullName: true, cadre: { select: { name: true } }, department: { select: { name: true } } } }, shift: { select: { name: true } } } } },
+    include: { members: { include: { staff: { select: { fullName: true, departmentId: true, cadre: { select: { name: true } }, department: { select: { name: true } } } }, shift: { select: { name: true } } } } },
   });
   const today = todayDay();
+  // A ward in-charge sees only their own ward's people on each exercise.
+  const mine = <T extends { staff: { departmentId?: string | null } }>(ms: T[]) => (who.departmentId ? ms.filter((m) => m.staff.departmentId === who.departmentId) : ms);
   res.json({
-    deployments: rows.map((d) => ({
+    deployments: rows.filter((d) => mine(d.members).length > 0).map((d) => ({
       id: d.id, name: d.name, kind: d.kind, notes: d.notes, status: d.status, startDate: iso(dayOf(d.startDate)), endDate: iso(dayOf(d.endDate)), createdAt: d.createdAt,
       dueBack: d.status === "ACTIVE" && today > dayOf(d.endDate),
-      members: d.members.map((m) => ({ id: m.id, staffId: m.staffId, name: m.staff.fullName, cadre: m.staff.cadre?.name ?? null, department: m.staff.department?.name ?? null, shift: m.shift?.name ?? "Off duty", returnedOn: m.returnedOn ? iso(dayOf(m.returnedOn)) : null })),
+      members: mine(d.members).map((m) => ({ id: m.id, staffId: m.staffId, name: m.staff.fullName, cadre: m.staff.cadre?.name ?? null, department: m.staff.department?.name ?? null, shift: m.shift?.name ?? "Off duty", returnedOn: m.returnedOn ? iso(dayOf(m.returnedOn)) : null })),
     })),
   });
 });
@@ -64,13 +66,15 @@ deploymentsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
 /** The emergency roster: each person's shift on each day. Not a published roster; it is shared with the people on it. */
 deploymentsRouter.get("/:id/roster", allowRoles(...READ_ROLES), async (req, res) => {
   const who = caller(req);
-  const d = await prisma.deployment.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { members: { include: { staff: { select: { fullName: true, staffNo: true } }, shift: { select: { name: true, startTime: true, endTime: true } } } } } });
+  const d = await prisma.deployment.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { members: { include: { staff: { select: { fullName: true, staffNo: true, departmentId: true } }, shift: { select: { name: true, startTime: true, endTime: true } } } } } });
   if (!d) return res.status(404).json({ error: "not_found" });
+  const visible = who.departmentId ? d.members.filter((m) => m.staff.departmentId === who.departmentId) : d.members;
+  if (visible.length === 0) return res.status(404).json({ error: "not_found" });
   const days: string[] = [];
   for (let n = dayOf(d.startDate); n <= dayOf(d.endDate); n++) days.push(iso(n));
   res.json({
     name: d.name, startDate: days[0], endDate: days[days.length - 1], days,
-    rows: d.members.map((m) => ({ name: m.staff.fullName, staffNo: m.staff.staffNo, shift: m.shift?.name ?? "Off duty", from: m.shift?.startTime ?? null, to: m.shift?.endTime ?? null })).sort((a, b) => a.shift.localeCompare(b.shift) || a.name.localeCompare(b.name)),
+    rows: visible.map((m) => ({ name: m.staff.fullName, staffNo: m.staff.staffNo, shift: m.shift?.name ?? "Off duty", from: m.shift?.startTime ?? null, to: m.shift?.endTime ?? null })).sort((a, b) => a.shift.localeCompare(b.shift) || a.name.localeCompare(b.name)),
   });
 });
 
@@ -175,13 +179,14 @@ deploymentsRouter.post("/:id/back", allowRoles(...READ_ROLES), async (req, res) 
   const who = caller(req);
   const input = parseOr400(backInput, req.body, res);
   if (!input) return;
-  const dep = await prisma.deployment.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { members: { include: { staff: { select: { fullName: true } } } } } });
+  const dep = await prisma.deployment.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { members: { include: { staff: { select: { fullName: true, departmentId: true } } } } } });
   if (!dep) return res.status(404).json({ error: "not_found" });
   const today = todayDay();
   const back = input.date ? dayOf(new Date(`${input.date}T00:00:00.000Z`)) : today;
   if (back <= dayOf(dep.startDate)) return res.status(400).json({ error: "invalid_input", fields: { date: "They cannot be back on or before the first day of the deployment." } });
   if (back > today + 14) return res.status(400).json({ error: "invalid_input", fields: { date: "Choose a date within the next two weeks." } });
-  const chosen = dep.members.filter((m) => input.memberIds.includes(m.id) && !m.returnedOn);
+  // An in-charge confirms their own ward's people back, nobody else's.
+  const chosen = dep.members.filter((m) => input.memberIds.includes(m.id) && !m.returnedOn && (!who.departmentId || m.staff.departmentId === who.departmentId));
   if (chosen.length === 0) return res.status(409).json({ error: "none_open", message: "Nobody chosen is still waiting to be confirmed back." });
 
   await prisma.$transaction(async (tx) => {
@@ -202,7 +207,7 @@ deploymentsRouter.post("/:id/back", allowRoles(...READ_ROLES), async (req, res) 
   const monthEnd = Math.floor(Date.UTC(dateOf(back).getUTCFullYear(), dateOf(back).getUTCMonth() + 1, 0) / DAY);
   const replanFrom = Math.max(back, today);
   const replanned = replanFrom <= monthEnd
-    ? await mendRosters(who.facilityId, { absentIds: [], replan: true, from: replanFrom, to: monthEnd, why: `${names} came back from ${dep.name}`, versionNote: `Before ${names} returned from ${dep.name}`, auditAction: "roster_replanned_after_return", gapSubject: `The re-plan after ${dep.name}`, auditLead: (n, month) => `${names} came back from ${dep.name}, so ${n} ${n === 1 ? "duty" : "duties"} in the ${month} roster were planned again.` }, by)
+    ? await mendRosters(who.facilityId, { absentIds: [], replan: true, from: replanFrom, to: monthEnd, departmentId: who.departmentId ?? undefined, why: `${names} came back from ${dep.name}`, versionNote: `Before ${names} returned from ${dep.name}`, auditAction: "roster_replanned_after_return", gapSubject: `The re-plan after ${dep.name}`, auditLead: (n, month) => `${names} came back from ${dep.name}, so ${n} ${n === 1 ? "duty" : "duties"} in the ${month} roster were planned again.` }, by)
     : [];
 
   for (const m of chosen) {

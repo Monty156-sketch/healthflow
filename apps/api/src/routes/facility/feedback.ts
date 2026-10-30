@@ -8,7 +8,7 @@ import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { caller } from "../../middleware/facilityAccess.js";
-import { patientProblem } from "../../lib/patientData.js";
+import { patientCheck } from "../../lib/patientData.js";
 import { emailFeedback } from "../../lib/feedbackAlert.js";
 import { knownNames } from "./handover.js";
 
@@ -50,6 +50,7 @@ const input = z
     message: z.string().trim().max(2000, "Keep it under 2000 characters.").optional().default(""),
     screen: z.string().trim().max(200).optional(),
     asked: z.boolean().optional().default(false),
+    confirmNoPatientDetails: z.boolean().optional().default(false),
   })
   .superRefine((v, ctx) => {
     // A low score or a problem with nothing said cannot be acted on.
@@ -65,8 +66,8 @@ feedbackRouter.post("/", limiter, async (req, res) => {
   if (!body) return;
   // Patient details must not reach PS Tech. Names the facility uses (wards, shifts, colleagues) are not mistaken for one.
   const { known, people } = await knownNames(who.facilityId);
-  const problem = patientProblem(body.message, [...known, ...APP_WORDS], people);
-  if (problem) return res.status(400).json({ error: "invalid_input", fields: { message: problem } });
+  const check = patientCheck(body.message, [...known, ...APP_WORDS], people);
+  if (check && !(check.canConfirm && body.confirmNoPatientDetails)) return res.status(400).json({ error: "invalid_input", fields: { message: check.problem }, canConfirm: check.canConfirm });
   await prisma.$transaction(async (tx) => {
     await tx.feedback.create({
       data: { facilityId: who.facilityId, userId: who.userId, role: who.role, rating: body.rating, category: body.category, message: body.message || null, screen: body.screen ?? null, asked: body.asked },

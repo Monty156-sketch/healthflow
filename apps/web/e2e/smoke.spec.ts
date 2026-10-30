@@ -40,6 +40,17 @@ test.describe("public pages", () => {
 });
 
 test.describe("security headers", () => {
+  test("the strict style policy breaks nothing on the public pages", async ({ page }) => {
+    const violations: string[] = [];
+    page.on("console", (m) => { if (/content security policy/i.test(m.text())) violations.push(m.text()); });
+    page.on("pageerror", (e) => violations.push(e.message));
+    for (const path of ["/", "/login", "/pricing", "/register"]) {
+      await page.goto(path);
+      await page.waitForLoadState("networkidle");
+    }
+    expect(violations).toEqual([]);
+  });
+
   test("pages carry a script policy whose nonce is the one on their scripts", async ({ request }) => {
     const res = await request.get("/login");
     const csp = res.headers()["content-security-policy"];

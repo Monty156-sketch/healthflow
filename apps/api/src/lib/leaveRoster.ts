@@ -36,6 +36,8 @@ export interface MendJob {
   absentIds: string[];
   /** Re-plan every unlocked duty in the window instead of removing named people's duties. */
   replan?: boolean;
+  /** Only mend this ward's rosters. Left out, every roster in the facility is considered. */
+  departmentId?: string;
   from: number;
   to: number;
   /** Used in notices: "Ama Mensah is on leave". */
@@ -70,7 +72,7 @@ export async function mendRosters(facilityId: string, job: MendJob, by: { email:
   const absent = new Set(job.absentIds);
 
   const rosters = await prisma.roster.findMany({
-    where: { facilityId, status: { in: [...MENDABLE] } },
+    where: { facilityId, status: { in: [...MENDABLE] }, ...(job.departmentId ? { departmentId: job.departmentId } : {}) },
     orderBy: [{ year: "asc" }, { month: "asc" }],
   });
   const out: RosterMend[] = [];

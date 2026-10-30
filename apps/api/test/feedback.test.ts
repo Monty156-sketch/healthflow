@@ -103,6 +103,17 @@ describe("feedback text and email", () => {
     expect((await as(staff).post("/api/facility/feedback", { rating: 3, message: "The Roster Page loads slowly in the morning." })).status).toBe(201);
   });
 
+  it("lets the writer confirm a guessed name, but not a phone number", async () => {
+    const { staff } = await world();
+    const guess = await as(staff).post("/api/facility/feedback", { rating: 3, message: "Fatima was rude to me at the desk." });
+    expect(guess.status).toBe(400);
+    expect(guess.body.canConfirm).toBe(true);
+    expect((await as(staff).post("/api/facility/feedback", { rating: 3, message: "Fatima was rude to me at the desk.", confirmNoPatientDetails: true })).status).toBe(201);
+    const phone = await as(staff).post("/api/facility/feedback", { rating: 3, message: "Call me on 0244123456", confirmNoPatientDetails: true });
+    expect(phone.status).toBe(400);
+    expect(phone.body.canConfirm).toBe(false);
+  });
+
   it("does the same for Report a problem", async () => {
     const { staff } = await world();
     const r = await as(staff).post("/api/errors", { kind: "report", screen: "/roster", description: "Patient called Yaw is missing from the ward list" });

@@ -69,6 +69,11 @@ export function createApp() {
     if (status === 400 || status === 413) {
       return res.status(status).json({ error: status === 413 ? "too_large" : "invalid_body" });
     }
+    // Two people registering the same email at the same moment: the database refuses the second, and it is told so plainly.
+    const dup = err as Error & { code?: string; meta?: { target?: unknown } };
+    if (dup.code === "P2002" && String(dup.meta?.target ?? "").includes("userEmail")) {
+      return res.status(409).json({ error: "email_taken", message: "That email address already has an account. Sign in, or use a different address." });
+    }
     if (req.log) req.log.error(err);
     else console.error(err);
     void recordServerError(req, err);

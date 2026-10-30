@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { Button, ConfirmDialog, Field, Notice, Textarea } from "@/components/ui";
+import { Button, Checkbox, ConfirmDialog, Field, Notice, Textarea } from "@/components/ui";
 
 const sentThisPage = new Set<string>();
 
@@ -69,6 +69,8 @@ export function ReportProblem() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [sent, setSent] = useState(false);
+  const [canConfirm, setCanConfirm] = useState(false);
+  const [confirmed, setConfirmed] = useState(false);
 
   async function send() {
     setBusy(true);
@@ -78,13 +80,17 @@ export function ReportProblem() {
         kind: "report",
         screen: pathname,
         description: text,
+        confirmNoPatientDetails: confirmed,
         context: { userAgent: navigator.userAgent, viewport: `${window.innerWidth}x${window.innerHeight}` },
       });
       setText("");
+      setConfirmed(false);
+      setCanConfirm(false);
       setOpen(false);
       setSent(true);
     } catch (err) {
-      const body = err instanceof ApiError ? (err.body as { fields?: { description?: string }; message?: string }) : undefined;
+      const body = err instanceof ApiError ? (err.body as { fields?: { description?: string }; message?: string; canConfirm?: boolean }) : undefined;
+      setCanConfirm(Boolean(body?.canConfirm));
       setError(body?.fields?.description ?? body?.message ?? "The report could not be sent. Your text is still here; try again.");
     } finally {
       setBusy(false);
@@ -114,8 +120,13 @@ export function ReportProblem() {
           hint="Do not include patient details."
           error={error}
         >
-          {(a) => <Textarea {...a} rows={5} value={text} onChange={(e) => setText(e.target.value)} />}
+          {(a) => <Textarea {...a} rows={5} value={text} onChange={(e) => { setText(e.target.value); setConfirmed(false); }} />}
         </Field>
+        {canConfirm && (
+          <div className="mt-3">
+            <Checkbox label="This is not about a patient. These are not patient details." checked={confirmed} onChange={setConfirmed} />
+          </div>
+        )}
       </ConfirmDialog>
     </>
   );
