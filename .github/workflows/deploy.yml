@@ -41,7 +41,7 @@ jobs:
             echo "have=false" >> "$GITHUB_OUTPUT"
             echo "::notice::No Cloudflare secrets set. Not deploying the web app from here; relying on Cloudflare's own build for this repository."
           fi
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: steps.creds.outputs.have == 'true'
         with:
           version: 10.28.0
