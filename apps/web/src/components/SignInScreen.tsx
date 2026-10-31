@@ -40,6 +40,8 @@ function messageFor(err: unknown): string {
   if (!(err instanceof ApiError)) return "No connection. Check your internet and try again.";
   if (err.status >= 500) return "The server had a problem signing you in. Try again in a minute.";
   switch (err.message) {
+    case "too_many_attempts":
+      return "Too many sign-in attempts from this connection. Wait 15 minutes, then try again.";
     case "account_locked":
       return "Too many failed attempts. The account is locked for 15 minutes.";
     case "invalid_mfa":
