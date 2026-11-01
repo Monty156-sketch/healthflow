@@ -1,6 +1,6 @@
 name: Restore test
 
-# Proves a backup can be restored. Run by hand: it takes one finished "Database export" run, decrypts its
+# Proves a backup can be restored. Run by hand: it takes the latest green "Database export" run (or one you name), decrypts its
 # copy, restores it into a THROWAWAY Neon branch, and prints row counts from the restored copy next to the
 # live database's. It only reads the live database. It overwrites the throwaway branch.
 #
@@ -13,8 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: "Number from the address of a green Database export run (.../actions/runs/NUMBER)"
-        required: true
+        description: "Leave empty to use the latest green Database export. Or the number from a run's address (.../actions/runs/NUMBER)."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -37,7 +38,14 @@ jobs:
       - name: Download that run's encrypted copy
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" --name healthflow-database-export --dir download
+        run: |
+          id="${{ inputs.run_id }}"
+          if [ -z "$id" ]; then
+            id="$(gh run list --repo "${{ github.repository }}" --workflow backup.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          fi
+          if [ -z "$id" ] || [ "$id" = "null" ]; then echo "::error::No green Database export run found."; exit 1; fi
+          echo "Using Database export run $id"
+          gh run download "$id" --repo "${{ github.repository }}" --name healthflow-database-export --dir download
 
       - name: Restore into the throwaway branch and compare
         env:
