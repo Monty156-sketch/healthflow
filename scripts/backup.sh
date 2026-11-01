@@ -15,6 +15,10 @@ file="$out/healthflow-$(date -u +%F).dump.gpg"
 mkdir -p "$out"
 pg_dump --format=custom --no-owner --no-privileges "${DATABASE_URL/-pooler/}" \
   | gpg --batch --yes --pinentry-mode loopback --symmetric --cipher-algo AES256 --passphrase-fd 3 --output "$file" 3<<<"$BACKUP_PASSPHRASE"
-# A copy that cannot be listed is not a backup.
-gpg --batch --pinentry-mode loopback --passphrase-fd 3 --decrypt "$file" 3<<<"$BACKUP_PASSPHRASE" | pg_restore --list > /dev/null
+# A copy that cannot be listed is not a backup. Decrypt to a file first: pg_restore stops reading after the
+# contents list, and a pipe closed early makes gpg fail on any dump bigger than a few kilobytes.
+check="$(mktemp)"
+trap 'rm -f "$check"' EXIT
+gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --decrypt --output "$check" "$file" 3<<<"$BACKUP_PASSPHRASE"
+pg_restore --list "$check" > /dev/null
 echo "$file ($(du -h "$file" | cut -f1))"
