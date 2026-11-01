@@ -1,0 +1,47 @@
+name: Restore test
+
+# Proves a backup can be restored. Run by hand: it takes one finished "Database export" run, decrypts its
+# copy, restores it into a THROWAWAY Neon branch, and prints row counts from the restored copy next to the
+# live database's. It only reads the live database. It overwrites the throwaway branch.
+#
+# Needs three repository secrets:
+#   BACKUP_DATABASE_URL        the live database (already set for the weekly export)
+#   BACKUP_PASSPHRASE          the export's passphrase (already set)
+#   RESTORE_TEST_DATABASE_URL  Neon direct connection string of a separate throwaway branch. Never the live one.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Number from the address of a green Database export run (.../actions/runs/NUMBER)"
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pg_restore 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+
+      - name: Download that run's encrypted copy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download "${{ inputs.run_id }}" --repo "${{ github.repository }}" --name healthflow-database-export --dir download
+
+      - name: Restore into the throwaway branch and compare
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          RESTORE_DATABASE_URL: ${{ secrets.RESTORE_TEST_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: scripts/restore-check.sh download/*.dump.gpg
