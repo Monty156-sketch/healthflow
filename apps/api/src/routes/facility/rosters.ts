@@ -49,10 +49,12 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
   // A ward roster is for that department's people, with the ward's own minimums where it has set them.
-  const unit = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true, department: { select: { kind: true } } } })) ?? null;
+  const unit = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true, department: { select: { kind: true, weekdaysOnly: true } } } })) ?? null;
   const ward = unit?.departmentId ?? null;
   // Security, drivers and cleaners set their own numbers; the wards' numbers never apply to them.
   const ownNumbersOnly = unit?.department?.kind === "SUPPORT";
+  // A department that works Monday to Friday asks for people on the weekday morning only; weekends and public holidays ask for nobody.
+  const weekdayDepartment = unit?.department?.weekdaysOnly === true;
   const demand = ward ? await prisma.shiftDemand.findMany({ where: { departmentId: ward } }) : [];
   // Ward transfers this month: someone joining counts from their day, someone leaving until the day before.
   const moves = ward
@@ -125,6 +127,10 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
       const own = demand.find((d) => d.shiftId === s.id);
       const src = own ?? s;
       if (!s.active || (ownNumbersOnly && !own)) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+      if (weekdayDepartment) {
+        if (!morning || s.id !== morning.id) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+        return { minStaff: src.minStaff, minByCadre: (src.minByCadre ?? {}) as Record<string, number>, weekendMinStaff: 0, weekendMinByCadre: null, holidayMinStaff: 0, holidayMinByCadre: null };
+      }
       return {
         minStaff: src.minStaff,
         minByCadre: (src.minByCadre ?? {}) as Record<string, number>,

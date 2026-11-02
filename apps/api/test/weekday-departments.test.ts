@@ -23,8 +23,8 @@ describe("departments that work Monday to Friday", () => {
     await mk("N", "Night", "20:00", "08:00", true);
     // A ward roster uses the ward's own numbers.
     for (const sh of await prisma.shift.findMany({ where: { facilityId: facility.id } })) {
-      // Public health needs people on the morning only; the ward on every shift.
-      await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: ph.id, shiftId: sh.id, minStaff: sh.code === "A" ? 2 : 0 } });
+      // Both units are given 2 on every shift; the weekday rule alone keeps public health to weekday mornings.
+      await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: ph.id, shiftId: sh.id, minStaff: 2 } });
       await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: ward.id, shiftId: sh.id, minStaff: 2 } });
     }
 
@@ -42,6 +42,8 @@ describe("departments that work Monday to Friday", () => {
     const wardRows = await prisma.rosterAssignment.findMany({ where: { rosterId: wardRoster.id } });
     expect(phRows.length).toBeGreaterThan(0);
     expect(days(phRows).filter((d) => d === 0 || d === 6)).toHaveLength(0);
+    const morning = await prisma.shift.findFirstOrThrow({ where: { facilityId: facility.id, code: "A" } });
+    expect(phRows.every((r) => r.shiftId === morning.id)).toBe(true);
     // The same rule is not applied to an ordinary ward.
     expect(days(wardRows).some((d) => d === 0 || d === 6)).toBe(true);
   });
