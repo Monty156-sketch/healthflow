@@ -9,7 +9,7 @@ import { Button } from "@/components/ui";
 
 interface Notices {
   support: { startedAt: string; reason: string; accessLevel: string; expiresAt: string } | null;
-  announcements: { id: string; title: string; body: string; severity: "INFO" | "IMPORTANT" | "MAINTENANCE"; dismissible: boolean }[];
+  announcements: { id: string; title: string; body: string; severity: "INFO" | "IMPORTANT" | "MAINTENANCE" }[];
   legalPending: { slug: string; title: string; version: string; summary: string | null; effectiveDate: string | null }[];
 }
 
@@ -17,7 +17,7 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString("en-GB", { hour: 
 
 /** What PS Tech puts in front of a facility's own users. A support session is a banner, never a small icon. */
 export function PlatformNotices() {
-  const { data, reload } = useResource<Notices>("/api/facility/notices");
+  const { data, reload, setData } = useResource<Notices>("/api/facility/notices");
   const [busy, setBusy] = useState(false);
   if (!data) return null;
   async function acknowledge(slug: string, version: string) {
@@ -25,8 +25,9 @@ export function PlatformNotices() {
     try { await api.post("/api/facility/notices/legal/acknowledge", { slug, version }); reload(); } finally { setBusy(false); }
   }
   async function dismiss(id: string) {
-    await api.post(`/api/facility/notices/announcements/${id}/seen`, {}).catch(() => undefined);
-    reload();
+    // Gone at once; if saving fails it comes back on the next load rather than staying hidden by mistake.
+    if (data) setData({ ...data, announcements: data.announcements.filter((a) => a.id !== id) });
+    await api.post(`/api/facility/notices/announcements/${id}/seen`, {}).catch(() => reload());
   }
   return (
     <div className="no-print">
@@ -39,7 +40,7 @@ export function PlatformNotices() {
       {data.announcements.map((a) => (
         <div key={a.id} role="status" className={`flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2 text-[15px] ${a.severity === "IMPORTANT" ? "border-[var(--status-block)] bg-[var(--status-block-soft)]" : "border-[var(--border)] bg-[var(--surface)]"}`}>
           <span><strong>{a.title}.</strong> {a.body}</span>
-          {a.dismissible && <Button variant="secondary" onClick={() => dismiss(a.id)}>Dismiss</Button>}
+          <Button variant="secondary" onClick={() => dismiss(a.id)}>Clear</Button>
         </div>
       ))}
       {data.legalPending.length > 0 && (

@@ -272,12 +272,41 @@ const clockState = async (facilityId: string, staffId: string, db: Db = prisma) 
   return { state: last?.kind === "IN" ? ("IN" as const) : ("OUT" as const), lastAt: last?.at ?? null };
 };
 
+/**
+ * When the duty this person clocked in for finishes, so the screen can tell them to clock out.
+ * Looks at published duty that day, and the night before for a night shift clocked into after midnight.
+ * Null when nothing is rostered or the duty has no times.
+ */
+async function dutyEndsAfter(facilityId: string, staffId: string, since: Date): Promise<string | null> {
+  const d0 = Math.floor(since.getTime() / DAY);
+  const rows = await prisma.rosterAssignment.findMany({
+    where: { staffId, facilityId, roster: { status: "PUBLISHED" }, shift: { countsAsDuty: true }, dutyDate: { gte: new Date((d0 - 1) * DAY), lte: new Date(d0 * DAY) } },
+    include: { shift: { select: { startTime: true, endTime: true, isOvernight: true } } },
+  });
+  const ends = rows.flatMap((r) => {
+    if (!r.shift.startTime || !r.shift.endTime) return [];
+    const base = Math.floor(r.dutyDate.getTime() / DAY) * DAY;
+    const s = base + clock(r.shift.startTime) * MIN;
+    let e = base + clock(r.shift.endTime) * MIN;
+    if (r.shift.isOvernight || e <= s) e += DAY;
+    // The duty they clocked into: it ends after they arrived, and they were not more than three hours early for it.
+    return e > since.getTime() && s - 3 * 60 * MIN <= since.getTime() ? [e] : [];
+  });
+  return ends.length ? new Date(Math.min(...ends)).toISOString() : null;
+}
+
+/** The clock as the screen needs it: in or out, since when, and when the duty ends while they are in. */
+async function clockView(facilityId: string, staffId: string) {
+  const c = await clockState(facilityId, staffId);
+  return { ...c, dutyEndsAt: c.state === "IN" && c.lastAt ? await dutyEndsAfter(facilityId, staffId, c.lastAt) : null };
+}
+
 meRouter.get("/clock", async (req, res) => {
   const who = needStaff(req);
   if (!who) return res.json({ linked: false });
   const f = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { geoLat: true, geoLng: true, geoRadiusM: true } });
   const enabled = f.geoLat !== null && f.geoLng !== null && f.geoRadiusM !== null;
-  res.json({ linked: true, enabled, ...(enabled ? await clockState(who.facilityId, who.staffId) : {}) });
+  res.json({ linked: true, enabled, ...(enabled ? await clockView(who.facilityId, who.staffId) : {}) });
 });
 
 const clockInput = z.object({
@@ -341,5 +370,5 @@ meRouter.post("/clock", async (req, res) => {
     return null;
   });
   if (outcome) return res.status(outcome.status).json(outcome.body);
-  res.status(201).json({ ...(await clockState(who.facilityId, who.staffId)) });
+  res.status(201).json({ ...(await clockView(who.facilityId, who.staffId)) });
 });

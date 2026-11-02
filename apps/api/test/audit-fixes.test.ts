@@ -141,3 +141,39 @@ describe("system health shows whether messages are getting through", () => {
     expect((await as(platform).get("/api/platform/health")).body.notifications.email.configured).toBe(false);
   });
 });
+
+describe("announcements are cleared by the person who clears them", () => {
+  it("hides an announcement for one person only, important ones included", async () => {
+    const facility = await makeFacility();
+    const { user: a } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Ama A" } });
+    const { user: b } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Esi B" } });
+    const note = await prisma.announcement.create({ data: { title: "Maintenance", body: "Saturday night.", severity: "IMPORTANT", dismissible: false, startsAt: new Date(Date.now() - 1000) } });
+    expect((await as(a).get("/api/facility/notices")).body.announcements.map((x: { id: string }) => x.id)).toEqual([note.id]);
+    expect((await as(a).post(`/api/facility/notices/announcements/${note.id}/seen`, {})).status).toBe(200);
+    expect((await as(a).get("/api/facility/notices")).body.announcements).toEqual([]);
+    // Someone else in the same facility still sees it.
+    expect((await as(b).get("/api/facility/notices")).body.announcements.map((x: { id: string }) => x.id)).toEqual([note.id]);
+    // Clearing twice is harmless.
+    expect((await as(a).post(`/api/facility/notices/announcements/${note.id}/seen`, {})).status).toBe(200);
+  });
+});
+
+describe("the clock tells the person when their duty ends", () => {
+  it("returns the end of the duty they clocked into while they are in, and nothing once they are out", async () => {
+    const facility = await prisma.facility.create({ data: { name: "Clock Clinic", facilityType: "HEALTH_CENTRE", geoLat: 10, geoLng: -2, geoRadiusM: 200 } });
+    const { user, staff } = await makeUser({ role: "STAFF", facilityId: facility.id, withStaff: { fullName: "Kofi C" } });
+    const shift = await prisma.shift.create({ data: { facilityId: facility.id, name: "Day", code: "D", startTime: "00:00", endTime: "23:59", durationHours: 24, minStaff: 1, countsAsDuty: true } });
+    const roster = await prisma.roster.create({ data: { facilityId: facility.id, year: new Date().getUTCFullYear(), month: new Date().getUTCMonth() + 1, status: "PUBLISHED" } });
+    const today = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000);
+    await prisma.rosterAssignment.create({ data: { facilityId: facility.id, rosterId: roster.id, staffId: staff!.id, shiftId: shift.id, dutyDate: today } });
+    const api = as(user);
+    expect((await api.get("/api/facility/me/clock")).body).toMatchObject({ linked: true, enabled: true, state: "OUT", dutyEndsAt: null });
+    const inRes = await api.post("/api/facility/me/clock", { kind: "IN", lat: 10, lng: -2, accuracy: 5 });
+    expect(inRes.status).toBe(201);
+    expect(inRes.body.state).toBe("IN");
+    expect(new Date(inRes.body.dutyEndsAt).getTime()).toBe(today.getTime() + (23 * 60 + 59) * 60_000);
+    expect((await api.get("/api/facility/me/clock")).body.dutyEndsAt).toBe(inRes.body.dutyEndsAt);
+    const outRes = await api.post("/api/facility/me/clock", { kind: "OUT", lat: 10, lng: -2, accuracy: 5 });
+    expect(outRes.body).toMatchObject({ state: "OUT", dutyEndsAt: null });
+  });
+});
