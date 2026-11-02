@@ -23,15 +23,19 @@ describe("departments that work Monday to Friday", () => {
     await mk("N", "Night", "20:00", "08:00", true);
     // A ward roster uses the ward's own numbers.
     for (const sh of await prisma.shift.findMany({ where: { facilityId: facility.id } })) {
-      for (const d of [ph, ward]) await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: d.id, shiftId: sh.id, minStaff: 2 } });
+      // Public health needs people on the morning only; the ward on every shift.
+      await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: ph.id, shiftId: sh.id, minStaff: sh.code === "A" ? 2 : 0 } });
+      await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: ward.id, shiftId: sh.id, minStaff: 2 } });
     }
 
     const now = new Date();
     const body = (departmentId: string) => ({ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, departmentId });
     const phRoster = (await api.post("/api/facility/rosters", body(ph.id))).body.roster as { id: string };
     const wardRoster = (await api.post("/api/facility/rosters", body(ward.id))).body.roster as { id: string };
-    expect((await api.post(`/api/facility/rosters/${phRoster.id}/generate`)).status).toBeLessThan(300);
-    expect((await api.post(`/api/facility/rosters/${wardRoster.id}/generate`)).status).toBeLessThan(300);
+    const phGen = await api.post(`/api/facility/rosters/${phRoster.id}/generate`);
+    expect(phGen.status, JSON.stringify(phGen.body).slice(0, 400)).toBeLessThan(300);
+    const wardGen = await api.post(`/api/facility/rosters/${wardRoster.id}/generate`);
+    expect(wardGen.status, JSON.stringify(wardGen.body).slice(0, 400)).toBeLessThan(300);
 
     const days = (rows: { dutyDate: Date }[]) => rows.map((r) => r.dutyDate.getUTCDay());
     const phRows = await prisma.rosterAssignment.findMany({ where: { rosterId: phRoster.id } });
