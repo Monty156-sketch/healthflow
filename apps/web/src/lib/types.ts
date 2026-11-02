@@ -53,6 +53,8 @@ export interface Department {
   staffCount: number;
   /** Departments only. False for one that closes at night. */
   runsNights?: boolean;
+  /** Departments only. True for one that works Monday to Friday and rests at weekends and on public holidays. */
+  weekdaysOnly?: boolean;
   /** Departments only. WARD: in-charge runs the roster. SUPPORT: administrator does. OFFICE: no roster. */
   kind?: "WARD" | "SUPPORT" | "OFFICE";
   /** A standard department or cadre: its night and office-hour settings are fixed. */

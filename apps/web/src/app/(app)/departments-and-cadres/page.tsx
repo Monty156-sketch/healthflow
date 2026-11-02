@@ -103,6 +103,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
   const [name, setName] = useState(item.name);
   const [code, setCode] = useState(item.code ?? "");
   const [runsNights, setRunsNights] = useState((item as Department).runsNights !== false);
+  const [deptWeekdays, setDeptWeekdays] = useState((item as Department).weekdaysOnly === true);
   const [unit, setUnit] = useState((item as Department).kind ?? "WARD");
   const c = item as Cadre;
   const [works, setWorks] = useState<"shifts" | "days" | "office" | "off">(
@@ -118,7 +119,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
     e.preventDefault();
     const flags =
       kind.key === "departments"
-        ? { runsNights, kind: unit }
+        ? { runsNights, weekdaysOnly: deptWeekdays, kind: unit }
         : { onRoster: works !== "off", takesNights: works === "shifts", weekdaysOnly: works === "office" };
     if (await save.run({ name, code, ...flags } as { name: string; code: string })) onDone(true);
   }
@@ -146,6 +147,7 @@ function EditRow({ kind, item, onDone }: { kind: Kind; item: Group; onDone: (cha
                   )}
                 </Field>
                 <Checkbox label="Runs night duty" checked={runsNights} onChange={setRunsNights} disabled={item.locked} />
+                <Checkbox label="Works Monday to Friday only (rests on Saturday, Sunday and public holidays)" checked={deptWeekdays} onChange={setDeptWeekdays} />
               </>
             ) : (
               <Field label="How this cadre works">
@@ -263,6 +265,7 @@ function GroupSection({ kind }: { kind: Kind }) {
                         {kind.key === "departments" && (item as Department).kind === "SUPPORT" && <StatusBadge tone="neutral">Support unit</StatusBadge>}
                         {kind.key === "departments" && (item as Department).kind === "OFFICE" && <StatusBadge tone="neutral">No roster</StatusBadge>}
                         {kind.key === "departments" && (item as Department).kind !== "OFFICE" && (item as Department).runsNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}
+                        {kind.key === "departments" && (item as Department).kind !== "OFFICE" && (item as Department).weekdaysOnly && <StatusBadge tone="neutral">Monday to Friday</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster === false && <StatusBadge tone="neutral">Not on roster</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster !== false && (item as Cadre).weekdaysOnly && <StatusBadge tone="neutral">Office hours</StatusBadge>}
                         {kind.key === "cadres" && (item as Cadre).onRoster !== false && !(item as Cadre).weekdaysOnly && (item as Cadre).takesNights === false && <StatusBadge tone="neutral">No nights</StatusBadge>}

@@ -69,7 +69,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true, kind: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true, kind: true, weekdaysOnly: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -102,8 +102,8 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const staff: EStaff[] = staffRows
     .filter((s) => s.cadre?.onRoster !== false && s.department?.kind !== "OFFICE")
     .map((s) => {
-      // In-charges, and cadres on office hours, work the weekday morning only, outside the duty cycles.
-      const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true) && Boolean(morning);
+      // In-charges, cadres on office hours and departments that work Monday to Friday (public health) work the weekday morning only, outside the duty cycles.
+      const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true || s.department?.weekdaysOnly === true) && Boolean(morning);
       return {
         id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
         excludedFromNights: s.excludedFromNights || s.cadre?.takesNights === false || s.department?.runsNights === false || weekdays,
