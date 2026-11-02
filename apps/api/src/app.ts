@@ -2,6 +2,7 @@
 // the integration tests drive this same app directly.
 import express from "express";
 import helmet from "helmet";
+import compression from "compression";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import { pinoHttp } from "pino-http";
@@ -26,6 +27,8 @@ export function createApp() {
   app.set("trust proxy", 1); // Render sits behind a proxy; needed for correct req.ip
 
   app.use(helmet());
+  // Smaller responses mean faster clicks on a phone connection; rosters and lists compress to a fraction.
+  app.use(compression());
   app.use(
     cors({
       origin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
