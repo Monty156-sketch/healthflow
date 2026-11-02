@@ -38,8 +38,9 @@ describe("departments that work Monday to Friday", () => {
     expect(wardGen.status, JSON.stringify(wardGen.body).slice(0, 400)).toBeLessThan(300);
 
     const days = (rows: { dutyDate: Date }[]) => rows.map((r) => r.dutyDate.getUTCDay());
-    const phRows = await prisma.rosterAssignment.findMany({ where: { rosterId: phRoster.id } });
-    const wardRows = await prisma.rosterAssignment.findMany({ where: { rosterId: wardRoster.id } });
+    // Rest days are saved as rows too; only real duties count here.
+    const phRows = await prisma.rosterAssignment.findMany({ where: { rosterId: phRoster.id, shift: { countsAsDuty: true } } });
+    const wardRows = await prisma.rosterAssignment.findMany({ where: { rosterId: wardRoster.id, shift: { countsAsDuty: true } } });
     expect(phRows.length).toBeGreaterThan(0);
     expect(days(phRows).filter((d) => d === 0 || d === 6)).toHaveLength(0);
     const morning = await prisma.shift.findFirstOrThrow({ where: { facilityId: facility.id, code: "A" } });
