@@ -91,15 +91,18 @@ export function publicHealthUnitForCadre(cadre: string | null | undefined): stri
   return c === "disease control officer" ? "Disease Control" : null;
 }
 
-/** What a unit starts needing on its morning, afternoon and night shifts. OPD 2/1/1, maternity 1/1/1, public health nothing until its figure is agreed, any other unit the morning only. */
+/** What a unit starts needing on its morning, afternoon and night shifts. OPD 2/1/1, maternity 1/1/1, public health the morning only, any other unit the morning only. */
 export function unitMinimums(unit: string): [number, number, number] {
   const u = unit.trim().toLowerCase();
   if (u === "opd" || u === "clinical nurses") return [2, 1, 1];
   if (u === "maternity" || u === "midwives") return [1, 1, 1];
-  // Public health has no agreed figure yet, so it starts empty for the in-charge to set. Change this line when it is agreed.
-  if (u === "public health") return [0, 0, 0];
+  // Public health works the day: one person on the morning shift, no afternoon or night.
+  if (u === "public health") return [1, 0, 0];
   return [1, 0, 0];
 }
+
+/** Public health, and each of its units, works Monday to Friday and rests on Saturday and Sunday. */
+export const worksWeekdaysOnly = (unit: string) => unit.trim().toLowerCase() === "public health" || isPublicHealthUnit(unit);
 
 /** Security, drivers and cleaners are rostered by the administrator; accounts and administration have no roster. */
 export const defaultKind = (department: string): "WARD" | "SUPPORT" | "OFFICE" =>

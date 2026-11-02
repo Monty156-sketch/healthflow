@@ -35,7 +35,7 @@ describe("Ghana Health Service cadre defaults", () => {
     expect(unitMinimums("Clinical Nurses")).toEqual([2, 1, 1]);
     expect(unitMinimums("Maternity")).toEqual([1, 1, 1]);
     expect(unitMinimums("Midwives")).toEqual([1, 1, 1]);
-    expect(unitMinimums("Public Health")).toEqual([0, 0, 0]);
+    expect(unitMinimums("Public Health")).toEqual([1, 0, 0]);
     expect(unitMinimums("Laboratory")).toEqual([1, 0, 0]);
   });
   it("lets senior grades lead a shift", () => {
@@ -81,5 +81,34 @@ describe("what each type of facility is offered at registration", () => {
     expect(centre.departments).not.toContain("Midwives");
     expect(chps.departments).not.toContain("OPD");
     expect(portfolioFor("CLINIC").departments).not.toContain("OPD");
+  });
+});
+
+import { beforeEach as beforeEachUnit, describe as describeUnit, expect as expectUnit, it as itUnit } from "vitest";
+import { makeFacility, prisma, resetDatabase } from "./helpers.js";
+import { seedUnitDemand } from "../src/lib/unitDemand.js";
+import { worksWeekdaysOnly } from "../src/lib/dutyPlan.js";
+
+describeUnit("public health works Monday to Friday", () => {
+  beforeEachUnit(resetDatabase);
+
+  itUnit("knows which units rest at weekends", () => {
+    expectUnit(worksWeekdaysOnly("Public Health")).toBe(true);
+    expectUnit(worksWeekdaysOnly("Disease Control")).toBe(true);
+    expectUnit(worksWeekdaysOnly("OPD")).toBe(false);
+    expectUnit(worksWeekdaysOnly("Maternity")).toBe(false);
+  });
+
+  itUnit("starts a public health unit with weekend and holiday cover at 0, and leaves OPD alone", async () => {
+    const f = await makeFacility("Sombo Health Centre");
+    await prisma.shift.create({ data: { facilityId: f.id, name: "Morning", code: "A", startTime: "08:00", endTime: "14:00", durationHours: 6, minStaff: 2 } });
+    const unit = await prisma.department.create({ data: { facilityId: f.id, name: "Disease Control" } });
+    const opd = await prisma.department.create({ data: { facilityId: f.id, name: "OPD" } });
+    await seedUnitDemand(f.id, unit);
+    await seedUnitDemand(f.id, opd);
+    const ph = await prisma.shiftDemand.findFirstOrThrow({ where: { departmentId: unit.id } });
+    expectUnit([ph.minStaff, ph.weekendMinStaff, ph.holidayMinStaff]).toEqual([1, 0, 0]);
+    const o = await prisma.shiftDemand.findFirstOrThrow({ where: { departmentId: opd.id } });
+    expectUnit([o.minStaff, o.weekendMinStaff, o.holidayMinStaff]).toEqual([2, null, null]);
   });
 });

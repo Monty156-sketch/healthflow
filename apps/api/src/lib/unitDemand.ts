@@ -1,17 +1,19 @@
 // A health centre rosters by unit (OPD, maternity, public health). OPD marks it; Clinical Nurses and Midwives are the old names of OPD and Maternity.
 // A unit's first roster starts from the usual numbers: OPD 2 on mornings and 1 on afternoons and nights, maternity 1 on each,
-// any other unit 1 on mornings. The in-charge can change them on the roster page.
+// any other unit 1 on mornings. Public health units work Monday to Friday only. The in-charge can change them on the roster page.
 import { prisma } from "./prisma.js";
-import { unitMinimums } from "./dutyPlan.js";
+import { unitMinimums, worksWeekdaysOnly } from "./dutyPlan.js";
 
 export async function seedUnitDemand(facilityId: string, department: { id: string; name: string }) {
   if (await prisma.shiftDemand.count({ where: { departmentId: department.id } })) return;
   const shifts = await prisma.shift.findMany({ where: { facilityId, active: true, countsAsDuty: true, isOnCall: false } });
   const [m, a, n] = unitMinimums(department.name);
+  // Public health units rest on Saturday and Sunday: a weekend figure of 0 keeps the roster from putting anyone on then.
+  const weekdaysOnly = worksWeekdaysOnly(department.name);
   const data = shifts.flatMap((s) => {
     const name = s.name.toLowerCase();
     const minStaff = s.isOvernight ? n : name.includes("morning") ? m : /afternoon|evening/.test(name) ? a : null;
-    return minStaff === null ? [] : [{ facilityId, departmentId: department.id, shiftId: s.id, minStaff }];
+    return minStaff === null ? [] : [{ facilityId, departmentId: department.id, shiftId: s.id, minStaff, ...(weekdaysOnly ? { weekendMinStaff: 0, holidayMinStaff: 0 } : {}) }];
   });
   if (data.length) await prisma.shiftDemand.createMany({ data, skipDuplicates: true });
 }
