@@ -24,7 +24,7 @@ export default function AnnouncementsPage() {
   async function end(id: string) { try { await api.post(`/api/platform/announcements/${id}/end`, {}); list.reload(); } catch (err) { setSay({ tone: "block", text: failure(err) }); } }
   return (
     <>
-      <PageHeader title="Announcements" description="A message shown inside the application as a banner: planned maintenance, a new feature, a change in how something works. Important ones cannot be dismissed." />
+      <PageHeader title="Announcements" description="A message shown inside the application as a banner: planned maintenance, a new feature, a change in how something works. Each person can clear an announcement for themselves; it stays for everyone else." />
       {say && <Notice tone={say.tone}>{say.text}</Notice>}
       <div className="space-y-6">
         <Panel title="New announcement">
@@ -51,7 +51,7 @@ export default function AnnouncementsPage() {
           <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] px-4 text-[15px]">
             {list.data.announcements.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <span><strong>{a.title}</strong> <StatusBadge tone={a.live ? "success" : "neutral"}>{a.live ? "live" : "ended"}</StatusBadge><span className="block text-sm text-[var(--muted)]">{a.body} Seen by {a.seenBy} {a.seenBy === 1 ? "facility" : "facilities"}.{a.endsAt ? ` Ends ${showDateTime(a.endsAt)}.` : ""}</span></span>
+                <span><strong>{a.title}</strong> <StatusBadge tone={a.live ? "success" : "neutral"}>{a.live ? "live" : "ended"}</StatusBadge><span className="block text-sm text-[var(--muted)]">{a.body} Cleared by {a.seenBy} {a.seenBy === 1 ? "person" : "people"}.{a.endsAt ? ` Ends ${showDateTime(a.endsAt)}.` : ""}</span></span>
                 {a.live && <Button variant="secondary" onClick={() => end(a.id)}>End now</Button>}
               </li>
             ))}

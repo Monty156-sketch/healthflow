@@ -1523,9 +1523,11 @@ model Announcement {
 model AnnouncementSeen {
   announcementId String
   facilityId     String
+  /// The person who cleared it. Empty on rows made before this was per person, which hid it for the whole facility.
+  userId         String   @default("")
   seenAt         DateTime @default(now())
 
-  @@id([announcementId, facilityId])
+  @@id([announcementId, facilityId, userId])
 }
 
 model FeatureFlag {

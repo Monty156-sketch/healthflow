@@ -15,6 +15,7 @@ import { getSupport, setSupport } from "@/lib/supportSession";
 import { SectionTabs } from "@/components/SectionTabs";
 import { SECTIONS, sectionFor } from "@/lib/sections";
 import { PlatformNotices } from "@/components/PlatformNotices";
+import { ClockStatusBar } from "@/components/ClockStatusBar";
 import { ErrorCapture, ReportProblem } from "@/components/ReportProblem";
 import { FeedbackPrompt, GiveFeedback } from "@/components/Feedback";
 
@@ -479,6 +480,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <ErrorCapture />
         <OfflineBanner />
         {ctx && <PlatformNotices />}
+        {ctx && role !== "PLATFORM_ADMIN" && <ClockStatusBar role={role} />}
         {ctx && role !== "PLATFORM_ADMIN" && <FeedbackPrompt />}
       </div>
       <div className="app-frame lg:grid lg:min-h-screen lg:grid-cols-[15.5rem_1fr]">

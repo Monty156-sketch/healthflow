@@ -18,7 +18,7 @@ noticesRouter.get("/", async (req, res) => {
   const [session, announcements, seen, docs, acc] = await Promise.all([
     prisma.supportSession.findFirst({ where: { facilityId: who.facilityId, endedAt: null }, orderBy: { startedAt: "desc" } }),
     prisma.announcement.findMany({ where: { AND: [{ OR: [{ startsAt: null }, { startsAt: { lte: now } }] }, { OR: [{ endsAt: null }, { endsAt: { gt: now } }] }, { OR: [{ audience: "ALL" }, { facilityIds: { has: who.facilityId } }] }] }, orderBy: { createdAt: "desc" } }),
-    prisma.announcementSeen.findMany({ where: { facilityId: who.facilityId } }),
+    prisma.announcementSeen.findMany({ where: { facilityId: who.facilityId, userId: { in: ["", who.userId] } } }),
     ADMIN_ROLES.includes(who.role) ? prisma.legalDocument.findMany({ where: { material: true, publishedAt: { not: null } }, orderBy: { publishedAt: "desc" } }) : Promise.resolve([]),
     prisma.agreementAcceptance.findMany({ where: { facilityId: who.facilityId } }),
   ]);
@@ -28,14 +28,16 @@ noticesRouter.get("/", async (req, res) => {
   const hidden = new Set(seen.map((s) => s.announcementId));
   res.json({
     support: session && { startedAt: session.startedAt, reason: session.reason, accessLevel: session.accessLevel, expiresAt: session.expiresAt },
-    announcements: announcements.filter((a) => !(a.dismissible && hidden.has(a.id))).map((a) => ({ id: a.id, title: a.title, body: a.body, severity: a.severity, dismissible: a.dismissible })),
+    announcements: announcements.filter((a) => !hidden.has(a.id)).map((a) => ({ id: a.id, title: a.title, body: a.body, severity: a.severity })),
     legalPending: pending.map((d) => ({ slug: d.slug, title: d.title, version: d.version, summary: d.summaryOfChanges, effectiveDate: d.effectiveDate })),
   });
 });
 
+/** Clears one announcement for the person who asks, and only for them. */
 noticesRouter.post("/announcements/:id/seen", async (req, res) => {
   const who = caller(req);
-  await prisma.announcementSeen.upsert({ where: { announcementId_facilityId: { announcementId: String(req.params.id), facilityId: who.facilityId } }, create: { announcementId: String(req.params.id), facilityId: who.facilityId }, update: {} });
+  const key = { announcementId: String(req.params.id), facilityId: who.facilityId, userId: who.userId };
+  await prisma.announcementSeen.upsert({ where: { announcementId_facilityId_userId: key }, create: key, update: {} });
   res.json({ ok: true });
 });
 
