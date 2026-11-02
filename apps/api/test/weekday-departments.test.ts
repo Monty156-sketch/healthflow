@@ -21,6 +21,10 @@ describe("departments that work Monday to Friday", () => {
     await mk("A", "Morning", "08:00", "14:00", false);
     await mk("M", "Afternoon", "14:00", "20:00", false);
     await mk("N", "Night", "20:00", "08:00", true);
+    // A ward roster uses the ward's own numbers.
+    for (const sh of await prisma.shift.findMany({ where: { facilityId: facility.id } })) {
+      for (const d of [ph, ward]) await prisma.shiftDemand.create({ data: { facilityId: facility.id, departmentId: d.id, shiftId: sh.id, minStaff: 2 } });
+    }
 
     const now = new Date();
     const body = (departmentId: string) => ({ year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, departmentId });
