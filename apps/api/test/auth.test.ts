@@ -23,7 +23,7 @@ describe("sign-in", () => {
 
     const step1 = await login({ email: user.userEmail, password: PASSWORD }, ip);
     expect(step1.status).toBe(200);
-    expect(step1.body).toEqual({ mfaRequired: true });
+    expect(step1.body).toEqual({ mfaRequired: true, challenge: expect.any(String) });
     expect(step1.headers["set-cookie"]).toBeUndefined();
 
     const wrong = await login({ email: user.userEmail, password: PASSWORD, totp: "000000" }, ip);
@@ -34,6 +34,32 @@ describe("sign-in", () => {
     expect(ok.status).toBe(200);
     expect(ok.body.accessToken).toBeTruthy();
     expect(ok.body.user.role).toBe("FACILITY_ADMIN");
+  });
+
+  it("the code step works from the challenge alone, so a phone can leave for the authenticator app and come back", async () => {
+    const facility = await makeFacility();
+    const { user, mfaSecret } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, mfa: true });
+    const ip = freshIp();
+    const { challenge } = (await login({ email: user.userEmail, password: PASSWORD }, ip)).body;
+
+    // No password is sent. A wrong code is refused; the right one signs in.
+    expect((await login({ email: user.userEmail, challenge, totp: "000000" }, ip)).body.error).toBe("invalid_mfa");
+    const ok = await login({ email: user.userEmail, challenge, totp: totp(mfaSecret) }, ip);
+    expect(ok.status).toBe(200);
+    expect(ok.body.user.id).toBe(user.id);
+  });
+
+  it("a challenge is not a way in without a code, and a bad one is refused", async () => {
+    const facility = await makeFacility();
+    const { user } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, mfa: true });
+    const ip = freshIp();
+    const { challenge } = (await login({ email: user.userEmail, password: PASSWORD }, ip)).body;
+    expect((await login({ email: user.userEmail, challenge }, ip)).status).toBe(400);
+    const bad = await login({ email: user.userEmail, challenge: "not-a-token", totp: "123456" }, ip);
+    expect(bad.status).toBe(401);
+    expect(bad.body.error).toBe("challenge_expired");
+    // Neither password nor challenge.
+    expect((await login({ email: user.userEmail, totp: "123456" }, ip)).status).toBe(400);
   });
 
   it("a facility admin without MFA set up is not let in", async () => {

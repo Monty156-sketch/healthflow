@@ -48,6 +48,20 @@ describe("clocking in and out", () => {
     expect(Object.keys(events[0]).sort()).toEqual(["at", "distanceM", "facilityId", "id", "kind", "staffId"]);
   });
 
+  it("says how far away a person is, or that the phone's position is too weak, when it turns them away", async () => {
+    const { admin, nurse } = await setup();
+    await admin.put("/api/facility/geofence", { lat: 10.06, lng: -2.5, radiusM: 150 });
+    // About 1,110 metres north, with a good fix.
+    const far = await nurse.post("/api/facility/me/clock", { kind: "IN", lat: 10.07, lng: -2.5, accuracy: 10 });
+    expect(far.status).toBe(403);
+    expect(far.body).toMatchObject({ error: "outside_area", radiusM: 150, accuracyM: 10 });
+    expect(far.body.distanceM).toBeGreaterThan(1000);
+    expect(far.body.message).toContain("metres from the centre");
+    // A weak fix is called a weak fix, not a wrong place.
+    const weak = await nurse.post("/api/facility/me/clock", { kind: "IN", lat: 10.07, lng: -2.5, accuracy: 400 });
+    expect(weak.body.message).toContain("could not find your position");
+  });
+
   it("marks a person present on a published duty today", async () => {
     const { facility, admin, nurse } = await setup();
     await admin.put("/api/facility/geofence", { lat: 10.06, lng: -2.5, radiusM: 150 });

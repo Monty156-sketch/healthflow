@@ -20,9 +20,9 @@ interface AuthContextValue {
   login: (
     email: string,
     password: string,
-    mfa?: { totp?: string; recoveryCode?: string },
+    mfa?: { totp?: string; recoveryCode?: string; challenge?: string },
     audience?: "facility" | "district" | "platform"
-  ) => Promise<{ mfaRequired: boolean }>;
+  ) => Promise<{ mfaRequired: boolean; challenge?: string }>;
   logout: () => Promise<void>;
   adoptSession: (session: Session) => void;
 }
@@ -162,19 +162,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function login(
     email: string,
     password: string,
-    mfa?: { totp?: string; recoveryCode?: string },
+    mfa?: { totp?: string; recoveryCode?: string; challenge?: string },
     audience?: "facility" | "district" | "platform"
   ) {
-    const res = await api.post<{ mfaRequired: true } | Session>("/api/auth/login", {
+    const res = await api.post<{ mfaRequired: true; challenge?: string } | Session>("/api/auth/login", {
       email,
-      password,
+      // The code step sends the challenge from the first step instead of the password.
+      ...(mfa?.challenge ? {} : { password }),
       ...mfa,
       ...(audience ? { audience } : {}),
     });
 
-    if ("mfaRequired" in res) return { mfaRequired: true };
+    if ("mfaRequired" in res) return { mfaRequired: true, challenge: res.challenge };
     adoptSession(res);
-    return { mfaRequired: false };
+    return { mfaRequired: false, challenge: undefined };
   }
 
   /** Starts using a session the server just issued (sign-in, or sign-in after setup). */

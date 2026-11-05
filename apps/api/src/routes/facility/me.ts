@@ -333,7 +333,12 @@ meRouter.post("/clock", async (req, res) => {
     if (body.kind === "OUT" && now.state === "OUT") return { status: 409, body: { error: "already_out", message: "You are not clocked in." } };
     const distance = Math.round(metresBetween(lat0, lng0, body.lat, body.lng));
     if (!insideArea(distance, radius0, body.accuracy)) {
-      return { status: 403, body: { error: "outside_area", message: `You are not at the facility. Move closer and try again.` } };
+      // Say how far, and how sure the phone was, so the person (and whoever helps them) can tell a wrong spot from a weak signal.
+      const sure = Math.round(body.accuracy ?? 0);
+      const message = sure > 100
+        ? `Your phone could not find your position well enough: it is sure only to within about ${sure} metres. Go outside or near a window, switch on GPS or high-accuracy location, wait a few seconds and try again.`
+        : `You are about ${distance} metres from the centre of the facility, and clocking in is allowed within ${radius0} metres. Move closer and try again.`;
+      return { status: 403, body: { error: "outside_area", message, distanceM: distance, radiusM: radius0, accuracyM: sure } };
     }
     await tx.clockEvent.create({ data: { facilityId: who.facilityId, staffId: who.staffId, kind: body.kind, distanceM: distance } });
   

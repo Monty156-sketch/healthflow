@@ -78,6 +78,22 @@ export function readEnrolmentToken(token: string): string | null {
   }
 }
 
+// ------------------------------------------------------------- the code step of sign-in
+
+/** Proves the password was right, for 10 minutes, so the code step survives a trip to the authenticator app and back. */
+export function makeMfaChallenge(userId: string): string {
+  return jwt.sign({ purpose: "mfa_challenge" }, derivedKey("mfa-challenge"), { subject: userId, expiresIn: "10m", algorithm: "HS256" });
+}
+
+export function readMfaChallenge(token: string): string | null {
+  try {
+    const payload = jwt.verify(token, derivedKey("mfa-challenge"), { algorithms: ["HS256"] }) as jwt.JwtPayload;
+    return payload.purpose === "mfa_challenge" && typeof payload.sub === "string" ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 // ------------------------------------------------------------- pending authenticator
 
 const SETUP_MINUTES = 15;

@@ -34,6 +34,8 @@ import { requireLiveUser, liveUser } from "../middleware/liveUser.js";
 import { checkPassword } from "../lib/passwordPolicy.js";
 import {
   makeEnrolmentToken,
+  makeMfaChallenge,
+  readMfaChallenge,
   readEnrolmentToken,
   makeResetToken,
   parseResetToken,
@@ -140,7 +142,9 @@ const normaliseEmail = (e: string) => e.trim().toLowerCase();
 const loginSchema = z.object({
   /** An email address, or for staff who joined with a phone number, that number. */
   email: z.string().trim().min(3).max(254),
-  password: z.string().min(1),
+  /** Not needed on the code step, which sends the challenge from the first step instead. */
+  password: z.string().optional(),
+  challenge: z.string().optional(),
   totp: z.string().trim().optional(),
   recoveryCode: z.string().trim().optional(),
   /** Which sign-in page this came from. When given, the account must belong there. */
@@ -159,30 +163,43 @@ const doorFor = (role: string) => (role === "PLATFORM_ADMIN" ? "platform" : role
 authRouter.post("/login", loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid_body" });
-  const { password, totp, recoveryCode, audience } = parsed.data;
-  let email = normaliseEmail(parsed.data.email);
-  if (!email.includes("@")) {
-    const phone = normalisePhone(email);
-    if (!phone) return res.status(401).json({ error: "invalid_credentials" });
-    email = phoneLogin(phone);
-  }
+  const { password, challenge, totp, recoveryCode, audience } = parsed.data;
+  let user: Awaited<ReturnType<typeof prisma.userProfile.findUnique>>;
+  if (challenge) {
+    // The code step: the password was already checked, and the challenge says so. It is good for a code, nothing else.
+    const id = readMfaChallenge(challenge);
+    user = id ? await prisma.userProfile.findUnique({ where: { id } }) : null;
+    if (!user || !user.mfaEnabled) return res.status(401).json({ error: "challenge_expired" });
+    if (!totp && !recoveryCode) return res.status(400).json({ error: "invalid_body" });
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(423).json({ error: "account_locked", lockedUntil: user.lockedUntil });
+    }
+  } else {
+    if (!password) return res.status(400).json({ error: "invalid_body" });
+    let email = normaliseEmail(parsed.data.email);
+    if (!email.includes("@")) {
+      const phone = normalisePhone(email);
+      if (!phone) return res.status(401).json({ error: "invalid_credentials" });
+      email = phoneLogin(phone);
+    }
 
-  const user = await prisma.userProfile.findUnique({ where: { userEmail: email } });
-  // The same answer whether or not the account exists.
-  if (!user) {
-    // Do the same hashing work so response time does not reveal which emails exist.
-    await verifyPassword(await dummyHash(), password);
-    await noteSignInFailure();
-    return res.status(401).json({ error: "invalid_credentials" });
-  }
+    user = await prisma.userProfile.findUnique({ where: { userEmail: email } });
+    // The same answer whether or not the account exists.
+    if (!user) {
+      // Do the same hashing work so response time does not reveal which emails exist.
+      await verifyPassword(await dummyHash(), password);
+      await noteSignInFailure();
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
 
-  if (user.lockedUntil && user.lockedUntil > new Date()) {
-    return res.status(423).json({ error: "account_locked", lockedUntil: user.lockedUntil });
-  }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return res.status(423).json({ error: "account_locked", lockedUntil: user.lockedUntil });
+    }
 
-  if (!(await verifyPassword(user.passwordHash, password))) {
-    await recordFailure(user, "password");
-    return res.status(401).json({ error: "invalid_credentials" });
+    if (!(await verifyPassword(user.passwordHash, password))) {
+      await recordFailure(user, "password");
+      return res.status(401).json({ error: "invalid_credentials" });
+    }
   }
 
   if (!user.active) {
@@ -204,7 +221,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   }
 
   if (user.mfaEnabled) {
-    if (!totp && !recoveryCode) return res.status(200).json({ mfaRequired: true });
+    if (!totp && !recoveryCode) return res.status(200).json({ mfaRequired: true, challenge: makeMfaChallenge(user.id) });
 
     let mfaOk = false;
     if (totp && user.mfaSecretEncrypted) {
