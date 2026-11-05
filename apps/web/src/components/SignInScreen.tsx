@@ -131,8 +131,12 @@ export function SignInScreen({ audience }: { audience: Audience }) {
 
   // Back from the authenticator app after the page reloaded: pick up at the code step.
   useEffect(() => {
-    const kept = recallChallenge(audience);
-    if (kept) { setEmail(kept.email); setChallenge(kept.challenge); setStage("code"); }
+    // After the first paint, so the page matches what the server sent before it reads the tab's storage.
+    const t = setTimeout(() => {
+      const kept = recallChallenge(audience);
+      if (kept) { setEmail(kept.email); setChallenge(kept.challenge); setStage("code"); }
+    }, 0);
+    return () => clearTimeout(t);
   }, [audience]);
 
   // Already signed in (for example, after a refresh): skip the form. Not
