@@ -78,7 +78,10 @@ export function GeofenceSettings() {
           {v.lat && v.lng && (
             <p className="figures mt-3 text-[15px]">
               {v.lat}, {v.lng}
-              {accuracy !== null && <span className="block text-sm text-[var(--muted)]">Accurate to about {accuracy} metres{accuracy > 50 ? ". That is wide; capture again outside." : "."}</span>}
+              {accuracy !== null && <span className="block text-sm text-[var(--muted)]">Accurate to about {accuracy} metres{accuracy > 100 ? ". That is too wide to save: a wrong centre makes staff look outside. Capture again outside, with GPS on." : accuracy > 50 ? ". That is wide; capture again outside." : "."}</span>}
+              {Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lng)) && (
+                <a className="mt-1 block text-sm text-[var(--accent-text)] underline underline-offset-2" href={`https://www.google.com/maps?q=${v.lat},${v.lng}`} target="_blank" rel="noopener noreferrer">Check this spot on a map</a>
+              )}
             </p>
           )}
         </div>
@@ -101,7 +104,7 @@ export function GeofenceSettings() {
       </details>
       {msg && <div className="mt-3"><Notice tone={msg.tone}>{msg.text}</Notice></div>}
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button disabled={busy || !v.lat || !v.lng} onClick={save}>Save area</Button>
+        <Button disabled={busy || !v.lat || !v.lng || (accuracy !== null && accuracy > 100)} onClick={save}>Save area</Button>
         {data.set && <Button variant="quiet" disabled={busy} onClick={turnOff}>Turn off</Button>}
       </div>
       <p className="mt-3 text-sm text-[var(--muted)]">Staff are asked for their location only when they clock in or out. It is checked once and not kept; only the time and the distance from the centre are.</p>

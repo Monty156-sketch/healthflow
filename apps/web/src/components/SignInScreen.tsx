@@ -28,6 +28,27 @@ function ArrivalNotice() {
 
 type Stage = "credentials" | "code" | "enrol" | "codes";
 
+/**
+ * On a phone, opening the authenticator app can make the browser reload this page. The proof that the password was right
+ * (never the password) is kept for the tab, so the person comes back to the code step instead of the start.
+ */
+const CHALLENGE_KEY = "hf_signin_challenge";
+const CHALLENGE_MS = 9 * 60 * 1000;
+function keepChallenge(c: { challenge: string; email: string; audience: string } | null) {
+  try {
+    if (c) sessionStorage.setItem(CHALLENGE_KEY, JSON.stringify({ ...c, at: Date.now() }));
+    else sessionStorage.removeItem(CHALLENGE_KEY);
+  } catch { /* storage can be blocked; the sign-in works without it */ }
+}
+function recallChallenge(audience: string): { challenge: string; email: string } | null {
+  try {
+    const raw = sessionStorage.getItem(CHALLENGE_KEY);
+    if (!raw) return null;
+    const c = JSON.parse(raw) as { challenge: string; email: string; audience: string; at: number };
+    return c.audience === audience && Date.now() - c.at < CHALLENGE_MS ? { challenge: c.challenge, email: c.email } : null;
+  } catch { return null; }
+}
+
 export type Audience = "facility" | "district" | "platform";
 
 /** Where each kind of account starts. */
@@ -40,6 +61,8 @@ function messageFor(err: unknown): string {
   if (!(err instanceof ApiError)) return "No connection. Check your internet and try again.";
   if (err.status >= 500) return "The server had a problem signing you in. Try again in a minute.";
   switch (err.message) {
+    case "challenge_expired":
+      return "Your sign-in timed out. Enter your email and password again.";
     case "too_many_attempts":
       return "Too many sign-in attempts from this connection. Wait 15 minutes, then try again.";
     case "account_locked":
@@ -95,6 +118,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
   const [stage, setStage] = useState<Stage>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [challenge, setChallenge] = useState("");
   const [totp, setTotp] = useState("");
   const [useRecovery, setUseRecovery] = useState(false);
   const [recoveryCode, setRecoveryCode] = useState("");
@@ -104,6 +128,16 @@ export function SignInScreen({ audience }: { audience: Audience }) {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Back from the authenticator app after the page reloaded: pick up at the code step.
+  useEffect(() => {
+    // After the first paint, so the page matches what the server sent before it reads the tab's storage.
+    const t = setTimeout(() => {
+      const kept = recallChallenge(audience);
+      if (kept) { setEmail(kept.email); setChallenge(kept.challenge); setStage("code"); }
+    }, 0);
+    return () => clearTimeout(t);
+  }, [audience]);
 
   // Already signed in (for example, after a refresh): skip the form. Not
   // while recovery codes are on screen: they must be saved first.
@@ -123,10 +157,16 @@ export function SignInScreen({ audience }: { audience: Audience }) {
     setError(null);
     setSubmitting(true);
     try {
-      const mfa = stage === "code" ? (useRecovery ? { recoveryCode } : { totp }) : undefined;
+      const codes = useRecovery ? { recoveryCode } : { totp };
+      const mfa = stage === "code" ? (challenge ? { ...codes, challenge } : codes) : undefined;
       const result = await login(email, password, mfa, audience);
-      if (result.mfaRequired) setStage("code");
-      else router.push(HOME[audience]);
+      if (result.mfaRequired) {
+        if (result.challenge) { setChallenge(result.challenge); keepChallenge({ challenge: result.challenge, email, audience }); }
+        setStage("code");
+      } else {
+        keepChallenge(null);
+        router.push(HOME[audience]);
+      }
     } catch (err) {
       if (err instanceof ApiError && err.message === "mfa_setup_required") {
         const token = (err.body as { enrolmentToken?: string }).enrolmentToken;
@@ -137,6 +177,11 @@ export function SignInScreen({ audience }: { audience: Audience }) {
         }
       } else {
         setError(messageFor(err));
+        if (err instanceof ApiError && (err.message === "challenge_expired" || err.message === "account_locked")) {
+          keepChallenge(null);
+          setChallenge("");
+          setStage("credentials");
+        }
         if (stage === "code") {
           setTotp("");
           setRecoveryCode("");
@@ -314,6 +359,24 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                   }}
                 >
                   {useRecovery ? "Use a code from your app instead" : "Lost your phone? Use a recovery code"}
+                </button>
+              )}
+              {stage === "code" && (
+                <button
+                  type="button"
+                  className="ml-4 inline-flex min-h-11 items-center text-[var(--muted)] underline-offset-4 hover:underline"
+                  onClick={() => {
+                    keepChallenge(null);
+                    setChallenge("");
+                    setPassword("");
+                    setTotp("");
+                    setRecoveryCode("");
+                    setUseRecovery(false);
+                    setError(null);
+                    setStage("credentials");
+                  }}
+                >
+                  Start again
                 </button>
               )}
             </div>
