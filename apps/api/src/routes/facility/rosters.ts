@@ -814,7 +814,7 @@ const MOVES: Record<string, { from: string[]; to: MoveTo; roles: readonly string
   return: { from: ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"], to: "GENERATED", roles: [...ADMIN_ROLES, ...NM_ROLES], word: "returned for changes" },
   approve: { from: ["UNDER_REVIEW"], to: "APPROVED", roles: ADMIN_ROLES, word: "approved" },
   reopen: { from: ["APPROVED"], to: "GENERATED", roles: ADMIN_ROLES, word: "reopened" },
-  publish: { from: ["APPROVED", "WITH_SUPERINTENDENT"], to: "PUBLISHED", roles: ADMIN_ROLES, word: "published" },
+  publish: { from: ["APPROVED", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"], to: "PUBLISHED", roles: ADMIN_ROLES, word: "published" },
   archive: { from: ["PUBLISHED"], to: "ARCHIVED", roles: ADMIN_ROLES, word: "archived" },
   nm_approve: { from: ["UNDER_REVIEW"], to: "WITH_ADMINISTRATOR", roles: NM_ROLES, word: "approved by the nursing manager" },
   forward: { from: ["WITH_ADMINISTRATOR"], to: "WITH_SUPERINTENDENT", roles: ADMIN_ROLES, word: "sent to the medical superintendent" },
@@ -859,8 +859,9 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES, ...NM_ROLES), asyn
     if (input.action === "publish" && roster.status !== "WITH_SUPERINTENDENT") return res.status(409).json({ error: "use_chain", message: "The roster must reach the medical superintendent before it is published." });
     if (input.action === "publish" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent publishes a roster." });
     if (input.action === "return" && roster.status === "WITH_SUPERINTENDENT" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent can return it from this step." });
-  } else if (inLongChain && input.action !== "return") {
-    return res.status(409).json({ error: "chain_off", message: "The administrator and medical superintendent steps are switched off. Return the roster to carry on." });
+  } else if (inLongChain && input.action !== "return" && input.action !== "publish") {
+    // The longer chain is off (switched off, or the medical superintendent is gone): the administrator publishes what is already past the nursing manager.
+    return res.status(409).json({ error: "chain_off", message: "The medical superintendent step is off. The administrator can publish this roster or return it." });
   }
   const chain = viaNm;
   const target: MoveTo = input.action === "nm_approve" ? (full ? "WITH_ADMINISTRATOR" : "APPROVED") : move.to;

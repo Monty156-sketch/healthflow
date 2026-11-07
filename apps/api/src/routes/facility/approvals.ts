@@ -28,12 +28,12 @@ approvalsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
       select: { role: true, userEmail: true, staff: { select: { fullName: true } } },
     }),
     prisma.roster.findMany({
-      where: { facilityId, status: { in: state.mode === "nursing_manager" ? ["UNDER_REVIEW", "APPROVED"] : ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] } },
+      where: { facilityId, status: { in: state.mode === "nursing_manager" ? ["UNDER_REVIEW", "APPROVED", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] : ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] } },
       include: { department: { select: { name: true } } },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     }),
   ]);
-  const waiting = state.mode === "nursing_manager" ? { ...WAITING_FOR, FACILITY_ADMIN: ["APPROVED"] } : WAITING_FOR;
+  const waiting = state.mode === "nursing_manager" ? { ...WAITING_FOR, FACILITY_ADMIN: ["APPROVED", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] } : WAITING_FOR;
   const mine = waiting[position] ?? [];
   const row = (r: (typeof rosters)[number]) => ({
     id: r.id, label: `${MONTHS[r.month - 1]} ${r.year}`, ward: r.department?.name ?? null, status: r.status, returnNote: r.returnNote, returnedBy: r.returnedBy,

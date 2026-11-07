@@ -104,3 +104,14 @@ describe("approval chain", () => {
     expect((await move(api, id, "publish")).body.roster.status).toBe("PUBLISHED");
   });
 });
+
+describe("approval chain, when the medical superintendent goes", () => {
+  it("lets the administrator publish a roster already past the nursing manager", async () => {
+    const { api, nmApi, id, facility } = await setup();
+    await api.put("/api/facility/approvals", { enabled: true });
+    await move(api, id, "submit");
+    await move(nmApi, id, "nm_approve");
+    await prisma.userProfile.updateMany({ where: { facilityId: facility.id, role: "MEDICAL_SUPERINTENDENT" }, data: { active: false } });
+    expect((await move(api, id, "publish")).body.roster.status).toBe("PUBLISHED");
+  });
+});
