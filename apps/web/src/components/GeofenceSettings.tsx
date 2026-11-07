@@ -5,6 +5,7 @@
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
+import { bestPosition, parseCoordinates } from "@/lib/position";
 import { Button, Field, Input, Notice, Panel, Select } from "@/components/ui";
 
 const RADII = [50, 100, 150, 200, 300, 500, 750, 1000];
@@ -21,26 +22,34 @@ export function GeofenceSettings() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
+  const [live, setLive] = useState<number | null>(null);
   if (!data) return null;
   const v = { lat: lat ?? (data.lat === null ? "" : String(data.lat)), lng: lng ?? (data.lng === null ? "" : String(data.lng)), radius: radius ?? String(data.radiusM ?? 150) };
 
   function here() {
     setMsg(null);
-    if (!navigator.geolocation) return setMsg({ tone: "warning", text: "This device cannot share its location. Open this page on a phone, or type the coordinates." });
+    setLive(null);
     setCapturing(true);
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setLat(p.coords.latitude.toFixed(6));
-        setLng(p.coords.longitude.toFixed(6));
-        setAccuracy(Math.round(p.coords.accuracy));
-        setCapturing(false);
-      },
-      () => {
-        setCapturing(false);
-        setMsg({ tone: "warning", text: "The location could not be read. Allow location for this site and try again, or type the coordinates." });
-      },
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 }
-    );
+    // Listens for up to 25 seconds and keeps the sharpest reading, so a rough first guess from the network is not used.
+    bestPosition({ maxMs: 25_000, goodEnoughM: 20, onUpdate: (f) => setLive(Math.round(f.accuracy)) })
+      .then((f) => {
+        setLat(f.lat.toFixed(6));
+        setLng(f.lng.toFixed(6));
+        setAccuracy(Math.round(f.accuracy));
+      })
+      .catch((e) => {
+        const unsupported = e instanceof Error && e.message === "unsupported";
+        setMsg({ tone: "warning", text: unsupported ? "This device cannot share its location. Open this page on a phone, or type the coordinates." : "The location could not be read. Allow location for this site and try again, or type the coordinates." });
+      })
+      .finally(() => setCapturing(false));
+  }
+
+  function pasted(text: string) {
+    const c = parseCoordinates(text);
+    if (!c) return;
+    setLat(String(c.lat));
+    setLng(String(c.lng));
+    setAccuracy(null);
   }
 
   async function save() {
@@ -73,8 +82,12 @@ export function GeofenceSettings() {
           <p className="text-[15px] font-medium">1. Stand at the centre of the facility</p>
           <p className="mt-1 text-sm text-[var(--muted)]">Use a phone, outside if you can, and wait a moment for a good fix.</p>
           <div className="mt-3">
-            <Button variant="secondary" disabled={busy || capturing} onClick={here}>{capturing ? "Reading location…" : v.lat && v.lng ? "Capture again" : "Capture this location"}</Button>
+            <Button variant="secondary" disabled={busy || capturing} onClick={here}>{capturing ? (live !== null ? `Improving… within ${live} m` : "Reading location…") : v.lat && v.lng ? "Capture again" : "Capture this location"}</Button>
           </div>
+          <label className="mt-3 block text-sm text-[var(--muted)]">
+            Or paste the coordinates from a map (in Google Maps, press and hold the centre of the building, then copy the two numbers)
+            <Input className="mt-1" inputMode="decimal" placeholder="7.123456, -2.123456" onChange={(e) => pasted(e.target.value)} />
+          </label>
           {v.lat && v.lng && (
             <p className="figures mt-3 text-[15px]">
               {v.lat}, {v.lng}

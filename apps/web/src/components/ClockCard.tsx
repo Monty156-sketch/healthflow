@@ -8,20 +8,15 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { Button, Notice, Panel } from "@/components/ui";
+import { bestPosition } from "@/lib/position";
 import { announceClock, clockOutReason, clockTime, hoursAndMinutes, type ClockView } from "@/components/clockState";
-
-function position(): Promise<GeolocationPosition> {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) return reject(new Error("unsupported"));
-    navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 });
-  });
-}
 
 export function ClockCard() {
   const { data, setData } = useResource<ClockView>("/api/facility/me/clock");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [sure, setSure] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   // Keeps "how long" and the clock-out reminder current while the page stays open.
   useEffect(() => {
@@ -36,9 +31,11 @@ export function ClockCard() {
     setBusy(true);
     setProblem(null);
     setDone(null);
+    setSure(null);
     try {
-      const p = await position();
-      const next = await api.post<ClockView>("/api/facility/me/clock", { kind: isIn ? "OUT" : "IN", lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy });
+      // Listens for a few seconds and sends the sharpest reading, not the first rough one from the network.
+      const p = await bestPosition({ maxMs: 12_000, goodEnoughM: 30, onUpdate: (f) => setSure(Math.round(f.accuracy)) });
+      const next = await api.post<ClockView>("/api/facility/me/clock", { kind: isIn ? "OUT" : "IN", lat: p.lat, lng: p.lng, accuracy: p.accuracy });
       const merged = { ...view, ...next };
       setData(merged);
       announceClock(merged);
@@ -63,7 +60,7 @@ export function ClockCard() {
           {problem && <Notice tone="warning">{problem}</Notice>}
           {reason && <Notice tone="warning">{reason}</Notice>}
           <Button className="min-h-12 w-full sm:w-auto" disabled={busy} variant={isIn ? "secondary" : "primary"} onClick={go}>
-            {busy ? "Checking where you are…" : isIn ? "Clock out" : "Clock in"}
+            {busy ? (sure !== null ? `Checking where you are… within ${sure} m` : "Checking where you are…") : isIn ? "Clock out" : "Clock in"}
           </Button>
           <p className="text-sm text-[var(--muted)]">Your location is checked once and is not kept.</p>
         </div>

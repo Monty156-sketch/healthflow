@@ -20,6 +20,19 @@ For the person on call. It says where things run, how to put them back, and what
 3. To roll back, revert the pull request on GitHub. Never edit `main` by hand.
 4. A migration is not undone by a revert. Write a new migration that undoes it, and only if no data depends on it.
 
+## Moving the API to another region
+
+The API and the database should sit in the same region (both in Frankfurt). A Render service cannot change region, so the move is a new service, started beside the old one and switched over once it works. No data moves: both use the same Neon database.
+
+1. In Render, open the old service, then Environment. Keep that page open.
+2. New, Web Service, the same repository and branch. Region: Frankfurt. Same build and start commands as in `render.yaml`. Instance type: Starter (always on) or Free.
+3. Copy every environment variable from the old service into the new one, **exactly**. `MFA_ENCRYPTION_KEY` must be identical or two-step sign-in stops working for everyone. `JWT_ACCESS_SECRET`, `JWT_REFRESH_PEPPER` and `PROXY_SHARED_SECRET` must also match, or people are signed out and the web app is refused. Do not generate new ones.
+4. Deploy. When `/health` on the new address answers, sign in to a test account through the new address only if you are able to; otherwise continue.
+5. Switch the web app: set `API_ORIGIN` in `apps/web/wrangler.jsonc` to the new address and deploy the web app.
+6. In Paystack, change the webhook to `https://<new address>/api/webhooks/paystack`.
+7. In GitHub, Settings, Variables, set `RENDER_API_URL` to the new address.
+8. Watch System health for a day. Then suspend (do not delete) the old service, and delete it a week later.
+
 ## Never change these without a plan
 
 - **`MFA_ENCRYPTION_KEY`.** Every authenticator secret is encrypted with it. A different key makes every administrator's two-step sign-in unreadable and locks them out. Local development and production share one Neon database today, so the key must be the same in both.
