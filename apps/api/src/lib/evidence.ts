@@ -47,7 +47,7 @@ export async function evidenceFor(facilityId: string, endYear: number, endMonth:
     for (const f of findings) byRule[f.ruleCode] = (byRule[f.ruleCode] ?? 0) + 1;
     const cadres = new Map<string, number[]>();
     for (const r of figs.flatMap((f) => f.rows)) cadres.set(r.cadre ?? "No cadre", [...(cadres.get(r.cadre ?? "No cadre") ?? []), r.nights]);
-    const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED", "ARCHIVED"];
+    const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT", "APPROVED", "PUBLISHED", "ARCHIVED"];
     const prep = rosters.map((r) => r.generationSeconds).filter((x): x is number => x !== null);
     const att = rosters.map((r) => r.attendanceCompleteness).filter((x): x is number => x !== null);
     out.push({

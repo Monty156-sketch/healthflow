@@ -58,6 +58,7 @@ import { coverageRouter } from "./coverage.js";
 import { noFacilityYet, systemScope } from "../../lib/tenant.js";
 import { requireFlag, flagsFor } from "../../lib/flags.js";
 import { dashboardRouter } from "./dashboard.js";
+import { approvalsRouter } from "./approvals.js";
 import { meRouter } from "./me.js";
 import { geofenceRouter } from "./geofence.js";
 import { directorateRouter } from "./directorate.js";
@@ -70,6 +71,7 @@ export const facilityRouter = Router();
 
 facilityRouter.use(noFacilityYet, requireAuth, requireFacilityUser);
 facilityRouter.use("/departments", departmentsRouter);
+facilityRouter.use("/approvals", approvalsRouter);
 facilityRouter.use("/cadres", cadresRouter);
 facilityRouter.use("/staff-import", staffImportRouter);
 facilityRouter.use("/staff", restrictionsRouter);
@@ -121,6 +123,7 @@ const FACILITY_TYPES = ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC", "POLYCLINIC"
 function presentFacility(f: Awaited<ReturnType<typeof prisma.facility.findUniqueOrThrow>>) {
   return {
     id: f.id,
+    rosterApprovalChain: f.rosterApprovalChain,
     name: f.name,
     facilityType: f.facilityType,
     ghsFacilityCode: f.ghsFacilityCode,
@@ -143,7 +146,7 @@ function presentFacility(f: Awaited<ReturnType<typeof prisma.facility.findUnique
 
 /** The facility, plus how far its set-up has got (drives the set-up checklist). */
 facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => {
-  const { facilityId, role, displayName, departmentId } = caller(req);
+  const { facilityId, role, position, displayName, departmentId } = caller(req);
   // Staff get the facility's name and settings so their own screens work, and none of the set-up counts.
   if (role === "STAFF") {
     const facility = await prisma.facility.findUniqueOrThrow({ where: { id: facilityId } });
@@ -158,7 +161,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
   res.json({
     facility: { ...presentFacility(facility), rosterByWard: await rostersByUnit(facilityId, facility.facilityType, WARD_FACILITY_TYPES) },
     setup: { departments, cadres, staff },
-    me: { role, displayName, departmentId: departmentId ?? null },
+    me: { role, position, displayName, departmentId: departmentId ?? null },
     flags: await flagsFor(facilityId),
   });
 });

@@ -26,7 +26,7 @@ async function compliance(facilityId: string, month: string, ward: string | null
   const [y, m] = month.split("-").map(Number);
   const rosters = await rostersForMonth(facilityId, y, m, ward);
   if (!rosters.length) return null;
-  const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED", "ARCHIVED"];
+  const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT", "APPROVED", "PUBLISHED", "ARCHIVED"];
   const furthest = [...rosters].sort((a, b) => RANK.indexOf(a.status) - RANK.indexOf(b.status))[0];
   const roster = { id: furthest.id, status: furthest.status, version: Math.max(...rosters.map((r) => r.version)) };
   return {

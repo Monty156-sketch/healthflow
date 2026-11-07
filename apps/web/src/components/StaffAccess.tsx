@@ -23,7 +23,7 @@ export interface PendingInvitation {
   expiresAt: string;
 }
 
-const INVITE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"];
+const INVITE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"];
 
 function CopyLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -128,8 +128,8 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
             )}
           </Field>
           {(role === "ROSTER_MANAGER" || role === "SUPERVISOR") && <WardSelect value={ward} onChange={setWard} allLabel="Every roster" label="Rosters they work on" />}
-          {(role === "FACILITY_ADMIN" || role === "ROSTER_MANAGER" || role === "SUPERVISOR") && (
-            <p className="text-sm text-[var(--muted)]">Facility admins, in-charges and supervisors must set up two-step sign-in before their first session.</p>
+          {(role === "FACILITY_ADMIN" || role === "NURSING_MANAGER" || role === "MEDICAL_SUPERINTENDENT" || role === "ROSTER_MANAGER" || role === "SUPERVISOR") && (
+            <p className="text-sm text-[var(--muted)]">Facility admins, the nursing manager, the medical superintendent, in-charges and supervisors must set up two-step sign-in before their first session.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={send}>

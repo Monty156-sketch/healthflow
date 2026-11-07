@@ -147,7 +147,7 @@ supportConsole.post("/users/:id/reactivate", (req, res) =>
   }));
 
 supportConsole.patch("/users/:id/role", async (req, res) => {
-  const input = parseOr400(z.object({ role: z.enum(["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"]) }), req.body, res);
+  const input = parseOr400(z.object({ role: z.enum(["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"]) }), req.body, res);
   if (!input) return;
   return userAction(req, res, String(req.params.id), "user_role_changed", async (u) => {
     await prisma.userProfile.update({ where: { id: u.id }, data: { role: input.role } });

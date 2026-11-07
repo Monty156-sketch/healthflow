@@ -25,11 +25,13 @@ import { allowRoles, caller, ADMIN_ROLES } from "../middleware/facilityAccess.js
 import { currentNotice } from "./facility/privacy.js";
 
 export const INVITATION_DAYS = 7;
-const INVITABLE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"] as const;
+const INVITABLE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"] as const;
 const ROLE_LABEL: Record<string, string> = {
   STAFF: "Staff",
   SUPERVISOR: "Supervisor",
   ROSTER_MANAGER: "Roster manager",
+  NURSING_MANAGER: "Nursing manager",
+  MEDICAL_SUPERINTENDENT: "Medical superintendent",
   FACILITY_ADMIN: "Facility admin",
 };
 

@@ -21,7 +21,7 @@ const cedi = (n: number) => `GH₵ ${n.toLocaleString("en-GH", { minimumFraction
 
 export default function FacilityBilling() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "FACILITY_ADMIN";
+  const isAdmin = (user?.role === "FACILITY_ADMIN" || user?.role === "MEDICAL_SUPERINTENDENT");
   const { data, error, reload } = useResource<Data>(isAdmin ? "/api/facility/billing" : null);
   const [say, setSay] = useState<{ tone: "success" | "warning" | "block"; text: string } | null>(null);
   const [returned] = useState(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("reference")));

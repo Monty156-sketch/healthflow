@@ -28,7 +28,7 @@ export interface AllowanceRow {
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
-const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED"];
+const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT", "APPROVED", "PUBLISHED"];
 
 export async function allowanceSheet(facilityId: string, year: number, month: number, departmentId: string | null) {
   const rosters = await rostersForMonth(facilityId, year, month, departmentId);

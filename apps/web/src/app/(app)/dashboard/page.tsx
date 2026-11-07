@@ -3,6 +3,7 @@
 import { ClockCard } from "@/components/ClockCard";
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ApprovalQueue } from "@/components/ApprovalQueue";
 import { useFacility, useOptionalFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS, showDate, showDateTime } from "@/lib/format";
@@ -145,6 +146,8 @@ const ROSTER_STATUS: Record<string, { label: string; tone: "neutral" | "warning"
   DRAFT: { label: "Draft", tone: "neutral" },
   GENERATED: { label: "Generated", tone: "warning" },
   UNDER_REVIEW: { label: "Under review", tone: "warning" },
+  WITH_ADMINISTRATOR: { label: "With the administrator", tone: "warning" },
+  WITH_SUPERINTENDENT: { label: "With the medical superintendent", tone: "warning" },
   APPROVED: { label: "Approved", tone: "success" },
   PUBLISHED: { label: "Published", tone: "success" },
   ARCHIVED: { label: "Archived", tone: "neutral" },
@@ -476,15 +479,27 @@ export default function DashboardPage() {
 }
 
 function FacilityDashboard() {
-  const { facility, isAdmin } = useFacility();
+  const { facility, isAdmin, me } = useFacility();
   const place = [facility.subDistrict, facility.region].filter(Boolean).join(", ");
+  const nm = me.role === "NURSING_MANAGER";
+  const ms = me.position === "MEDICAL_SUPERINTENDENT";
   return (
     <>
       <PageHeader
-        title="Dashboard"
+        title={nm ? "Nursing manager dashboard" : ms ? "Medical superintendent dashboard" : "Dashboard"}
         description={`${facility.name}. ${FACILITY_TYPE[facility.facilityType] ?? "Facility"}${place ? `, ${place}` : ""}`}
       />
       <ClockCard />
+      {facility.rosterApprovalChain && (nm || isAdmin) && (
+        <div className="mb-6">
+          <ApprovalQueue canSwitch={false} compact />
+        </div>
+      )}
+      {nm && (
+        <p className="mb-6 text-sm">
+          <Link href="/wards" className="underline">See every ward and the people in it</Link>
+        </p>
+      )}
       <Dashboard />
       {isAdmin && (
         <div className="mt-6">

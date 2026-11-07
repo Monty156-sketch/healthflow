@@ -29,11 +29,13 @@ import {
 } from "@/components/ui";
 import type { StatusTone } from "@/components/ui";
 
-const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"];
+const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"];
 const ROLE_HINT: Record<string, string> = {
   STAFF: "Sees their own duties and leave.",
   SUPERVISOR: "Can view staff and rosters.",
   ROSTER_MANAGER: "Builds and publishes rosters.",
+  NURSING_MANAGER: "Sees every ward and its people, and approves rosters before they reach the administrator.",
+  MEDICAL_SUPERINTENDENT: "Has every administrator right, and publishes rosters when the approval chain is on.",
   FACILITY_ADMIN: "Manages everything in the facility.",
 };
 

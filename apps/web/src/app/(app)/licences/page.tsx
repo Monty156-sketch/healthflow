@@ -128,7 +128,7 @@ function Requirements() {
 export default function LicencesPage() {
   const { user } = useAuth();
   const manager = user?.role !== "STAFF";
-  const admin = user?.role === "FACILITY_ADMIN";
+  const admin = (user?.role === "FACILITY_ADMIN" || user?.role === "MEDICAL_SUPERINTENDENT");
   const [filter, setFilter] = useState<"attention" | "unverified" | "all">("attention");
   const list = useResource<{ credentials: Cred[]; total?: number }>(manager ? `/api/facility/credentials?filter=${filter}` : "/api/facility/credentials/mine");
   const summary = useResource<Summary>(manager ? "/api/facility/credentials/summary" : null);

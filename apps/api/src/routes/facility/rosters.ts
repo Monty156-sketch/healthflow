@@ -15,7 +15,7 @@ import { rosterPdf, type PdfRoster } from "../../lib/rosterPdf.js";
 import { settleAgainstRoster, settlementFor } from "../../lib/ledger.js";
 import { rosterWorkbook } from "../../lib/rosterExcel.js";
 import { FACILITY_TYPE_LABEL } from "../../lib/labels.js";
-import { notifyDeciders } from "../../lib/notify.js";
+import { notifyDeciders, notifyRoles, notifyWard } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
@@ -291,6 +291,7 @@ async function summariesOf(ids: string[]) {
 const presentRoster = (r: Awaited<ReturnType<typeof prisma.roster.findFirstOrThrow>> & { department?: { name: string } | null }) => ({
   id: r.id, year: r.year, month: r.month, label: r.department ? `${monthName(r)}, ${r.department.name}` : monthName(r), departmentId: r.departmentId, department: r.department?.name ?? null, status: r.status, version: r.version,
   generatedAt: r.generatedAt, generationSeconds: r.generationSeconds,
+  returnNote: r.returnNote, returnedBy: r.returnedBy,
 });
 
 rostersRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
@@ -793,31 +794,61 @@ rostersRouter.post("/:id/findings/:findingId/override", allowRoles(...ADMIN_ROLE
 // ------------------------------------------------------------- review, approval, publishing
 
 const STATUS_SAY: Record<string, string> = {
-  DRAFT: "a draft", GENERATED: "generated", UNDER_REVIEW: "in review", APPROVED: "approved", PUBLISHED: "published", ARCHIVED: "archived",
+  DRAFT: "a draft", GENERATED: "generated", UNDER_REVIEW: "in review", WITH_ADMINISTRATOR: "with the administrator",
+  WITH_SUPERINTENDENT: "with the medical superintendent", APPROVED: "approved", PUBLISHED: "published", ARCHIVED: "archived",
 };
 
-/** from -> to, with who may make the move. */
-const MOVES: Record<string, { from: string[]; to: "GENERATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED"; roles: readonly string[]; word: string }> = {
+type MoveTo = "GENERATED" | "UNDER_REVIEW" | "WITH_ADMINISTRATOR" | "WITH_SUPERINTENDENT" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
+const NM_ROLES = ["NURSING_MANAGER"] as const;
+
+/** from -> to, with who may make the move. The last four are the approval chain. */
+const MOVES: Record<string, { from: string[]; to: MoveTo; roles: readonly string[]; word: string }> = {
   submit: { from: ["GENERATED"], to: "UNDER_REVIEW", roles: ROSTER_ROLES, word: "sent for review" },
-  return: { from: ["UNDER_REVIEW"], to: "GENERATED", roles: ADMIN_ROLES, word: "returned for changes" },
+  return: { from: ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"], to: "GENERATED", roles: [...ADMIN_ROLES, ...NM_ROLES], word: "returned for changes" },
   approve: { from: ["UNDER_REVIEW"], to: "APPROVED", roles: ADMIN_ROLES, word: "approved" },
   reopen: { from: ["APPROVED"], to: "GENERATED", roles: ADMIN_ROLES, word: "reopened" },
-  publish: { from: ["APPROVED"], to: "PUBLISHED", roles: ADMIN_ROLES, word: "published" },
+  publish: { from: ["APPROVED", "WITH_SUPERINTENDENT"], to: "PUBLISHED", roles: ADMIN_ROLES, word: "published" },
   archive: { from: ["PUBLISHED"], to: "ARCHIVED", roles: ADMIN_ROLES, word: "archived" },
+  nm_approve: { from: ["UNDER_REVIEW"], to: "WITH_ADMINISTRATOR", roles: NM_ROLES, word: "approved by the nursing manager" },
+  forward: { from: ["WITH_ADMINISTRATOR"], to: "WITH_SUPERINTENDENT", roles: ADMIN_ROLES, word: "sent to the medical superintendent" },
 };
 
-rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) => {
+/** Who is asked to act next, once the chain is on. */
+const NEXT_STEP: Record<string, { roles: ("NURSING_MANAGER" | "FACILITY_ADMIN" | "MEDICAL_SUPERINTENDENT")[]; say: string } | undefined> = {
+  submit: { roles: ["NURSING_MANAGER"], say: "is waiting for your approval" },
+  nm_approve: { roles: ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT"], say: "was approved by the nursing manager and is waiting for the administrator" },
+  forward: { roles: ["MEDICAL_SUPERINTENDENT"], say: "is waiting for you to publish it" },
+};
+
+rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES, ...NM_ROLES), async (req, res) => {
   const who = caller(req);
-  const input = parseOr400(z.object({ action: z.enum(["submit", "return", "approve", "reopen", "publish", "archive"]), note: z.string().trim().max(500).optional() }), req.body, res);
+  const input = parseOr400(z.object({ action: z.enum(["submit", "return", "approve", "reopen", "publish", "archive", "nm_approve", "forward"]), note: z.string().trim().max(500).optional() }), req.body, res);
   if (!input) return;
   const move = MOVES[input.action];
-  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId } });
+  const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { department: { select: { name: true } } } });
   if (!roster) return res.status(404).json({ error: "not_found" });
-  if (!move.roles.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "Only a facility admin can do that." });
+  if (!move.roles.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "You cannot do that at this step." });
   if (!move.from.includes(roster.status)) {
     return res.status(409).json({ error: "wrong_status", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}, so it cannot be ${move.word}.` });
   }
-  if (input.action === "approve" || input.action === "publish") {
+  const chain = (await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { rosterApprovalChain: true } }))?.rosterApprovalChain === true;
+  const isMs = who.position === "MEDICAL_SUPERINTENDENT";
+  if (!chain && (input.action === "nm_approve" || input.action === "forward" || roster.status === "WITH_ADMINISTRATOR" || roster.status === "WITH_SUPERINTENDENT")) {
+    return res.status(409).json({ error: "chain_off", message: "This facility does not use the approval chain." });
+  }
+  if (chain) {
+    if (input.action === "approve" || input.action === "reopen") return res.status(409).json({ error: "use_chain", message: "Rosters here go from the in-charge to the nursing manager, the administrator, then the medical superintendent." });
+    if (input.action === "publish" && roster.status !== "WITH_SUPERINTENDENT") return res.status(409).json({ error: "use_chain", message: "The roster must reach the medical superintendent before it is published." });
+    if (input.action === "publish" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent publishes a roster." });
+    if (input.action === "return" && roster.status === "WITH_SUPERINTENDENT" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent can return it from this step." });
+    if (input.action === "return" && roster.status === "UNDER_REVIEW" && who.role === "FACILITY_ADMIN" && !isMs) {
+      // The administrator acts once the nursing manager has approved.
+      return res.status(403).json({ error: "forbidden", message: "The nursing manager reviews this roster first." });
+    }
+    if (input.action === "return" && who.role === "NURSING_MANAGER" && roster.status !== "UNDER_REVIEW") return res.status(403).json({ error: "forbidden", message: "You review a roster before it goes to the administrator." });
+  }
+  if (input.action === "return" && !input.note) return res.status(400).json({ error: "note_required", message: "Say what needs to change, so the in-charge knows." });
+  if (["approve", "publish", "forward", "nm_approve"].includes(input.action)) {
     const open = await prisma.complianceFinding.count({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
     if (open > 0) {
       return res.status(409).json({
@@ -827,7 +858,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
     }
   }
   const deadlineDay = input.action === "publish" ? ((await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { rosterDeadlineDay: true } }))?.rosterDeadlineDay ?? null) : null;
-  const snapshot = ["approve", "publish"].includes(input.action);
+  const snapshot = ["approve", "publish", "nm_approve", "forward"].includes(input.action);
   const version = snapshot ? roster.version + 1 : roster.version;
   await prisma.$transaction(async (tx) => {
     if (snapshot) await saveVersion(tx, roster.id, version, who.email, `${move.word[0].toUpperCase()}${move.word.slice(1)}${input.note ? `: ${input.note}` : ""}`);
@@ -835,8 +866,10 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
       where: { id: roster.id },
       data: {
         status: move.to, version,
-        ...(input.action === "approve" ? { approvedBy: who.email } : {}),
+        ...(input.action === "approve" || input.action === "nm_approve" ? { approvedBy: who.email } : {}),
         ...(input.action === "reopen" ? { approvedBy: null } : {}),
+        ...(input.action === "return" ? { returnNote: input.note ?? null, returnedBy: who.displayName, approvedBy: null } : {}),
+        ...(input.action === "submit" || input.action === "publish" ? { returnNote: null, returnedBy: null } : {}),
         ...(input.action === "publish" ? { publishedAt: new Date(), publishedLate: isLate(new Date(), roster.year, roster.month, deadlineDay) } : {}),
       },
     });
@@ -845,9 +878,16 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES), async (req, res) 
     facilityId: who.facilityId, actorEmail: who.email, action: `roster_${input.action}`, entityType: "Roster", entityId: roster.id,
     summary: `${who.displayName} ${move.word} the ${monthName(roster)} roster${input.note ? `. Note: ${input.note}` : ""}.`,
   });
+  // Telling the next person is best effort: a failed notice must not undo the move.
+  const label = `${monthName(roster)}${roster.department ? `, ${roster.department.name}` : ""}`;
+  const link = `/roster/${roster.id}`;
+  if (chain) {
+    const next = NEXT_STEP[input.action];
+    if (next) await notifyRoles(who.facilityId, next.roles, { type: "roster_step", title: "A roster needs you", body: `The ${label} roster ${next.say}.`, linkUrl: link }, who.email).catch((e) => console.warn("Roster notice failed:", e instanceof Error ? e.message : e));
+    if (input.action === "return") await notifyWard(who.facilityId, roster.departmentId, { type: "roster_step", title: "A roster was returned", body: `${who.displayName} returned the ${label} roster. ${input.note}`, linkUrl: link, severity: "ACTION" }).catch((e) => console.warn("Roster notice failed:", e instanceof Error ? e.message : e));
+  }
   if (input.action === "publish") {
     await settleAgainstRoster(who.facilityId, roster.id, who.email);
-    // Telling staff is best effort: a failed notice must not undo the publication.
     await notifyRosterPublished(who.facilityId, roster.id).catch((e) => console.warn("Roster notice failed:", e instanceof Error ? e.message : e));
   }
   const fresh = await prisma.roster.findUniqueOrThrow({ where: { id: roster.id } });

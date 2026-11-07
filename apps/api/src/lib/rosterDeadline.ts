@@ -37,7 +37,7 @@ export async function unitsOf(facilityId: string, facilityType: string): Promise
   return depts.map((d) => ({ key: d.id, departmentId: d.id, name: d.name }));
 }
 
-const STATE_WORD: Record<string, string> = { DRAFT: "in draft", GENERATED: "drafted, not yet reviewed", UNDER_REVIEW: "waiting for approval", APPROVED: "approved, not yet published", ARCHIVED: "archived" };
+const STATE_WORD: Record<string, string> = { DRAFT: "in draft", GENERATED: "drafted, not yet reviewed", UNDER_REVIEW: "waiting for approval", WITH_ADMINISTRATOR: "waiting for the administrator", WITH_SUPERINTENDENT: "waiting for the medical superintendent", APPROVED: "approved, not yet published", ARCHIVED: "archived" };
 
 /** Where one unit's roster for one month stands against the deadline. */
 export async function standing(facilityId: string, unit: Unit, year: number, month: number, day: number, now = new Date()) {
