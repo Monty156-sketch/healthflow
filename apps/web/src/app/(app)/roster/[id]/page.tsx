@@ -365,7 +365,9 @@ export default function RosterPage() {
     archive: "Archiving closes the month. It stays readable.",
   };
   const available = chain && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status)
-    ? (CHAIN_ACTIONS[roster.status] ?? []).filter((a) => (a.who === "nm" ? isNm : a.who === "ms" ? isMs : isAdmin))
+    ? (!fullChain && (roster.status === "WITH_ADMINISTRATOR" || roster.status === "WITH_SUPERINTENDENT")
+      ? [{ label: "Publish", confirm: "publish", who: "admin" as const }, { label: "Return for changes", confirm: "return", quiet: true, who: "admin" as const }]
+      : CHAIN_ACTIONS[roster.status] ?? []).filter((a) => (a.who === "nm" ? isNm : a.who === "ms" ? isMs : isAdmin))
     : (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
   const needsNote = pending === "return";
 
