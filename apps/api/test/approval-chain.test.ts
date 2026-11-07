@@ -10,7 +10,8 @@ async function setup() {
   const { user: nm } = await makeUser({ role: "NURSING_MANAGER", facilityId: facility.id, withStaff: { fullName: "Naa Nursing" } });
   const { user: ms } = await makeUser({ role: "MEDICAL_SUPERINTENDENT", facilityId: facility.id, withStaff: { fullName: "Dr Mensah" } });
   const api = as(admin);
-  const roster = (await api.post("/api/facility/rosters", { year: 2026, month: 12 })).body.roster;
+  const ward = await prisma.department.create({ data: { facilityId: facility.id, name: "Female Ward" } });
+  const roster = (await api.post("/api/facility/rosters", { year: 2026, month: 12, departmentId: ward.id })).body.roster;
   await prisma.roster.update({ where: { id: roster.id }, data: { status: "GENERATED" } });
   return { facility, api, nmApi: as(nm), msApi: as(ms), id: roster.id as string };
 }
