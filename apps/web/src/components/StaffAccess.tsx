@@ -3,6 +3,7 @@
 // Panels on the staff record for giving someone access: the invitation, and
 // the consent records with the optional photograph.
 import { WardSelect } from "@/components/WardSelect";
+import { useOptionalFacility } from "@/components/AppShell";
 import { useCallback, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -52,6 +53,7 @@ function CopyLink({ url }: { url: string }) {
 
 /** Shown in place of the account details when the person has no account yet. */
 export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; invitation: PendingInvitation | null; isAdmin: boolean; onChanged: () => void }) {
+  const offered = Boolean(useOptionalFacility()?.facility.approval?.eligible);
   const [role, setRole] = useState(invitation?.role ?? "STAFF");
   const [ward, setWard] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,7 +121,7 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
           <Field label="Role">
             {(a) => (
               <Select {...a} value={role} onChange={(e) => setRole(e.target.value)}>
-                {INVITE_ROLES.map((r) => (
+                {INVITE_ROLES.filter((r) => offered || (r !== "NURSING_MANAGER" && r !== "MEDICAL_SUPERINTENDENT")).map((r) => (
                   <option key={r} value={r}>
                     {ROLE[r]}
                   </option>

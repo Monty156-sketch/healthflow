@@ -5,6 +5,7 @@ beforeEach(resetDatabase);
 
 async function setup() {
   const facility = await makeFacility("Chain Hospital");
+  await prisma.facility.update({ where: { id: facility.id }, data: { facilityType: "HOSPITAL" } });
   const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Ama Admin" } });
   const { user: nm } = await makeUser({ role: "NURSING_MANAGER", facilityId: facility.id, withStaff: { fullName: "Naa Nursing" } });
   const { user: ms } = await makeUser({ role: "MEDICAL_SUPERINTENDENT", facilityId: facility.id, withStaff: { fullName: "Dr Mensah" } });
@@ -17,12 +18,33 @@ async function setup() {
 const move = (api: ReturnType<typeof as>, id: string, action: string, note?: string) => api.post(`/api/facility/rosters/${id}/status`, { action, ...(note ? { note } : {}) });
 
 describe("approval chain", () => {
-  it("cannot be switched on until a nursing manager and a medical superintendent exist", async () => {
-    const facility = await makeFacility("Lonely Clinic");
+  it("is not offered to a health centre", async () => {
+    const facility = await makeFacility("Small Health Centre");
+    const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Ama Admin" } });
+    const res = await as(admin).put("/api/facility/approvals", { enabled: true });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("not_available");
+    const staff = await prisma.staff.create({ data: { facilityId: facility.id, staffNo: "X1", fullName: "Naa Nursing", email: "naa@example.test", status: "ACTIVE" } });
+    const invite = await as(admin).post(`/api/facility/staff/${staff.id}/invite`, { role: "NURSING_MANAGER" });
+    expect(invite.status).toBeGreaterThanOrEqual(400);
+  });
+
+  it("cannot be switched on at a hospital until a nursing manager and a medical superintendent exist", async () => {
+    const facility = await makeFacility("Lonely Hospital");
+    await prisma.facility.update({ where: { id: facility.id }, data: { facilityType: "HOSPITAL" } });
     const { user: admin } = await makeUser({ role: "FACILITY_ADMIN", facilityId: facility.id, withStaff: { fullName: "Ama Admin" } });
     const res = await as(admin).put("/api/facility/approvals", { enabled: true });
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("people_missing");
+  });
+
+  it("by default sends a roster to the nursing manager, who approves it, and then it can be published", async () => {
+    const { api, nmApi, id } = await setup();
+    expect((await move(api, id, "submit")).body.roster.status).toBe("UNDER_REVIEW");
+    expect((await move(api, id, "approve")).status).toBe(409);
+    expect((await move(nmApi, id, "nm_approve")).body.roster.status).toBe("APPROVED");
+    expect((await move(api, id, "forward")).status).toBe(409);
+    expect((await move(api, id, "publish")).body.roster.status).toBe("PUBLISHED");
   });
 
   it("takes a roster from the in-charge to the nursing manager, the administrator and the medical superintendent", async () => {
@@ -62,8 +84,7 @@ describe("approval chain", () => {
     expect((await nmApi.get("/api/facility/approvals/wards")).status).toBe(200);
     expect((await nmApi.post("/api/facility/rosters", { year: 2027, month: 1 })).status).toBe(403);
     expect((await nmApi.put("/api/facility/approvals", { enabled: true })).status).toBe(403);
-    // Outside the chain the nursing manager has no step to take.
-    await move(api, id, "submit");
+    // A roster that has not been sent to the nursing manager is not theirs to approve.
     expect((await move(nmApi, id, "nm_approve")).status).toBe(409);
   });
 
@@ -74,8 +95,9 @@ describe("approval chain", () => {
     expect((await msApi.get("/api/facility/access")).body.canPay).toBe(true);
   });
 
-  it("keeps the old route when the chain is off", async () => {
-    const { api, id } = await setup();
+  it("keeps the old route when the hospital has no nursing manager", async () => {
+    const { api, id, facility } = await setup();
+    await prisma.userProfile.updateMany({ where: { facilityId: facility.id, role: "NURSING_MANAGER" }, data: { active: false } });
     await move(api, id, "submit");
     expect((await move(api, id, "approve")).body.roster.status).toBe("APPROVED");
     expect((await move(api, id, "publish")).body.roster.status).toBe("PUBLISHED");

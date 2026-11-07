@@ -224,7 +224,9 @@ export default function RosterPage() {
   const generated = roster.status !== "DRAFT";
   const isAdmin = facility.me.role === "FACILITY_ADMIN";
   const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
-  const chain = Boolean(facility.facility.rosterApprovalChain);
+  const mode = facility.facility.approval?.mode ?? "none";
+  const chain = mode !== "none";
+  const fullChain = mode === "full";
   const isNm = facility.me.role === "NURSING_MANAGER";
   const isMs = facility.me.position === "MEDICAL_SUPERINTENDENT";
   const canEdit = canRoster && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW");
@@ -354,7 +356,7 @@ export default function RosterPage() {
   };
   const SAYS: Record<string, string> = {
     submit: chain ? "This sends the roster to the nursing manager to approve. You can still change duties while it is with them." : "Sending it for review hands it to a facility admin to approve. You can still change duties while it is in review.",
-    nm_approve: "This passes the roster to the administrator and saves a version.",
+    nm_approve: fullChain ? "This passes the roster to the administrator and saves a version." : "This approves the roster and saves a version. It can then be published.",
     forward: "This sends the roster to the medical superintendent, who publishes it.",
     approve: "Approving saves a version and stops further changes. A facility admin can reopen it.",
     return: "This sends the roster back so duties can be changed again.",
@@ -362,7 +364,7 @@ export default function RosterPage() {
     reopen: "Reopening lets duties be changed again. Approve it again afterwards.",
     archive: "Archiving closes the month. It stays readable.",
   };
-  const available = chain && roster.status !== "GENERATED" && roster.status !== "PUBLISHED" && roster.status !== "ARCHIVED"
+  const available = chain && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status)
     ? (CHAIN_ACTIONS[roster.status] ?? []).filter((a) => (a.who === "nm" ? isNm : a.who === "ms" ? isMs : isAdmin))
     : (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
   const needsNote = pending === "return";

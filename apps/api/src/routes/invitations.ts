@@ -9,6 +9,7 @@
 // Accepting means reading and accepting the facility's current privacy
 // notice (its version is recorded), choosing a password and, for roles that
 // require it, setting up two-step sign-in before the first session starts.
+import { hasApprovalPosts } from "../lib/approvalMode.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Role } from "@healthflow/db";
@@ -55,6 +56,9 @@ async function issueInvitation(
   role: (typeof INVITABLE_ROLES)[number],
   ward: string | null = null
 ): Promise<{ refuse: string } | { url: string; expiresAt: Date; emailed: boolean }> {
+  if ((role === "NURSING_MANAGER" || role === "MEDICAL_SUPERINTENDENT") && !hasApprovalPosts((await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } })).facilityType)) {
+    return { refuse: "Only hospitals, polyclinics and teaching hospitals have a nursing manager and a medical superintendent." };
+  }
   if (s.userProfile) return { refuse: `${s.fullName} already has a HealthFlow account.` };
   if (!["ACTIVE", "ON_LEAVE", "PENDING"].includes(s.status)) return { refuse: `${s.fullName} is not a current staff member.` };
   if (!s.email) return { refuse: `Add an email address to ${s.fullName}'s record first. It is what they will sign in with.` };

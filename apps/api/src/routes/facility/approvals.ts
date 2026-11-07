@@ -6,6 +6,7 @@ import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES, READ_ROLES } from "../../middleware/facilityAccess.js";
+import { approvalModeOf } from "../../lib/approvalMode.js";
 
 export const approvalsRouter = Router();
 
@@ -20,24 +21,27 @@ const WAITING_FOR: Record<string, string[]> = {
 
 approvalsRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
   const { facilityId, position } = caller(req);
-  const [facility, holders, rosters] = await Promise.all([
-    prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { rosterApprovalChain: true } }),
+  const state = await approvalModeOf(facilityId);
+  const [holders, rosters] = await Promise.all([
     prisma.userProfile.findMany({
       where: { facilityId, active: true, role: { in: ["NURSING_MANAGER", "MEDICAL_SUPERINTENDENT"] } },
       select: { role: true, userEmail: true, staff: { select: { fullName: true } } },
     }),
     prisma.roster.findMany({
-      where: { facilityId, status: { in: ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] } },
+      where: { facilityId, status: { in: state.mode === "nursing_manager" ? ["UNDER_REVIEW", "APPROVED"] : ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"] } },
       include: { department: { select: { name: true } } },
       orderBy: [{ year: "desc" }, { month: "desc" }],
     }),
   ]);
-  const mine = WAITING_FOR[position] ?? [];
+  const waiting = state.mode === "nursing_manager" ? { ...WAITING_FOR, FACILITY_ADMIN: ["APPROVED"] } : WAITING_FOR;
+  const mine = waiting[position] ?? [];
   const row = (r: (typeof rosters)[number]) => ({
     id: r.id, label: `${MONTHS[r.month - 1]} ${r.year}`, ward: r.department?.name ?? null, status: r.status, returnNote: r.returnNote, returnedBy: r.returnedBy,
   });
   res.json({
-    enabled: facility.rosterApprovalChain,
+    eligible: state.eligible,
+    mode: state.mode,
+    enabled: state.switchedOn,
     nursingManager: holders.filter((h) => h.role === "NURSING_MANAGER").map((h) => h.staff?.fullName ?? h.userEmail),
     medicalSuperintendent: holders.filter((h) => h.role === "MEDICAL_SUPERINTENDENT").map((h) => h.staff?.fullName ?? h.userEmail),
     waitingForYou: rosters.filter((r) => mine.includes(r.status)).map(row),
@@ -49,6 +53,8 @@ approvalsRouter.put("/", allowRoles(...ADMIN_ROLES), async (req, res) => {
   const who = caller(req);
   const input = parseOr400(z.object({ enabled: z.boolean() }), req.body, res);
   if (!input) return;
+  const state = await approvalModeOf(who.facilityId);
+  if (!state.eligible) return res.status(409).json({ error: "not_available", message: "Only hospitals, polyclinics and teaching hospitals have a nursing manager and a medical superintendent." });
   if (input.enabled) {
     const [nm, ms, approved] = await Promise.all([
       prisma.userProfile.count({ where: { facilityId: who.facilityId, active: true, role: "NURSING_MANAGER" } }),

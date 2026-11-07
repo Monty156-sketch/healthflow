@@ -8,6 +8,8 @@ import { useResource } from "@/lib/useApi";
 import { Button, EmptyState, Loading, LoadError, Notice, Panel } from "@/components/ui";
 
 export interface Approvals {
+  eligible: boolean;
+  mode: "none" | "nursing_manager" | "full";
   enabled: boolean;
   nursingManager: string[];
   medicalSuperintendent: string[];
@@ -63,12 +65,12 @@ export function ApprovalQueue({ canSwitch, compact = false }: { canSwitch: boole
   return (
     <div className="space-y-6">
       {problem && <Notice tone="block">{problem}</Notice>}
-      {canSwitch && !compact && (
-        <Panel title="Approval chain">
+      {canSwitch && !compact && d.eligible && (
+        <Panel title="Administrator and medical superintendent approval">
           <p className="text-sm">
             {d.enabled
-              ? "On. Each roster goes from the ward in-charge to the nursing manager, then the administrator, then the medical superintendent, who publishes it."
-              : "Off. The administrator approves and publishes rosters, as before."}
+              ? "On. After the nursing manager approves, each roster goes to the administrator, then to the medical superintendent, who publishes it."
+              : "Off. The nursing manager approves each roster, and it can then be published."}
           </p>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Nursing manager: {d.nursingManager.join(", ") || "not invited yet"}. Medical superintendent: {d.medicalSuperintendent.join(", ") || "not invited yet"}.
@@ -78,12 +80,13 @@ export function ApprovalQueue({ canSwitch, compact = false }: { canSwitch: boole
           </div>
         </Panel>
       )}
-      {d.enabled && (
+      {!d.eligible && <Notice>Only hospitals, polyclinics and teaching hospitals use these steps.</Notice>}
+      {d.mode !== "none" && (
         <Panel title="Waiting for you">
           <List rows={d.waitingForYou} empty="Nothing is waiting for you." />
         </Panel>
       )}
-      {d.enabled && !compact && (
+      {d.mode !== "none" && !compact && (
         <Panel title="Elsewhere in the chain">
           <List rows={d.inProgress} empty="No other roster is moving through approval." />
         </Panel>

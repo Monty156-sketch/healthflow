@@ -59,6 +59,7 @@ import { noFacilityYet, systemScope } from "../../lib/tenant.js";
 import { requireFlag, flagsFor } from "../../lib/flags.js";
 import { dashboardRouter } from "./dashboard.js";
 import { approvalsRouter } from "./approvals.js";
+import { approvalModeOf } from "../../lib/approvalMode.js";
 import { meRouter } from "./me.js";
 import { geofenceRouter } from "./geofence.js";
 import { directorateRouter } from "./directorate.js";
@@ -159,7 +160,7 @@ facilityRouter.get("/", allowRoles(...READ_ROLES, "STAFF"), async (req, res) => 
     prisma.staff.count({ where: { facilityId, status: { in: ["ACTIVE", "ON_LEAVE", "PENDING"] } } }),
   ]);
   res.json({
-    facility: { ...presentFacility(facility), rosterByWard: await rostersByUnit(facilityId, facility.facilityType, WARD_FACILITY_TYPES) },
+    facility: { ...presentFacility(facility), rosterByWard: await rostersByUnit(facilityId, facility.facilityType, WARD_FACILITY_TYPES), approval: await approvalModeOf(facilityId) },
     setup: { departments, cadres, staff },
     me: { role, position, displayName, departmentId: departmentId ?? null },
     flags: await flagsFor(facilityId),

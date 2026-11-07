@@ -41,7 +41,7 @@ export interface Facility {
   status: string;
   /** Hospitals keep one roster per ward or department. */
   rosterByWard?: boolean;
-  rosterApprovalChain?: boolean;
+  approval?: { eligible: boolean; mode: "none" | "nursing_manager" | "full"; switchedOn: boolean };
 }
 
 interface FacilityResponse {
@@ -201,7 +201,7 @@ function FacilityLinks({ role, onNavigate }: { role: string; onNavigate?: () => 
   const pathname = usePathname();
   const fac = useOptionalFacility();
   const flags = fac?.flags;
-  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.chain && !fac?.facility.rosterApprovalChain) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"].includes(fac?.facility.facilityType ?? "")));
+  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.chain && !(fac?.facility.approval?.mode !== "none" && fac?.facility.approval?.eligible || (fac?.facility.approval?.eligible && fac.me.role === "FACILITY_ADMIN"))) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"].includes(fac?.facility.facilityType ?? "")));
   if (items.length === 0) return null;
   const sec = sectionFor(pathname)?.section.id;
   return (

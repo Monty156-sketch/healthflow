@@ -121,6 +121,7 @@ function LinkCard({ sent, onDone }: { sent: Sent; onDone: () => void }) {
 }
 
 function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departments: Department[]; onSent: (s: Sent) => void }) {
+  const offered = Boolean(useFacility().facility.approval?.eligible);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("STAFF");
@@ -170,7 +171,7 @@ function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departme
       <Field label="Role" hint={ROLE_HINT[role]} error={fields.role}>
         {(a) => (
           <Select {...a} value={role} onChange={(e) => setRole(e.target.value)}>
-            {ROLES.map((r) => (
+            {ROLES.filter((r) => offered || (r !== "NURSING_MANAGER" && r !== "MEDICAL_SUPERINTENDENT")).map((r) => (
               <option key={r} value={r}>
                 {ROLE[r]}
               </option>

@@ -15,6 +15,7 @@ import { rosterPdf, type PdfRoster } from "../../lib/rosterPdf.js";
 import { settleAgainstRoster, settlementFor } from "../../lib/ledger.js";
 import { rosterWorkbook } from "../../lib/rosterExcel.js";
 import { FACILITY_TYPE_LABEL } from "../../lib/labels.js";
+import { approvalModeOf } from "../../lib/approvalMode.js";
 import { notifyDeciders, notifyRoles, notifyWard } from "../../lib/notify.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
@@ -816,7 +817,7 @@ const MOVES: Record<string, { from: string[]; to: MoveTo; roles: readonly string
 /** Who is asked to act next, once the chain is on. */
 const NEXT_STEP: Record<string, { roles: ("NURSING_MANAGER" | "FACILITY_ADMIN" | "MEDICAL_SUPERINTENDENT")[]; say: string } | undefined> = {
   submit: { roles: ["NURSING_MANAGER"], say: "is waiting for your approval" },
-  nm_approve: { roles: ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT"], say: "was approved by the nursing manager and is waiting for the administrator" },
+  nm_approve: { roles: ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT"], say: "was approved by the nursing manager" },
   forward: { roles: ["MEDICAL_SUPERINTENDENT"], say: "is waiting for you to publish it" },
 };
 
@@ -831,22 +832,32 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES, ...NM_ROLES), asyn
   if (!move.from.includes(roster.status)) {
     return res.status(409).json({ error: "wrong_status", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}, so it cannot be ${move.word}.` });
   }
-  const chain = (await prisma.facility.findUnique({ where: { id: who.facilityId }, select: { rosterApprovalChain: true } }))?.rosterApprovalChain === true;
+  const { mode } = await approvalModeOf(who.facilityId);
+  const full = mode === "full";
+  const viaNm = mode !== "none";
   const isMs = who.position === "MEDICAL_SUPERINTENDENT";
-  if (!chain && (input.action === "nm_approve" || input.action === "forward" || roster.status === "WITH_ADMINISTRATOR" || roster.status === "WITH_SUPERINTENDENT")) {
-    return res.status(409).json({ error: "chain_off", message: "This facility does not use the approval chain." });
+  const inLongChain = roster.status === "WITH_ADMINISTRATOR" || roster.status === "WITH_SUPERINTENDENT";
+  if (!viaNm && input.action === "nm_approve") return res.status(409).json({ error: "chain_off", message: "This facility has no nursing manager to approve rosters." });
+  if (!full && input.action === "forward") return res.status(409).json({ error: "chain_off", message: "The administrator and medical superintendent steps are switched off." });
+  if (viaNm) {
+    if (input.action === "approve") return res.status(409).json({ error: "use_chain", message: "The nursing manager approves rosters here." });
+    if (input.action === "return" && roster.status === "UNDER_REVIEW" && who.role === "FACILITY_ADMIN" && !full) {
+      // Without the longer chain the administrator may still send a roster back from review.
+    } else if (input.action === "return" && roster.status === "UNDER_REVIEW" && who.role === "FACILITY_ADMIN") {
+      return res.status(403).json({ error: "forbidden", message: "The nursing manager reviews this roster first." });
+    }
+    if (input.action === "return" && who.role === "NURSING_MANAGER" && roster.status !== "UNDER_REVIEW") return res.status(403).json({ error: "forbidden", message: "You review a roster before it goes on." });
   }
-  if (chain) {
-    if (input.action === "approve" || input.action === "reopen") return res.status(409).json({ error: "use_chain", message: "Rosters here go from the in-charge to the nursing manager, the administrator, then the medical superintendent." });
+  if (full) {
+    if (input.action === "reopen") return res.status(409).json({ error: "use_chain", message: "Return the roster with a note instead." });
     if (input.action === "publish" && roster.status !== "WITH_SUPERINTENDENT") return res.status(409).json({ error: "use_chain", message: "The roster must reach the medical superintendent before it is published." });
     if (input.action === "publish" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent publishes a roster." });
     if (input.action === "return" && roster.status === "WITH_SUPERINTENDENT" && !isMs) return res.status(403).json({ error: "forbidden", message: "Only the medical superintendent can return it from this step." });
-    if (input.action === "return" && roster.status === "UNDER_REVIEW" && who.role === "FACILITY_ADMIN" && !isMs) {
-      // The administrator acts once the nursing manager has approved.
-      return res.status(403).json({ error: "forbidden", message: "The nursing manager reviews this roster first." });
-    }
-    if (input.action === "return" && who.role === "NURSING_MANAGER" && roster.status !== "UNDER_REVIEW") return res.status(403).json({ error: "forbidden", message: "You review a roster before it goes to the administrator." });
+  } else if (inLongChain && input.action !== "return") {
+    return res.status(409).json({ error: "chain_off", message: "The administrator and medical superintendent steps are switched off. Return the roster to carry on." });
   }
+  const chain = viaNm;
+  const target: MoveTo = input.action === "nm_approve" ? (full ? "WITH_ADMINISTRATOR" : "APPROVED") : move.to;
   if (input.action === "return" && !input.note) return res.status(400).json({ error: "note_required", message: "Say what needs to change, so the in-charge knows." });
   if (["approve", "publish", "forward", "nm_approve"].includes(input.action)) {
     const open = await prisma.complianceFinding.count({ where: { rosterId: roster.id, severity: "BLOCK", status: "OPEN" } });
@@ -865,7 +876,7 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES, ...NM_ROLES), asyn
     await tx.roster.update({
       where: { id: roster.id },
       data: {
-        status: move.to, version,
+        status: target, version,
         ...(input.action === "approve" || input.action === "nm_approve" ? { approvedBy: who.email } : {}),
         ...(input.action === "reopen" ? { approvedBy: null } : {}),
         ...(input.action === "return" ? { returnNote: input.note ?? null, returnedBy: who.displayName, approvedBy: null } : {}),

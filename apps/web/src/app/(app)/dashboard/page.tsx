@@ -490,7 +490,7 @@ function FacilityDashboard() {
         description={`${facility.name}. ${FACILITY_TYPE[facility.facilityType] ?? "Facility"}${place ? `, ${place}` : ""}`}
       />
       <ClockCard />
-      {facility.rosterApprovalChain && (nm || isAdmin) && (
+      {facility.approval && facility.approval.mode !== "none" && (nm || isAdmin) && (
         <div className="mb-6">
           <ApprovalQueue canSwitch={false} compact />
         </div>
