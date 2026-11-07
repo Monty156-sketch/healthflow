@@ -32,7 +32,7 @@ describe("approval chain", () => {
     expect((await move(api, id, "submit")).body.roster.status).toBe("UNDER_REVIEW");
     // The old one-step approval is closed while the chain is on, and the administrator waits for the nursing manager.
     expect((await move(api, id, "approve")).status).toBe(409);
-    expect((await move(api, id, "forward")).status).toBe(403);
+    expect((await move(api, id, "forward")).status).toBe(409);
 
     expect((await move(nmApi, id, "nm_approve")).body.roster.status).toBe("WITH_ADMINISTRATOR");
     expect((await move(api, id, "forward")).body.roster.status).toBe("WITH_SUPERINTENDENT");
