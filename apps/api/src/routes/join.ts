@@ -16,7 +16,7 @@ import { codeProblem, normaliseCode } from "../lib/accessCode.js";
 import { notifyDeciders, notifyWard } from "../lib/notify.js";
 import { parseOr400, optionalText, requiredText } from "../lib/validate.js";
 import { currentNotice } from "./facility/privacy.js";
-import { publicHealthUnitForCadre, unitForCadre } from "../lib/dutyPlan.js";
+import { publicHealthUnitForCadre, unitForCadre, worksWeekdaysOnly } from "../lib/dutyPlan.js";
 import { WARD_FACILITY_TYPES } from "./facility/rosters.js";
 import { ensureSupportUnits } from "../lib/supportUnits.js";
 import { nameKey } from "../lib/inCharges.js";
@@ -127,7 +127,7 @@ joinRouter.post("/register", async (req, res) => {
     const unit = publicHealthUnitForCadre(cadre?.name) && input.departmentId ? null : unitForCadre(cadre?.name);
     if (unit) {
       const have = await prisma.department.findFirst({ where: { facilityId, name: { equals: unit.name, mode: "insensitive" }, active: true }, select: { id: true } });
-      const target = have ?? (await prisma.department.create({ data: { facilityId, name: unit.name, runsNights: unit.runsNights }, select: { id: true } }));
+      const target = have ?? (await prisma.department.create({ data: { facilityId, name: unit.name, runsNights: unit.runsNights, weekdaysOnly: worksWeekdaysOnly(unit.name) }, select: { id: true } }));
       input.departmentId = target.id;
       input.departmentText = null;
     }

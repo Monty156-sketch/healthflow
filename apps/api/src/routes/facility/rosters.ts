@@ -49,10 +49,12 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const startDay = dayOf(year, month, 1);
   const period = { startDay, endDay: startDay + daysInMonth(year, month) - 1 };
   // A ward roster is for that department's people, with the ward's own minimums where it has set them.
-  const unit = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true, department: { select: { kind: true } } } })) ?? null;
+  const unit = (await prisma.roster.findUnique({ where: { id: rosterId }, select: { departmentId: true, department: { select: { kind: true, weekdaysOnly: true } } } })) ?? null;
   const ward = unit?.departmentId ?? null;
   // Security, drivers and cleaners set their own numbers; the wards' numbers never apply to them.
   const ownNumbersOnly = unit?.department?.kind === "SUPPORT";
+  // A department that works Monday to Friday asks for people on the weekday morning only; weekends and public holidays ask for nobody.
+  const weekdayDepartment = unit?.department?.weekdaysOnly === true;
   const demand = ward ? await prisma.shiftDemand.findMany({ where: { departmentId: ward } }) : [];
   // Ward transfers this month: someone joining counts from their day, someone leaving until the day before.
   const moves = ward
@@ -69,7 +71,7 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
 
   const [facility, staffRows, shiftRows, ruleRows, cycleRows, leaveRows, holidayRows, historyRows, rosterRows, cadres, rotationRows] = await Promise.all([
     prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { weekStartsOn: true, referencePeriodWeeks: true } }),
-    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true, kind: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
+    prisma.staff.findMany({ where: { facilityId, status: "ACTIVE", ...(ward ? { OR: [{ departmentId: ward }, { id: { in: joining.map((m) => m.staffId) } }] } : {}) }, orderBy: { staffNo: "asc" }, include: { cadre: { select: { takesNights: true, onRoster: true, weekdaysOnly: true } }, department: { select: { runsNights: true, kind: true, weekdaysOnly: true } }, restrictions: { where: { kind: "NO_NIGHTS", endDate: { gte: dateFromDay(period.startDay - 14) }, startDate: { lte: dateFromDay(period.endDay) } }, select: { startDate: true, endDate: true } } } }),
     prisma.shift.findMany({ where: { facilityId }, include: { eligibleStaff: { select: { id: true } } }, orderBy: { sortOrder: "asc" } }),
     prisma.constraintRule.findMany({ where: { facilityId, enabled: true } }),
     prisma.dutyCycleRule.findMany({ where: { facilityId, active: true }, include: { countingShifts: { select: { id: true } } } }),
@@ -102,8 +104,8 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
   const staff: EStaff[] = staffRows
     .filter((s) => s.cadre?.onRoster !== false && s.department?.kind !== "OFFICE")
     .map((s) => {
-      // In-charges, and cadres on office hours, work the weekday morning only, outside the duty cycles.
-      const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true) && Boolean(morning);
+      // In-charges, cadres on office hours and departments that work Monday to Friday (public health) work the weekday morning only, outside the duty cycles.
+      const weekdays = (s.morningOnly || s.cadre?.weekdaysOnly === true || s.department?.weekdaysOnly === true) && Boolean(morning);
       return {
         id: s.id, staffNo: s.staffNo, name: s.fullName, cadreId: s.cadreId, departmentId: s.departmentId,
         excludedFromNights: s.excludedFromNights || s.cadre?.takesNights === false || s.department?.runsNights === false || weekdays,
@@ -125,6 +127,10 @@ export async function loadEngineData(facilityId: string, rosterId: string, year:
       const own = demand.find((d) => d.shiftId === s.id);
       const src = own ?? s;
       if (!s.active || (ownNumbersOnly && !own)) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+      if (weekdayDepartment) {
+        if (!morning || s.id !== morning.id) return { minStaff: 0, minByCadre: {}, weekendMinStaff: null, weekendMinByCadre: null, holidayMinStaff: null, holidayMinByCadre: null };
+        return { minStaff: src.minStaff, minByCadre: (src.minByCadre ?? {}) as Record<string, number>, weekendMinStaff: 0, weekendMinByCadre: null, holidayMinStaff: 0, holidayMinByCadre: null };
+      }
       return {
         minStaff: src.minStaff,
         minByCadre: (src.minByCadre ?? {}) as Record<string, number>,

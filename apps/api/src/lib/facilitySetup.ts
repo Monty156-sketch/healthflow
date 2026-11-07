@@ -4,7 +4,7 @@
 // or written by the platform; staff are imported by the facility itself.
 import type { FacilityType } from "@healthflow/db";
 import { prisma } from "./prisma.js";
-import { cadreDefaults, defaultKind, defaultRunsNights, STANDARD_CADRES, STANDARD_DEPARTMENTS, WARDS_BY_TYPE } from "./dutyPlan.js";
+import { cadreDefaults, defaultKind, defaultRunsNights, worksWeekdaysOnly, STANDARD_CADRES, STANDARD_DEPARTMENTS, WARDS_BY_TYPE } from "./dutyPlan.js";
 
 export { STANDARD_CADRES, STANDARD_DEPARTMENTS };
 import { ensureRules } from "../routes/facility/rules.js";
@@ -50,7 +50,7 @@ export async function seedGroups(facilityId: string, type?: FacilityType) {
   const haveCad = new Set(cads.map((c) => c.name.toLowerCase()));
   const newDeps = portfolio.departments.filter((n) => !haveDep.has(n.toLowerCase()));
   const newCads = portfolio.cadres.map((name, i) => ({ name, i })).filter((c) => !haveCad.has(c.name.toLowerCase()));
-  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), kind: defaultKind(name) })) });
+  if (newDeps.length) await prisma.department.createMany({ data: newDeps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), weekdaysOnly: worksWeekdaysOnly(name), kind: defaultKind(name) })) });
   if (newCads.length) await prisma.cadre.createMany({ data: newCads.map((c) => ({ facilityId, name: c.name, sortOrder: c.i, ...cadreDefaults(c.name) })) });
   return { departments: newDeps.length, cadres: newCads.length };
 }
@@ -59,7 +59,7 @@ export async function seedGroups(facilityId: string, type?: FacilityType) {
 export async function seedChosen(facilityId: string, departments: string[], cadres: string[]) {
   const deps = [...new Map(departments.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
   const cads = [...new Map(cadres.map((n) => [n.trim().toLowerCase(), n.trim()])).values()].filter(Boolean);
-  if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), kind: defaultKind(name) })) });
+  if (deps.length) await prisma.department.createMany({ data: deps.map((name) => ({ facilityId, name, runsNights: defaultRunsNights(name), weekdaysOnly: worksWeekdaysOnly(name), kind: defaultKind(name) })) });
   if (cads.length) await prisma.cadre.createMany({ data: cads.map((name, i) => ({ facilityId, name, sortOrder: i, ...cadreDefaults(name) })) });
   return { departments: deps.length, cadres: cads.length };
 }

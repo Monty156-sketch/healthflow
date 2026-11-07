@@ -504,6 +504,8 @@ model Department {
   archivedAt DateTime?
   /// False for departments that close at night, such as the eye clinic.
   runsNights Boolean   @default(true)
+  /// True for a department that works Monday to Friday and rests on Saturday, Sunday and public holidays, such as public health.
+  weekdaysOnly Boolean @default(false)
   /// WARD: its in-charge runs its roster. SUPPORT: security, drivers, cleaners; the administrator runs the roster. OFFICE: accounts, administration; no roster.
   kind       DepartmentKind @default(WARD)
 
