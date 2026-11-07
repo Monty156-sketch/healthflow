@@ -7,6 +7,9 @@ services:
     name: healthflow-api
     runtime: node
     plan: free
+    # Next to the Neon database (Frankfurt), so each query is a short hop and not a trip across the Atlantic.
+    # A service's region cannot be changed once created; see RUNBOOK.md, "Moving the API to another region".
+    region: frankfurt
 
     # Build from the repo root so pnpm can see the whole workspace
     # (apps/api depends on packages/db and packages/shared).
