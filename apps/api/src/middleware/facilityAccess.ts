@@ -24,7 +24,10 @@ export interface FacilityCaller {
   email: string;
   /** How the person appears in audit sentences: their staff name when linked. */
   displayName: string;
+  /** What the account may do. A medical superintendent has every administrator right, so counts as FACILITY_ADMIN here. */
   role: Role;
+  /** The title the account really holds. Differs from role only for a medical superintendent. */
+  position: Role;
   facilityId: string;
   /** The staff record linked to this account, if any. */
   staffId: string | null;
@@ -90,7 +93,7 @@ async function supportCaller(req: Request, res: Response, email: string, userId:
       }
     });
   }
-  const caller: FacilityCaller = { userId, email, displayName: `PS Tech support (${email})`, role: "FACILITY_ADMIN", facilityId: s.facilityId, staffId: null, supportSessionId: s.id };
+  const caller: FacilityCaller = { userId, email, displayName: `PS Tech support (${email})`, role: "FACILITY_ADMIN", position: "FACILITY_ADMIN", facilityId: s.facilityId, staffId: null, supportSessionId: s.id };
   return caller;
 }
 
@@ -142,10 +145,11 @@ export async function requireFacilityUser(req: Request, res: Response, next: Nex
     userId: profile.id,
     email: profile.userEmail,
     displayName: profile.staff?.fullName ?? profile.userEmail,
-    role: profile.role,
+    role: profile.role === "MEDICAL_SUPERINTENDENT" ? "FACILITY_ADMIN" : profile.role,
+    position: profile.role,
     facilityId: profile.facilityId,
     staffId: profile.staffId,
-    departmentId: profile.role === "FACILITY_ADMIN" ? null : profile.departmentId,
+    departmentId: profile.role === "FACILITY_ADMIN" || profile.role === "MEDICAL_SUPERINTENDENT" || profile.role === "NURSING_MANAGER" ? null : profile.departmentId,
   };
   inFacility(profile.facilityId, next);
 }
@@ -160,7 +164,7 @@ export function allowRoles(...roles: Role[]) {
 }
 
 /** Who may look at the facility's people and set-up. */
-export const READ_ROLES: Role[] = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+export const READ_ROLES: Role[] = ["FACILITY_ADMIN", "NURSING_MANAGER", "ROSTER_MANAGER", "SUPERVISOR"];
 /** Who may change them. */
 export const ADMIN_ROLES: Role[] = ["FACILITY_ADMIN"];
 

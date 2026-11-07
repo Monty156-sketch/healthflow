@@ -176,6 +176,7 @@ export default function RosterPage() {
   const [editing, setEditing] = useState<{ staffId: string; date: string; preset?: { shiftId: string; conflict: CellConflict } } | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [note, setNote] = useState("");
   const [flow, setFlow] = useState<string | null>(null);
   type Change = { staffId: string; date: string; from: string | null; to: string };
   const [undo, setUndo] = useState<Change[]>([]);
@@ -223,6 +224,11 @@ export default function RosterPage() {
   const generated = roster.status !== "DRAFT";
   const isAdmin = facility.me.role === "FACILITY_ADMIN";
   const canGenerate = roster.status === "DRAFT" || roster.status === "GENERATED";
+  const mode = facility.facility.approval?.mode ?? "none";
+  const chain = mode !== "none";
+  const fullChain = mode === "full";
+  const isNm = facility.me.role === "NURSING_MANAGER";
+  const isMs = facility.me.position === "MEDICAL_SUPERINTENDENT";
   const canEdit = canRoster && (roster.status === "GENERATED" || roster.status === "UNDER_REVIEW");
   const editable = canGenerate;
 
@@ -231,7 +237,8 @@ export default function RosterPage() {
     setFlow(null);
     setPending(null);
     try {
-      await api.post(`/api/facility/rosters/${id}/status`, { action });
+      await api.post(`/api/facility/rosters/${id}/status`, { action, ...(note.trim() ? { note: note.trim() } : {}) });
+      setNote("");
       reload();
     } catch (err) {
       setFlow(err instanceof ApiError ? ((err.body as { message?: string })?.message ?? "That did not work.") : "That did not work. Check your connection and try again.");
@@ -321,8 +328,22 @@ export default function RosterPage() {
     }
   }
 
+  const CHAIN_ACTIONS: Record<string, { label: string; confirm?: string; quiet?: boolean; who: "nm" | "admin" | "ms" }[]> = {
+    UNDER_REVIEW: [
+      { label: "Approve", confirm: "nm_approve", who: "nm" },
+      { label: "Return for changes", confirm: "return", quiet: true, who: "nm" },
+    ],
+    WITH_ADMINISTRATOR: [
+      { label: "Send to the medical superintendent", confirm: "forward", who: "admin" },
+      { label: "Return for changes", confirm: "return", quiet: true, who: "admin" },
+    ],
+    WITH_SUPERINTENDENT: [
+      { label: "Publish", confirm: "publish", who: "ms" },
+      { label: "Return for changes", confirm: "return", quiet: true, who: "ms" },
+    ],
+  };
   const ACTIONS: Record<string, { label: string; confirm?: string; admin?: boolean; quiet?: boolean }[]> = {
-    GENERATED: [{ label: "Send for review", confirm: "submit" }],
+    GENERATED: [{ label: chain ? "Send to the nursing manager" : "Send for review", confirm: "submit" }],
     UNDER_REVIEW: [
       { label: "Approve", confirm: "approve", admin: true },
       { label: "Return for changes", confirm: "return", admin: true, quiet: true },
@@ -334,14 +355,19 @@ export default function RosterPage() {
     PUBLISHED: [{ label: "Archive", confirm: "archive", admin: true, quiet: true }],
   };
   const SAYS: Record<string, string> = {
-    submit: "Sending it for review hands it to a facility admin to approve. You can still change duties while it is in review.",
+    submit: chain ? "This sends the roster to the nursing manager to approve. You can still change duties while it is with them." : "Sending it for review hands it to a facility admin to approve. You can still change duties while it is in review.",
+    nm_approve: fullChain ? "This passes the roster to the administrator and saves a version." : "This approves the roster and saves a version. It can then be published.",
+    forward: "This sends the roster to the medical superintendent, who publishes it.",
     approve: "Approving saves a version and stops further changes. A facility admin can reopen it.",
     return: "This sends the roster back so duties can be changed again.",
     publish: "Publishing makes this the roster staff follow and saves a version.",
     reopen: "Reopening lets duties be changed again. Approve it again afterwards.",
     archive: "Archiving closes the month. It stays readable.",
   };
-  const available = (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
+  const available = chain && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status)
+    ? (CHAIN_ACTIONS[roster.status] ?? []).filter((a) => (a.who === "nm" ? isNm : a.who === "ms" ? isMs : isAdmin))
+    : (ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin));
+  const needsNote = pending === "return";
 
   async function downloadPdf() {
     setPdfBusy(true);
@@ -558,7 +584,7 @@ export default function RosterPage() {
                   tone="warning"
                   action={
                     <span className="flex gap-2">
-                      <Button onClick={() => move(pending)} disabled={busy}>
+                      <Button onClick={() => move(pending)} disabled={busy || (needsNote && !note.trim())}>
                         {busy ? "Working…" : "Yes, continue"}
                       </Button>
                       <Button variant="secondary" onClick={() => setPending(null)}>
@@ -568,6 +594,11 @@ export default function RosterPage() {
                   }
                 >
                   {SAYS[pending]}
+                  {needsNote && (
+                    <span className="mt-2 block">
+                      <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} maxLength={500} aria-label="What needs to change" placeholder="What needs to change?" />
+                    </span>
+                  )}
                 </Notice>
               ) : (
                 <div className="flex flex-wrap gap-2">
@@ -580,9 +611,20 @@ export default function RosterPage() {
               )}
             </div>
           )}
-          {!available.length && roster.status === "UNDER_REVIEW" && (
+          {!available.length && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status) && (
             <div className="mb-4">
-              <Notice>This roster is waiting for a facility admin to approve it.</Notice>
+              <Notice>
+                {!chain
+                  ? "This roster is waiting for a facility admin to approve it."
+                  : roster.status === "UNDER_REVIEW" ? "This roster is waiting for the nursing manager to approve it."
+                  : roster.status === "WITH_ADMINISTRATOR" ? "This roster is waiting for the administrator to send it on."
+                  : "This roster is waiting for the medical superintendent to publish it."}
+              </Notice>
+            </div>
+          )}
+          {roster.status === "GENERATED" && roster.returnNote && (
+            <div className="mb-4">
+              <Notice tone="warning">Returned by {roster.returnedBy ?? "a reviewer"}: {roster.returnNote}</Notice>
             </div>
           )}
           {flow && (

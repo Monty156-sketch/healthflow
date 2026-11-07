@@ -36,6 +36,8 @@ export const FACILITY_TYPE: Record<string, string> = {
 export const ROLE: Record<string, string> = {
   PLATFORM_ADMIN: "Platform admin",
   FACILITY_ADMIN: "Facility admin",
+  NURSING_MANAGER: "Nursing manager",
+  MEDICAL_SUPERINTENDENT: "Medical superintendent",
   ROSTER_MANAGER: "Roster manager",
   SUPERVISOR: "Supervisor",
   STAFF: "Staff",

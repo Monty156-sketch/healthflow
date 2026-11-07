@@ -29,11 +29,13 @@ import {
 } from "@/components/ui";
 import type { StatusTone } from "@/components/ui";
 
-const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"];
+const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"];
 const ROLE_HINT: Record<string, string> = {
   STAFF: "Sees their own duties and leave.",
   SUPERVISOR: "Can view staff and rosters.",
   ROSTER_MANAGER: "Builds and publishes rosters.",
+  NURSING_MANAGER: "Sees every ward and its people, and approves rosters before they reach the administrator.",
+  MEDICAL_SUPERINTENDENT: "Has every administrator right, and publishes rosters when the approval chain is on.",
   FACILITY_ADMIN: "Manages everything in the facility.",
 };
 
@@ -119,6 +121,7 @@ function LinkCard({ sent, onDone }: { sent: Sent; onDone: () => void }) {
 }
 
 function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departments: Department[]; onSent: (s: Sent) => void }) {
+  const offered = Boolean(useFacility().facility.approval?.eligible);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("STAFF");
@@ -168,7 +171,7 @@ function InviteForm({ cadres, departments, onSent }: { cadres: Cadre[]; departme
       <Field label="Role" hint={ROLE_HINT[role]} error={fields.role}>
         {(a) => (
           <Select {...a} value={role} onChange={(e) => setRole(e.target.value)}>
-            {ROLES.map((r) => (
+            {ROLES.filter((r) => offered || (r !== "NURSING_MANAGER" && r !== "MEDICAL_SUPERINTENDENT")).map((r) => (
               <option key={r} value={r}>
                 {ROLE[r]}
               </option>

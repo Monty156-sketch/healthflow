@@ -45,6 +45,10 @@ enum FacilityStatus {
 enum Role {
   PLATFORM_ADMIN
   FACILITY_ADMIN
+  /// Sees every ward and its people, and is the first approver of a ward roster when the facility uses the approval chain.
+  NURSING_MANAGER
+  /// Has everything the facility administrator has, and is the one who publishes a roster when the facility uses the approval chain.
+  MEDICAL_SUPERINTENDENT
   ROSTER_MANAGER
   SUPERVISOR
   STAFF
@@ -96,7 +100,12 @@ enum CycleEnforcement {
 enum RosterStatus {
   DRAFT
   GENERATED
+  /// With the nursing manager (approval chain), or with the administrator (no chain).
   UNDER_REVIEW
+  /// Approved by the nursing manager; with the administrator.
+  WITH_ADMINISTRATOR
+  /// Sent on by the administrator; with the medical superintendent to publish.
+  WITH_SUPERINTENDENT
   APPROVED
   PUBLISHED
   ARCHIVED
@@ -388,6 +397,8 @@ model Facility {
   smsEnabled                  Boolean       @default(false)
   /// Day of the month before by which each month's roster must be published. Null means no deadline.
   rosterDeadlineDay           Int?
+  /// When on, a roster goes from the in-charge to the nursing manager, then the administrator, then the medical superintendent, who publishes it.
+  rosterApprovalChain         Boolean       @default(false)
   whatsappEnabled             Boolean       @default(false)
   active                      Boolean       @default(true)
   createdAt                   DateTime      @default(now())
@@ -813,6 +824,9 @@ model Roster {
   version                Int          @default(1)
   preparedBy             String?
   approvedBy             String?
+  /// Why the last reviewer sent it back to the in-charge, and who. Cleared when it is sent for review again.
+  returnNote             String?
+  returnedBy             String?
   generatedAt            DateTime?
   publishedAt            DateTime?
   generationSeconds      Float?

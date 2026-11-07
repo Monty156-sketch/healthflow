@@ -17,7 +17,7 @@ export interface Section {
   tabs: Tab[];
 }
 
-const READ = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+const READ = ["FACILITY_ADMIN", "NURSING_MANAGER", "ROSTER_MANAGER", "SUPERVISOR"];
 const EVERYONE = [...READ, "STAFF"];
 const ADMIN = ["FACILITY_ADMIN"];
 const PLATFORM = ["PLATFORM_ADMIN"];

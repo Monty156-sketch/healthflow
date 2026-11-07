@@ -147,7 +147,9 @@ export interface RosterSummary {
   label: string;
   departmentId?: string | null;
   department?: string | null;
-  status: "DRAFT" | "GENERATED" | "UNDER_REVIEW" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
+  status: "DRAFT" | "GENERATED" | "UNDER_REVIEW" | "WITH_ADMINISTRATOR" | "WITH_SUPERINTENDENT" | "APPROVED" | "PUBLISHED" | "ARCHIVED";
+  returnNote?: string | null;
+  returnedBy?: string | null;
   version: number;
   generatedAt: string | null;
   generationSeconds: number | null;

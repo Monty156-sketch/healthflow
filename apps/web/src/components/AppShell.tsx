@@ -41,12 +41,13 @@ export interface Facility {
   status: string;
   /** Hospitals keep one roster per ward or department. */
   rosterByWard?: boolean;
+  approval?: { eligible: boolean; mode: "none" | "nursing_manager" | "full"; switchedOn: boolean };
 }
 
 interface FacilityResponse {
   facility: Facility;
   setup: { departments: number; cadres: number; staff: number };
-  me: { role: string; displayName: string; departmentId?: string | null };
+  me: { role: string; position?: string; displayName: string; departmentId?: string | null };
   /** Feature flags that exist, as key to on or off for this facility. A capability with no flag is on. */
   flags?: Record<string, boolean>;
 }
@@ -72,13 +73,15 @@ export function useOptionalFacility() {
 
 // ------------------------------------------------------------- navigation
 
-const READ_ROLES = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+const READ_ROLES = ["FACILITY_ADMIN", "NURSING_MANAGER", "ROSTER_MANAGER", "SUPERVISOR"];
 
-const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string; wards?: boolean; listed?: boolean }[] = [
+const NAV: { href: string; label: string; roles: string[]; flag?: string; section?: string; wards?: boolean; listed?: boolean; chain?: boolean }[] = [
   { href: "/dashboard", label: "Dashboard", roles: READ_ROLES },
   { href: "/roster", label: "Roster", roles: READ_ROLES },
   { href: "/staff", label: "Staff", roles: READ_ROLES },
   { href: "/transfers", label: "Ward transfers", roles: READ_ROLES, wards: true },
+  { href: "/wards", label: "Wards and people", roles: ["NURSING_MANAGER", "FACILITY_ADMIN"], wards: true },
+  { href: "/approvals", label: "Roster approvals", roles: ["NURSING_MANAGER", "FACILITY_ADMIN"], chain: true },
   { href: "/in-charges", label: "In-charges", roles: ["FACILITY_ADMIN"], listed: true },
   { href: "/today", label: "Today", roles: ["STAFF"] },
   { href: "/my-duties", label: "Duties", roles: [...READ_ROLES, "STAFF"], section: "duties" },
@@ -198,7 +201,7 @@ function FacilityLinks({ role, onNavigate }: { role: string; onNavigate?: () => 
   const pathname = usePathname();
   const fac = useOptionalFacility();
   const flags = fac?.flags;
-  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"].includes(fac?.facility.facilityType ?? "")));
+  const items = NAV.filter((n) => n.roles.includes(role) && !(n.flag && flags?.[n.flag] === false) && !(n.wards && !fac?.facility.rosterByWard) && !(n.chain && !(fac?.facility.approval?.mode !== "none" && fac?.facility.approval?.eligible || (fac?.facility.approval?.eligible && fac.me.role === "FACILITY_ADMIN"))) && !(n.listed && ["CHPS_COMPOUND", "HEALTH_CENTRE", "CLINIC"].includes(fac?.facility.facilityType ?? "")));
   if (items.length === 0) return null;
   const sec = sectionFor(pathname)?.section.id;
   return (
@@ -401,7 +404,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     setMenuOpen(false);
   }
 
-  const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "STAFF" || supporting);
+  const facilityRole = user && (READ_ROLES.includes(user.role) || user.role === "MEDICAL_SUPERINTENDENT" || user.role === "STAFF" || supporting);
   const access = useResource<Access>(facilityRole ? "/api/facility/access" : null);
   const locked = Boolean(access.data?.locked) && !supporting;
   const resource = useResource<FacilityResponse>(facilityRole && access.data && !locked ? "/api/facility" : null);
@@ -455,7 +458,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const ctx: FacilityContextValue | null = data
     ? { ...data, isAdmin: data.me.role === "FACILITY_ADMIN", reload: resource.reload }
     : null;
-  const role = data?.me.role ?? user.role;
+  const role = data?.me.role ?? (user.role === "MEDICAL_SUPERINTENDENT" ? "FACILITY_ADMIN" : user.role);
+  const title = data?.me.position ?? role;
   const name = data?.me.displayName ?? user.email;
   const area: Area =
     user.role === "PLATFORM_ADMIN" && !supporting ? "platform" : user.role === "DISTRICT_OFFICER" ? "district" : "facility";
@@ -497,7 +501,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLinks role={role} />
           </nav>
           <div className="mt-auto">
-            <AccountBlock name={name} role={role} onSignOut={logout} />
+            <AccountBlock name={name} role={title} onSignOut={logout} />
           </div>
         </aside>
 
@@ -524,7 +528,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <NavLinks role={role} onNavigate={() => setMenuOpen(false)} />
               </nav>
               <div className="mt-3">
-                <AccountBlock name={name} role={role} onSignOut={logout} onNavigate={() => setMenuOpen(false)} />
+                <AccountBlock name={name} role={title} onSignOut={logout} onNavigate={() => setMenuOpen(false)} />
               </div>
             </div>
           )}

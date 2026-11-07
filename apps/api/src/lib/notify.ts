@@ -16,7 +16,7 @@ export interface NoteContent {
   severity?: NotificationSeverity;
 }
 
-const DECIDER_ROLES: Role[] = ["FACILITY_ADMIN", "ROSTER_MANAGER", "SUPERVISOR"];
+const DECIDER_ROLES: Role[] = ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT", "ROSTER_MANAGER", "SUPERVISOR"];
 
 async function send(facilityId: string, everyone: { email: string; staffId: string | null }[], n: NoteContent) {
   // People can switch off a few kinds of notification; the rest always arrive.
@@ -54,7 +54,7 @@ export async function notifyStaff(facilityId: string, staffId: string, n: NoteCo
 
 /** The facility administrators only. */
 export async function notifyAdmins(facilityId: string, n: NoteContent) {
-  const users = await prisma.userProfile.findMany({ where: { facilityId, active: true, role: "FACILITY_ADMIN" }, select: { userEmail: true, staffId: true } });
+  const users = await prisma.userProfile.findMany({ where: { facilityId, active: true, role: { in: ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT"] as Role[] } }, select: { userEmail: true, staffId: true } });
   await send(facilityId, users.map((u) => ({ email: u.userEmail, staffId: u.staffId })), n);
 }
 
@@ -66,6 +66,12 @@ export async function notifyWard(facilityId: string, departmentId: string | null
     : [];
   const users = managers.length
     ? managers
-    : await prisma.userProfile.findMany({ where: { facilityId, active: true, role: "FACILITY_ADMIN" }, select: { userEmail: true, staffId: true } });
+    : await prisma.userProfile.findMany({ where: { facilityId, active: true, role: { in: ["FACILITY_ADMIN", "MEDICAL_SUPERINTENDENT"] as Role[] } }, select: { userEmail: true, staffId: true } });
   await send(facilityId, users.map((u) => ({ email: u.userEmail, staffId: u.staffId })), n);
+}
+
+/** Everyone holding one of these roles in the facility, optionally leaving out the person who acted. */
+export async function notifyRoles(facilityId: string, roles: Role[], n: NoteContent, exceptEmail?: string) {
+  const users = await prisma.userProfile.findMany({ where: { facilityId, active: true, role: { in: roles } }, select: { userEmail: true, staffId: true } });
+  await send(facilityId, users.filter((u) => u.userEmail !== exceptEmail).map((u) => ({ email: u.userEmail, staffId: u.staffId })), n);
 }

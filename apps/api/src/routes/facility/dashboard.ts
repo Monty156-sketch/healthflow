@@ -52,7 +52,7 @@ dashboardRouter.get("/", allowRoles(...READ_ROLES), async (req, res) => {
     ]);
 
   // A hospital has one roster per ward: show the one furthest from published, and count findings across all of them.
-  const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "APPROVED", "PUBLISHED", "ARCHIVED"];
+  const RANK = ["DRAFT", "GENERATED", "UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT", "APPROVED", "PUBLISHED", "ARCHIVED"];
   const furthest = <T extends { status: string }>(rows: T[]) => [...rows].sort((a, b) => RANK.indexOf(a.status) - RANK.indexOf(b.status))[0] ?? null;
   const roster = furthest(monthRosters);
   const nextRoster = furthest(nextRosters);

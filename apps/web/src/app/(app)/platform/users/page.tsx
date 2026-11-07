@@ -7,7 +7,7 @@ import { failure, type Say } from "@/lib/adminBits";
 import { Button, EmptyState, Input, Notice, PageHeader, Select, StatusBadge, TD, TH, TableScroll } from "@/components/ui";
 
 interface U { id: string; email: string; name: string | null; role: string; scope: string; facility: string | null; active: boolean; lastSignInAt: string | null; mfaEnabled: boolean; locked: boolean }
-const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"];
+const ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"];
 
 export default function UsersPage() {
   const [q, setQ] = useState("");

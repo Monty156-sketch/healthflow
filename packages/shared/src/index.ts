@@ -30,6 +30,8 @@ export type ConstraintRuleCode = (typeof CONSTRAINT_RULE_CODES)[number];
 export const ROLES = [
   "PLATFORM_ADMIN",
   "FACILITY_ADMIN",
+  "NURSING_MANAGER",
+  "MEDICAL_SUPERINTENDENT",
   "ROSTER_MANAGER",
   "SUPERVISOR",
   "STAFF",
@@ -42,6 +44,8 @@ export const ROLES_REQUIRING_MFA: AppRole[] = [
   "FACILITY_ADMIN",
   "PLATFORM_ADMIN",
   "DISTRICT_OFFICER",
+  "NURSING_MANAGER",
+  "MEDICAL_SUPERINTENDENT",
   // In-charges and supervisors see every staff record on their ward and decide the roster.
   "ROSTER_MANAGER",
   "SUPERVISOR",

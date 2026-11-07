@@ -3,6 +3,7 @@
 // Panels on the staff record for giving someone access: the invitation, and
 // the consent records with the optional photograph.
 import { WardSelect } from "@/components/WardSelect";
+import { useOptionalFacility } from "@/components/AppShell";
 import { useCallback, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
@@ -23,7 +24,7 @@ export interface PendingInvitation {
   expiresAt: string;
 }
 
-const INVITE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"];
+const INVITE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"];
 
 function CopyLink({ url }: { url: string }) {
   const [copied, setCopied] = useState(false);
@@ -52,6 +53,7 @@ function CopyLink({ url }: { url: string }) {
 
 /** Shown in place of the account details when the person has no account yet. */
 export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; invitation: PendingInvitation | null; isAdmin: boolean; onChanged: () => void }) {
+  const offered = Boolean(useOptionalFacility()?.facility.approval?.eligible);
   const [role, setRole] = useState(invitation?.role ?? "STAFF");
   const [ward, setWard] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,7 +121,7 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
           <Field label="Role">
             {(a) => (
               <Select {...a} value={role} onChange={(e) => setRole(e.target.value)}>
-                {INVITE_ROLES.map((r) => (
+                {INVITE_ROLES.filter((r) => offered || (r !== "NURSING_MANAGER" && r !== "MEDICAL_SUPERINTENDENT")).map((r) => (
                   <option key={r} value={r}>
                     {ROLE[r]}
                   </option>
@@ -128,8 +130,8 @@ export function InvitePanel({ s, invitation, isAdmin, onChanged }: { s: Staff; i
             )}
           </Field>
           {(role === "ROSTER_MANAGER" || role === "SUPERVISOR") && <WardSelect value={ward} onChange={setWard} allLabel="Every roster" label="Rosters they work on" />}
-          {(role === "FACILITY_ADMIN" || role === "ROSTER_MANAGER" || role === "SUPERVISOR") && (
-            <p className="text-sm text-[var(--muted)]">Facility admins, in-charges and supervisors must set up two-step sign-in before their first session.</p>
+          {(role === "FACILITY_ADMIN" || role === "NURSING_MANAGER" || role === "MEDICAL_SUPERINTENDENT" || role === "ROSTER_MANAGER" || role === "SUPERVISOR") && (
+            <p className="text-sm text-[var(--muted)]">Facility admins, the nursing manager, the medical superintendent, in-charges and supervisors must set up two-step sign-in before their first session.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Button disabled={busy} onClick={send}>

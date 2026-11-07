@@ -9,6 +9,7 @@
 // Accepting means reading and accepting the facility's current privacy
 // notice (its version is recorded), choosing a password and, for roles that
 // require it, setting up two-step sign-in before the first session starts.
+import { hasApprovalPosts } from "../lib/approvalMode.js";
 import { Router } from "express";
 import { z } from "zod";
 import type { Role } from "@healthflow/db";
@@ -25,11 +26,13 @@ import { allowRoles, caller, ADMIN_ROLES } from "../middleware/facilityAccess.js
 import { currentNotice } from "./facility/privacy.js";
 
 export const INVITATION_DAYS = 7;
-const INVITABLE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "FACILITY_ADMIN"] as const;
+const INVITABLE_ROLES = ["STAFF", "SUPERVISOR", "ROSTER_MANAGER", "NURSING_MANAGER", "MEDICAL_SUPERINTENDENT", "FACILITY_ADMIN"] as const;
 const ROLE_LABEL: Record<string, string> = {
   STAFF: "Staff",
   SUPERVISOR: "Supervisor",
   ROSTER_MANAGER: "Roster manager",
+  NURSING_MANAGER: "Nursing manager",
+  MEDICAL_SUPERINTENDENT: "Medical superintendent",
   FACILITY_ADMIN: "Facility admin",
 };
 
@@ -53,6 +56,9 @@ async function issueInvitation(
   role: (typeof INVITABLE_ROLES)[number],
   ward: string | null = null
 ): Promise<{ refuse: string } | { url: string; expiresAt: Date; emailed: boolean }> {
+  if ((role === "NURSING_MANAGER" || role === "MEDICAL_SUPERINTENDENT") && !hasApprovalPosts((await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { facilityType: true } })).facilityType)) {
+    return { refuse: "Only hospitals, polyclinics and teaching hospitals have a nursing manager and a medical superintendent." };
+  }
   if (s.userProfile) return { refuse: `${s.fullName} already has a HealthFlow account.` };
   if (!["ACTIVE", "ON_LEAVE", "PENDING"].includes(s.status)) return { refuse: `${s.fullName} is not a current staff member.` };
   if (!s.email) return { refuse: `Add an email address to ${s.fullName}'s record first. It is what they will sign in with.` };
