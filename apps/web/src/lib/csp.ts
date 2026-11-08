@@ -26,7 +26,7 @@ export function makeNonce(): string {
 export function policyFor(nonce: string): string {
   return [
     "default-src 'self'",
-    `script-src 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com`,
     `style-src 'self' 'nonce-${nonce}'`,
     "style-src-attr 'unsafe-inline'",
     "img-src 'self' data: blob:",
@@ -35,7 +35,7 @@ export function policyFor(nonce: string): string {
     "manifest-src 'self'",
     "worker-src 'self'",
     "media-src 'none'",
-    "frame-src 'none'",
+    "frame-src https://challenges.cloudflare.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
