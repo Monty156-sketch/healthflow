@@ -834,11 +834,15 @@ rostersRouter.post("/:id/status", allowRoles(...ROSTER_ROLES, ...NM_ROLES), asyn
   const move = MOVES[input.action];
   const roster = await prisma.roster.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { department: { select: { name: true } } } });
   if (!roster) return res.status(404).json({ error: "not_found" });
-  if (!move.roles.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "You cannot do that at this step." });
-  if (!move.from.includes(roster.status)) {
+  const { mode, eligible } = await approvalModeOf(who.facilityId);
+  // Health centres, clinics, CHPS compounds and offices have no nursing manager: the in-charge prepares the roster and publishes it, with no approval step.
+  const direct = !eligible && input.action === "publish";
+  const roles = direct ? ROSTER_ROLES : move.roles;
+  const from = direct ? ["GENERATED", "UNDER_REVIEW", "APPROVED"] : move.from;
+  if (!roles.includes(who.role)) return res.status(403).json({ error: "forbidden", message: "You cannot do that at this step." });
+  if (!from.includes(roster.status)) {
     return res.status(409).json({ error: "wrong_status", message: `The ${monthName(roster)} roster is ${STATUS_SAY[roster.status]}, so it cannot be ${move.word}.` });
   }
-  const { mode } = await approvalModeOf(who.facilityId);
   const full = mode === "full";
   const viaNm = mode !== "none";
   const isMs = who.position === "MEDICAL_SUPERINTENDENT";
