@@ -3,6 +3,7 @@
 // The frame around every signed-in screen: navigation (a sidebar on wide
 // screens, a menu on phones), who is signed in, the offline banner, and the
 // facility the screens are about. Also the gate: no user, back to sign in.
+import { motion } from "motion/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, ReactNode, useContext, useEffect, useState, useSyncExternalStore } from "react";
@@ -178,10 +179,17 @@ function ConsoleLinks({ onNavigate }: { onNavigate?: () => void }) {
                     href={h}
                     onClick={onNavigate}
                     aria-current={on ? "page" : undefined}
-                    className={`flex min-h-10 items-center rounded-[var(--radius)] px-3 text-[15px] ${on ? "bg-[var(--accent-soft)] font-medium text-[var(--accent-text)]" : "text-[var(--foreground)] hover:bg-[var(--accent-soft)]"}`}
-                    style={on ? { boxShadow: "inset 3px 0 0 var(--accent)" } : undefined}
+                    className={`relative flex min-h-10 items-center rounded-[var(--radius)] px-3 text-[15px] ${on ? "font-medium text-[var(--accent-text)]" : "text-[var(--foreground)] hover:bg-[var(--accent-soft)]"}`}
                   >
-                    {t.label}
+                    {on && (
+                      <motion.span
+                        layoutId={`console-nav-${onNavigate ? "m" : "d"}`}
+                        className="absolute inset-0 rounded-[var(--radius)] bg-[var(--accent-soft)]"
+                        style={{ boxShadow: "inset 3px 0 0 var(--accent)" }}
+                        transition={{ type: "spring", stiffness: 500, damping: 38 }}
+                      />
+                    )}
+                    <span className="relative">{t.label}</span>
                   </Link>
                 </li>
               );
