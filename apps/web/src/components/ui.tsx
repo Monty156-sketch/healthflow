@@ -215,7 +215,7 @@ export function Notice({
   return (
     <div
       role={tone === "block" ? "alert" : "status"}
-      className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)] py-3 pr-3 pl-4 text-sm"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-[12px] border border-[var(--border)] bg-[var(--surface)] py-3.5 pr-4 pl-5 text-[15px]"
       style={{ boxShadow: `inset 3px 0 0 ${stripe}` }}
     >
       <div>{children}</div>
@@ -294,9 +294,9 @@ export function PageHeader({
     );
   }
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4 sm:mb-7">
       <div className="max-w-[65ch]">
-        <h1 className="text-[22px] leading-tight font-semibold tracking-[-0.01em]">{title}</h1>
+        <h1 className="text-[26px] leading-tight font-semibold tracking-tight sm:text-3xl">{title}</h1>
         {description && <p className="mt-1 text-[var(--muted)]">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -316,9 +316,9 @@ export function Panel({
   actions?: ReactNode;
 }) {
   return (
-    <section className="rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
+    <section className="rounded-[12px] border border-[var(--border)] bg-[var(--surface)]">
       {(title || actions) && (
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-t-[var(--radius)] border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-t-[12px] border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 sm:px-5">
           <div>
             {title && <h2 className="text-base font-semibold">{title}</h2>}
             {description && <p className="text-sm text-[var(--muted)]">{description}</p>}
@@ -335,7 +335,7 @@ export function Panel({
 export function TableScroll({ children, label }: { children: ReactNode; label: string }) {
   return (
     <div
-      className="print-grid relative overflow-x-auto rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]"
+      className="print-grid relative overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--surface)]"
       role="region"
       aria-label={label}
       tabIndex={0}
@@ -345,12 +345,12 @@ export function TableScroll({ children, label }: { children: ReactNode; label: s
   );
 }
 
-export const TH = "border-b border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-left text-[13px] font-semibold text-[var(--muted)] whitespace-nowrap";
-export const TD = "border-b border-[var(--border)] px-3 py-3 align-top";
+export const TH = "border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-left text-[13px] font-semibold text-[var(--muted)] whitespace-nowrap";
+export const TD = "border-b border-[var(--border)] px-4 py-3.5 align-top";
 
 export function EmptyState({ title, children, action }: { title: string; children?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="rounded-[var(--radius)] border border-dashed border-[var(--border-strong)] px-5 py-10 text-center">
+    <div className="rounded-[14px] border border-dashed border-[var(--border-strong)] bg-[var(--surface)] px-5 py-12 text-center">
       <p className="font-medium">{title}</p>
       {children && <p className="mx-auto mt-1 max-w-[50ch] text-sm text-[var(--muted)]">{children}</p>}
       {action && <div className="mt-4">{action}</div>}

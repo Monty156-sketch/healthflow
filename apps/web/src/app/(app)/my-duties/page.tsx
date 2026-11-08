@@ -58,8 +58,8 @@ function Asked({ item, onDone }: { item: CoverWaiting; onDone: () => void }) {
     }
   }
   return (
-    <li className="px-4 py-3">
-      <p className="text-[15px]">
+    <li className="px-5 py-4">
+      <p className="text-[17px]">
         <span className="figures font-medium">{showDate(item.date)}</span>, {item.shift}
         {item.startTime ? <span className="text-[var(--muted)]"> from {item.startTime}</span> : null}
         {item.forName ? <span>, covering {item.forName}</span> : null}
@@ -116,7 +116,7 @@ export default function MyDutiesPage() {
       {asked.data && asked.data.cover.filter((c) => c.mine).length > 0 && (
         <section aria-labelledby="asked-h" className="mb-6">
           <h2 id="asked-h" className="mb-2 text-lg font-semibold">Asked to cover</h2>
-          <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--status-warning)] bg-[var(--surface)]">
+          <ul className="divide-y divide-[var(--border)] rounded-[14px] border border-[var(--status-warning)] bg-[var(--surface)]">
             {asked.data.cover.filter((c) => c.mine).map((c) => (
               <Asked key={c.assignmentId} item={c} onDone={() => { asked.reload(); reload(); }} />
             ))}
@@ -134,11 +134,11 @@ export default function MyDutiesPage() {
       ) : data.duties.length === 0 ? (
         <EmptyState title="No published duties">There is nothing published for you in {MONTHS[month - 1]} {year}.</EmptyState>
       ) : (
-        <ul className="divide-y divide-[var(--border)] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface)]">
+        <ul className="divide-y divide-[var(--border)] rounded-[14px] border border-[var(--border)] bg-[var(--surface)]">
           {data.duties.map((d) => (
-            <li key={d.assignmentId} className="px-4 py-3">
+            <li key={d.assignmentId} className="px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-[15px]">
+                <p className="text-[17px]">
                   <span className="figures font-medium">{showDate(d.date)}</span>, {d.shift.name}
                   {d.shift.startTime && d.shift.endTime ? <span className="text-[var(--muted)]"> {d.shift.startTime} to {d.shift.endTime}</span> : null}
                 </p>

@@ -272,6 +272,35 @@ function Brand({ area }: { area: Area }) {
   );
 }
 
+const TABS: { href: string; label: string; d: string }[] = [
+  { href: "/today", label: "Today", d: "M12 3v2M5 12H3m18 0h-2M6.3 6.3 4.9 4.9m12.8 1.4 1.4-1.4M8 16a4 4 0 1 1 8 0H8Zm-3 3h14" },
+  { href: "/my-duties", label: "Duties", d: "M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" },
+  { href: "/leave", label: "Leave", d: "M4 20c0-8 6-14 16-16-1 10-7 16-15 16m-1 0c2-5 5-8 9-10" },
+  { href: "/swaps", label: "Swaps", d: "M7 4 3 8l4 4M3 8h14m0 4 4 4-4 4m4-4H7" },
+];
+
+/** Phones only, staff only: the four things staff do most, one tap away. */
+function StaffTabBar() {
+  const pathname = usePathname();
+  return (
+    <nav aria-label="Quick links" className="no-print fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <ul className="mx-auto grid max-w-md grid-cols-4">
+        {TABS.map((t) => {
+          const on = pathname === t.href || pathname.startsWith(`${t.href}/`);
+          return (
+            <li key={t.href}>
+              <Link href={t.href} aria-current={on ? "page" : undefined} className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-[12px] font-medium ${on ? "text-[var(--accent-text)]" : "text-[var(--muted)]"}`}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={on ? 2 : 1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={t.d} /></svg>
+                {t.label}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
 type Area = "facility" | "platform" | "district";
 
 function AccountBlock({
@@ -534,7 +563,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         </header>
 
-        <main id="main" className="min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-5">
+        <main id="main" className={`min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-5 ${role === "STAFF" ? "pb-24 lg:pb-5" : ""}`}>
           <div className="mx-auto max-w-[72rem]">
             {ctx && (
               <div className="no-print mb-3 hidden justify-end lg:flex">
@@ -559,6 +588,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </main>
       </div>
+      {ctx && role === "STAFF" && <StaffTabBar />}
     </FacilityContext.Provider>
   );
 }

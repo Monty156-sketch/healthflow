@@ -278,7 +278,7 @@ export default function LeavePage() {
             <thead>
               <tr className="text-sm text-[var(--muted)]">
                 {["Person", "Type", "Dates", "Days", "Status", ""].map((h, i) => (
-                  <th key={i} scope="col" className="border-b border-[var(--border-strong)] px-3 py-2 font-medium">
+                  <th key={i} scope="col" className="border-b border-[var(--border-strong)] px-4 py-3.5 font-medium">
                     {h || <span className="sr-only">Actions</span>}
                   </th>
                 ))}
@@ -287,16 +287,16 @@ export default function LeavePage() {
             <tbody>
               {data.requests.map((r) => (
                 <tr key={r.id}>
-                  <th scope="row" className="border-b border-[var(--border)] px-3 py-2 font-medium">
+                  <th scope="row" className="border-b border-[var(--border)] px-4 py-3.5 font-medium">
                     {r.staffName}
                   </th>
-                  <td className="border-b border-[var(--border)] px-3 py-2">{r.typeName}</td>
-                  <td className="border-b border-[var(--border)] px-3 py-2">{span(r)}</td>
-                  <td className="figures border-b border-[var(--border)] px-3 py-2">{r.days}</td>
-                  <td className="border-b border-[var(--border)] px-3 py-2">
+                  <td className="border-b border-[var(--border)] px-4 py-3.5">{r.typeName}</td>
+                  <td className="border-b border-[var(--border)] px-4 py-3.5">{span(r)}</td>
+                  <td className="figures border-b border-[var(--border)] px-4 py-3.5">{r.days}</td>
+                  <td className="border-b border-[var(--border)] px-4 py-3.5">
                     <StatusBadge tone={STATUS[r.status].tone}>{STATUS[r.status].word}</StatusBadge>
                   </td>
-                  <td className="border-b border-[var(--border)] px-3 py-1 text-right">
+                  <td className="border-b border-[var(--border)] px-4 py-2 text-right">
                     <Button variant="secondary" aria-label={`Open ${r.staffName}, ${r.typeName.toLowerCase()} leave, ${span(r)}`} onClick={() => setSelected(r.id)}>
                       Open
                     </Button>

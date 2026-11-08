@@ -45,7 +45,7 @@
   --status-block-soft: #f6e7e7;
   --status-warning-soft: #f7efdf;
 
-  --radius: 7px; /* small and consistent, never pill-shaped */
+  --radius: 10px; /* soft and consistent, never pill-shaped */
   --focus: 0 0 0 2px var(--background), 0 0 0 4px var(--accent);
 }
 
