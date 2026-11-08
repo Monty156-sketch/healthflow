@@ -17,7 +17,7 @@
   // Public, non-secret settings. PROXY_SHARED_SECRET is NOT here: it is set
   // as a secret in the Cloudflare dashboard so it never lands in git.
   "vars": {
-    "API_ORIGIN": "https://healthflow-api-0k0j.onrender.com"
+    "API_ORIGIN": "https://healthflow-api-eu.onrender.com"
   },
 
   "observability": {
