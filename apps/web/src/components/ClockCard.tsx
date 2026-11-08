@@ -11,7 +11,7 @@ import { Button, Notice } from "@/components/ui";
 import { bestPosition } from "@/lib/position";
 import { announceClock, clockOutReason, clockTime, hoursAndMinutes, type ClockView } from "@/components/clockState";
 
-export function ClockCard() {
+export function ClockCard({ compact = false }: { compact?: boolean }) {
   const { data, setData } = useResource<ClockView>("/api/facility/me/clock");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -54,6 +54,29 @@ export function ClockCard() {
   const since = isIn && view.lastAt ? `Since ${clockTime(view.lastAt)}, ${hoursAndMinutes(view.lastAt, now)} so far.` : "Do this when you arrive at the facility.";
   return (
     <div className="mb-6">
+      {compact ? (
+        <section className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true" className={`size-2.5 rounded-full ${isIn ? "bg-[var(--status-success)]" : "bg-[var(--border-strong)]"}`} />
+              <div>
+                <h2 className="text-base font-semibold">{isIn ? "You are clocked in" : "Clock in"}</h2>
+                <p className="text-sm text-[var(--muted)]">{since}</p>
+              </div>
+            </div>
+            <Button className="min-h-11 w-full sm:w-auto sm:min-w-40" disabled={busy} variant={isIn ? "secondary" : "primary"} onClick={go}>
+              {busy ? (sure !== null ? `Checking… within ${sure} m` : "Checking where you are…") : isIn ? "Clock out" : "Clock in"}
+            </Button>
+          </div>
+          {(done || problem || reason) && (
+            <div className="mt-3 space-y-2">
+              {done && <Notice tone="success">{done}</Notice>}
+              {problem && <Notice tone="warning">{problem}</Notice>}
+              {reason && <Notice tone="warning">{reason}</Notice>}
+            </div>
+          )}
+        </section>
+      ) : (
       <section className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
         <div className="flex items-center gap-2">
           <span aria-hidden="true" className={`size-2.5 rounded-full ${isIn ? "bg-[var(--status-success)]" : "bg-[var(--border-strong)]"}`} />
@@ -70,6 +93,7 @@ export function ClockCard() {
           <p className="text-sm text-[var(--muted)]">Your location is checked once and is not kept.</p>
         </div>
       </section>
+      )}
     </div>
   );
 }
