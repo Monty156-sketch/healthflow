@@ -30,6 +30,22 @@ describe("approval chain", () => {
     expect(invite.status).toBeGreaterThanOrEqual(400);
   });
 
+  it("lets the in-charge of a health centre publish a roster straight away, with no approval step", async () => {
+    const facility = await makeFacility("Direct Health Centre");
+    const { user: inCharge } = await makeUser({ role: "ROSTER_MANAGER", facilityId: facility.id, withStaff: { fullName: "Hawa In-charge" } });
+    const api = as(inCharge);
+    const roster = (await api.post("/api/facility/rosters", { year: 2026, month: 12 })).body.roster;
+    await prisma.roster.update({ where: { id: roster.id }, data: { status: "GENERATED" } });
+    const done = await move(api, roster.id, "publish");
+    expect(done.status).toBe(200);
+    expect(done.body.roster.status).toBe("PUBLISHED");
+  });
+
+  it("still makes a hospital roster go through approval before it is published", async () => {
+    const { api, id } = await setup();
+    expect((await move(api, id, "publish")).status).toBe(409);
+  });
+
   it("cannot be switched on at a hospital until a nursing manager and a medical superintendent exist", async () => {
     const facility = await makeFacility("Lonely Hospital");
     await prisma.facility.update({ where: { id: facility.id }, data: { facilityType: "HOSPITAL" } });

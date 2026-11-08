@@ -7,7 +7,7 @@ import { ApprovalQueue } from "@/components/ApprovalQueue";
 import { useFacility, useOptionalFacility } from "@/components/AppShell";
 import { useResource } from "@/lib/useApi";
 import { FACILITY_TYPE, MONTHS, showDate, showDateTime } from "@/lib/format";
-import { Loading, LoadError, PageHeader, Panel, StatusBadge } from "@/components/ui";
+import { Loading, LoadError, Panel, StatusBadge } from "@/components/ui";
 
 interface AuditEntry {
   id: string;
@@ -155,7 +155,7 @@ const ROSTER_STATUS: Record<string, { label: string; tone: "neutral" | "warning"
 
 function Kpi({ label, value, note, href }: { label: string; value: string | number; note: string; href?: string }) {
   const body = (
-    <div className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4">
+    <div className="h-full rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
       <p className="text-[13px] font-medium text-[var(--muted)]">{label}</p>
       <p className="figures mt-1 text-3xl font-semibold leading-tight">{value}</p>
       <p className="mt-1 text-[13px] text-[var(--muted)]">{note}</p>
@@ -478,18 +478,27 @@ export default function DashboardPage() {
   return <FacilityDashboard />;
 }
 
+/** Ghana is on UTC all year, so the hour is read in UTC like every other time on screen. */
+const greeting = () => {
+  const h = new Date().getUTCHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+};
+
 function FacilityDashboard() {
   const { facility, isAdmin, me } = useFacility();
+  const first = me.displayName.replace(/^(dr|mr|mrs|ms|miss|nurse|midwife|sister|rev|prof)\.?\s+/i, "").split(/\s+/)[0];
   const place = [facility.subDistrict, facility.region].filter(Boolean).join(", ");
   const nm = me.role === "NURSING_MANAGER";
   const ms = me.position === "MEDICAL_SUPERINTENDENT";
   return (
     <>
-      <PageHeader
-        title={nm ? "Nursing manager dashboard" : ms ? "Medical superintendent dashboard" : "Dashboard"}
-        description={`${facility.name}. ${FACILITY_TYPE[facility.facilityType] ?? "Facility"}${place ? `, ${place}` : ""}`}
-      />
-      <ClockCard />
+      <header className="mb-6">
+        <h1 className="text-3xl font-semibold tracking-tight">{greeting()}{first ? `, ${first}` : ""}</h1>
+        <p className="mt-1 text-[var(--muted)]">
+          {nm ? "Nursing manager" : ms ? "Medical superintendent" : "Dashboard"} at {facility.name}. {FACILITY_TYPE[facility.facilityType] ?? "Facility"}{place ? `, ${place}` : ""}
+        </p>
+      </header>
+      <ClockCard compact />
       {facility.approval && facility.approval.mode !== "none" && (nm || isAdmin) && (
         <div className="mb-6">
           <ApprovalQueue canSwitch={false} compact />

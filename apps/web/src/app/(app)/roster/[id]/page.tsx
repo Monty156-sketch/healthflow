@@ -364,7 +364,15 @@ export default function RosterPage() {
     reopen: "Reopening lets duties be changed again. Approve it again afterwards.",
     archive: "Archiving closes the month. It stays readable.",
   };
-  const available = chain && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status)
+  // No nursing manager here (health centre, clinic, CHPS compound, office): the in-charge publishes straight away.
+  const direct = facility.facility.approval ? !facility.facility.approval.eligible : false;
+  const DIRECT_ACTIONS: typeof ACTIONS = {
+    GENERATED: [{ label: "Publish", confirm: "publish" }],
+    UNDER_REVIEW: [{ label: "Publish", confirm: "publish" }],
+    APPROVED: [{ label: "Publish", confirm: "publish" }, { label: "Reopen for changes", confirm: "reopen", admin: true, quiet: true }],
+    PUBLISHED: ACTIONS.PUBLISHED,
+  };
+  const available = direct ? (DIRECT_ACTIONS[roster.status] ?? []).filter((a) => canRoster && (!a.admin || isAdmin)) : chain && ["UNDER_REVIEW", "WITH_ADMINISTRATOR", "WITH_SUPERINTENDENT"].includes(roster.status)
     ? (!fullChain && (roster.status === "WITH_ADMINISTRATOR" || roster.status === "WITH_SUPERINTENDENT")
       ? [{ label: "Publish", confirm: "publish", who: "admin" as const }, { label: "Return for changes", confirm: "return", quiet: true, who: "admin" as const }]
       : CHAIN_ACTIONS[roster.status] ?? []).filter((a) => (a.who === "nm" ? isNm : a.who === "ms" ? isMs : isAdmin))
