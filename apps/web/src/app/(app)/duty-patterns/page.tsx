@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { EmbeddedPage, PageHeader } from "@/components/ui";
 import { RotationPanel } from "@/components/RotationPanel";
+import { WeekdayWorkers } from "@/components/WeekdayWorkers";
 import ShiftsPage from "../shifts/page";
 import DutyCyclesPage from "../duty-cycles/page";
 import RulesPage from "../rules/page";
@@ -10,6 +11,7 @@ import RulesPage from "../rules/page";
 const TABS = [
   { id: "shifts", label: "Shifts", summary: "The duties people work: when they start and end, how long they are, and how many people each needs." },
   { id: "cycles", label: "Duty cycles", summary: "How many duties in a row, how many days off after them, and which shift staff come back on after a rest." },
+  { id: "weekdays", label: "Weekday workers", summary: "Departments that work Monday to Friday and rest on Saturday, Sunday and public holidays, such as public health." },
   { id: "rotation", label: "Rotation order", summary: "The order shifts follow one another after a rest." },
   { id: "limits", label: "Limits", summary: "The checks every roster is held against. Statutory limits are marked and cannot be changed." },
 ] as const;
@@ -66,6 +68,7 @@ export default function DutyPatternsPage() {
         <EmbeddedPage.Provider value={true}>
           {tab === "shifts" && <ShiftsPage />}
           {tab === "cycles" && <DutyCyclesPage />}
+          {tab === "weekdays" && <WeekdayWorkers />}
           {tab === "rotation" && <RotationPanel />}
           {tab === "limits" && <RulesPage />}
         </EmbeddedPage.Provider>
