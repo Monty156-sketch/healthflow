@@ -1,6 +1,7 @@
 // Signing in and out, sessions, two-step sign-in enrolment at sign-in, and
 // password reset. The session cookie is scoped to /api/auth, which is why
 // everything that needs it lives here.
+import { humanCheckOn, humanCheckSiteKey, passedHumanCheck } from "../lib/humanCheck.js";
 import { noteLockout, noteSignInFailure } from "../lib/securityAlerts.js";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
@@ -149,6 +150,8 @@ const loginSchema = z.object({
   recoveryCode: z.string().trim().optional(),
   /** Which sign-in page this came from. When given, the account must belong there. */
   audience: z.enum(["facility", "district", "platform"]).optional(),
+  /** The answer to the "verify you are human" box, asked of staff accounts only. */
+  humanToken: z.string().max(4096).optional(),
 });
 
 const DOOR: Record<string, string> = { facility: "/login", district: "/district/login", platform: "/platform/login" };
@@ -218,6 +221,12 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   // Each kind of account has its own door. This is said only after the password was right.
   if (audience && doorFor(user.role) !== audience) {
     return res.status(403).json({ error: "wrong_door", goTo: DOOR[doorFor(user.role)] });
+  }
+
+  // Staff have no authenticator code, so they prove they are a person instead. Asked only once the password was right.
+  if (!challenge && user.role === "STAFF" && humanCheckOn()) {
+    if (!parsed.data.humanToken) return res.status(400).json({ error: "human_check_required", siteKey: humanCheckSiteKey() });
+    if (!(await passedHumanCheck(parsed.data.humanToken, req.ip))) return res.status(400).json({ error: "human_check_failed", siteKey: humanCheckSiteKey() });
   }
 
   if (user.mfaEnabled) {

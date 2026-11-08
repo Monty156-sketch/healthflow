@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, type Session } from "@/lib/api";
 import { Button, Card, ErrorText, Field, Input, Notice } from "@/components/ui";
+import { HumanCheck } from "@/components/HumanCheck";
 import { AuthenticatorSetup, RecoveryCodes, type PendingAuthenticator } from "@/components/TwoStep";
 
 const NOTICES: Record<string, { tone: "neutral" | "success"; text: string }> = {
@@ -61,6 +62,10 @@ function messageFor(err: unknown): string {
   if (!(err instanceof ApiError)) return "No connection. Check your internet and try again.";
   if (err.status >= 500) return "The server had a problem signing you in. Try again in a minute.";
   switch (err.message) {
+    case "human_check_required":
+      return "Please tick the box to show you are a person, then continue.";
+    case "human_check_failed":
+      return "The check did not pass. Tick the box again and continue.";
     case "challenge_expired":
       return "Your sign-in timed out. Enter your email and password again.";
     case "too_many_attempts":
@@ -128,6 +133,10 @@ export function SignInScreen({ audience }: { audience: Audience }) {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Staff are asked to prove they are a person; the box appears once the server asks.
+  const [siteKey, setSiteKey] = useState<string | null>(null);
+  const [humanToken, setHumanToken] = useState<string | null>(null);
+  const [humanRound, setHumanRound] = useState(0);
 
   // Back from the authenticator app after the page reloaded: pick up at the code step.
   useEffect(() => {
@@ -159,7 +168,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
     try {
       const codes = useRecovery ? { recoveryCode } : { totp };
       const mfa = stage === "code" ? (challenge ? { ...codes, challenge } : codes) : undefined;
-      const result = await login(email, password, mfa, audience);
+      const result = await login(email, password, mfa, audience, stage === "credentials" ? (humanToken ?? undefined) : undefined);
       if (result.mfaRequired) {
         if (result.challenge) { setChallenge(result.challenge); keepChallenge({ challenge: result.challenge, email, audience }); }
         setStage("code");
@@ -176,6 +185,10 @@ export function SignInScreen({ audience }: { audience: Audience }) {
           setError(messageFor(e2));
         }
       } else {
+        const asked = err instanceof ApiError && (err.message === "human_check_required" || err.message === "human_check_failed") ? (err.body as { siteKey?: string } | undefined)?.siteKey : undefined;
+        if (asked) setSiteKey(asked);
+        // A used answer cannot be sent twice, so the box starts again after any refusal.
+        if (asked || siteKey) { setHumanToken(null); setHumanRound((n) => n + 1); }
         setError(messageFor(err));
         if (err instanceof ApiError && (err.message === "challenge_expired" || err.message === "account_locked")) {
           keepChallenge(null);
@@ -279,6 +292,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
                       <Input {...a} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
                     )}
                   </Field>
+                  {siteKey && <HumanCheck key={humanRound} siteKey={siteKey} onToken={setHumanToken} />}
                 </>
               )}
 
@@ -309,7 +323,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
 
               {error && <ErrorText>{error}</ErrorText>}
 
-              <Button type="submit" className="w-full" disabled={submitting}>
+              <Button type="submit" className="w-full" disabled={submitting || (stage === "credentials" && Boolean(siteKey) && !humanToken)}>
                 {submitting ? "Signing in…" : stage === "code" ? "Verify" : "Continue"}
               </Button>
             </form>

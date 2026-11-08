@@ -21,7 +21,8 @@ interface AuthContextValue {
     email: string,
     password: string,
     mfa?: { totp?: string; recoveryCode?: string; challenge?: string },
-    audience?: "facility" | "district" | "platform"
+    audience?: "facility" | "district" | "platform",
+    humanToken?: string
   ) => Promise<{ mfaRequired: boolean; challenge?: string }>;
   logout: () => Promise<void>;
   adoptSession: (session: Session) => void;
@@ -163,7 +164,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     email: string,
     password: string,
     mfa?: { totp?: string; recoveryCode?: string; challenge?: string },
-    audience?: "facility" | "district" | "platform"
+    audience?: "facility" | "district" | "platform",
+    humanToken?: string
   ) {
     const res = await api.post<{ mfaRequired: true; challenge?: string } | Session>("/api/auth/login", {
       email,
@@ -171,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...(mfa?.challenge ? {} : { password }),
       ...mfa,
       ...(audience ? { audience } : {}),
+      ...(humanToken ? { humanToken } : {}),
     });
 
     if ("mfaRequired" in res) return { mfaRequired: true, challenge: res.challenge };
