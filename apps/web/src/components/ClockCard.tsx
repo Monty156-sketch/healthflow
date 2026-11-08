@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
-import { Button, Notice, Panel } from "@/components/ui";
+import { Button, Notice } from "@/components/ui";
 import { bestPosition } from "@/lib/position";
 import { announceClock, clockOutReason, clockTime, hoursAndMinutes, type ClockView } from "@/components/clockState";
 
@@ -54,17 +54,22 @@ export function ClockCard() {
   const since = isIn && view.lastAt ? `Since ${clockTime(view.lastAt)}, ${hoursAndMinutes(view.lastAt, now)} so far.` : "Do this when you arrive at the facility.";
   return (
     <div className="mb-6">
-      <Panel title={isIn ? "You are clocked in" : "Clock in"} description={since}>
-        <div className="space-y-3">
+      <section className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true" className={`size-2.5 rounded-full ${isIn ? "bg-[var(--status-success)]" : "bg-[var(--border-strong)]"}`} />
+          <h2 className="text-base font-semibold">{isIn ? "You are clocked in" : "Clock in"}</h2>
+        </div>
+        <p className="mt-1 text-[15px] text-[var(--muted)]">{since}</p>
+        <div className="mt-4 space-y-3">
           {done && <Notice tone="success">{done}</Notice>}
           {problem && <Notice tone="warning">{problem}</Notice>}
           {reason && <Notice tone="warning">{reason}</Notice>}
-          <Button className="min-h-12 w-full sm:w-auto" disabled={busy} variant={isIn ? "secondary" : "primary"} onClick={go}>
+          <Button className="min-h-14 w-full text-lg" disabled={busy} variant={isIn ? "secondary" : "primary"} onClick={go}>
             {busy ? (sure !== null ? `Checking where you are… within ${sure} m` : "Checking where you are…") : isIn ? "Clock out" : "Clock in"}
           </Button>
           <p className="text-sm text-[var(--muted)]">Your location is checked once and is not kept.</p>
         </div>
-      </Panel>
+      </section>
     </div>
   );
 }

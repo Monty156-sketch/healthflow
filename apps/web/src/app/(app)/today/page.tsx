@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useResource } from "@/lib/useApi";
+import { useOptionalFacility } from "@/components/AppShell";
 import { SwapAsk } from "@/components/SwapAsk";
 import { ClockCard } from "@/components/ClockCard";
-import { ButtonLink, Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel } from "@/components/ui";
+import { ButtonLink, Button, EmptyState, Loading, LoadError, Notice, PageHeader } from "@/components/ui";
 
 interface Today {
   linked: boolean;
@@ -25,7 +26,15 @@ const until = (m: number) => {
 };
 const SWAP_WORD: Record<string, string> = { REQUESTED: "waiting for a reply", ACCEPTED: "accepted, waiting for approval" };
 
+/** Ghana is on UTC all year, so the hour is read in UTC like every other time on screen. */
+const greeting = () => {
+  const h = new Date().getUTCHours();
+  return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+};
+const firstName = (full?: string) => (full ?? "").replace(/^(dr|mr|mrs|ms|miss|nurse|midwife)\.?\s+/i, "").split(/\s+/)[0];
+
 export default function TodayPage() {
+  const fac = useOptionalFacility();
   const { data, error, reload } = useResource<Today>("/api/facility/me/today");
   const [asking, setAsking] = useState(false);
   const [sent, setSent] = useState(false);
@@ -35,25 +44,33 @@ export default function TodayPage() {
   const n = data.next;
   return (
     <>
-      <PageHeader title="Today" />
+      <header className="mb-5">
+        <h1 className="text-3xl font-semibold tracking-tight">{greeting()}{firstName(fac?.me.displayName) ? `, ${firstName(fac?.me.displayName)}` : ""}</h1>
+        <p className="mt-1 text-lg text-[var(--muted)]">Welcome to HealthFlow. Here is your day.</p>
+      </header>
       <ClockCard />
-      <section aria-labelledby="next-duty" className="mb-6 rounded-[var(--radius)] border-2 border-[var(--foreground)] bg-[var(--surface)] p-5">
-        <h2 id="next-duty" className="text-base font-medium text-[var(--muted)]">{n?.onDutyNow ? "You are on duty now" : "Your next duty"}</h2>
+      <section aria-labelledby="next-duty" className="mb-6 overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--surface-2)] px-5 py-3">
+          <span aria-hidden="true" className={`size-2.5 rounded-full ${n?.onDutyNow ? "bg-[var(--status-success)]" : "bg-[var(--accent)]"}`} />
+          <h2 id="next-duty" className="text-[15px] font-medium text-[var(--muted)]">{n?.onDutyNow ? "You are on duty now" : "Your next duty"}</h2>
+        </div>
         {n ? (
-          <>
-            <p className="mt-1 text-4xl leading-tight font-bold">{n.shift}</p>
-            <p className="figures mt-1 text-2xl font-semibold">{n.start} to {n.end}</p>
-            <p className="mt-1 text-xl">{n.label}</p>
-            <p className="mt-2 text-xl font-semibold">{n.onDutyNow ? `${until(n.minutesLeft ?? 0).replace("in ", "")} left` : `Starts ${until(n.minutesUntil)}`}</p>
+          <div className="px-5 py-5 sm:px-6">
+            <p className="text-[2.5rem] leading-none font-semibold tracking-tight">{n.shift}</p>
+            <p className="figures mt-3 text-2xl font-medium text-[var(--accent-text)]">{n.start} <span className="text-[var(--muted)]">to</span> {n.end}</p>
+            <p className="mt-1 text-lg text-[var(--muted)]">{n.label}</p>
+            <p className="mt-4 inline-block rounded-full bg-[var(--accent-soft)] px-4 py-1.5 text-base font-medium text-[var(--accent-text)]">
+              {n.onDutyNow ? `${until(n.minutesLeft ?? 0).replace("in ", "")} left` : `Starts ${until(n.minutesUntil)}`}
+            </p>
             {!n.onDutyNow && (
-              <div className="mt-4">
-                <Button onClick={() => setAsking(true)} className="min-h-12 w-full sm:w-auto">Request a swap</Button>
+              <div className="mt-5">
+                <Button variant="secondary" onClick={() => setAsking(true)} className="min-h-12 w-full sm:w-auto">Request a swap</Button>
               </div>
             )}
             {sent && <p className="mt-3 text-[15px]">Your swap request was sent.</p>}
-          </>
+          </div>
         ) : (
-          <p className="mt-2 text-xl">Nothing is rostered for you yet.</p>
+          <p className="px-5 py-6 text-lg text-[var(--muted)]">Nothing is rostered for you yet.</p>
         )}
       </section>
       {asking && n && (
@@ -74,32 +91,42 @@ export default function TodayPage() {
           {data.cycle.nextOffDays.length > 0 && `Your next off days are ${data.cycle.nextOffDays.join(" and ")}.`}
         </p>
       )}
-      <Panel title="The next seven days">
+      <section aria-labelledby="week-h" className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
+        <h2 id="week-h" className="mb-3 text-base font-semibold">The next seven days</h2>
         {data.week && data.week.length > 0 ? (
           <ul className="divide-y divide-[var(--border)]">
             {data.week.map((d) => (
-              <li key={d.id} className="flex flex-wrap items-baseline justify-between gap-x-4 py-3 text-lg">
-                <span className="font-medium">{d.label}</span>
-                <span className="figures">{d.shift}, {d.start} to {d.end}</span>
+              <li key={d.id} className="flex items-center justify-between gap-4 py-3.5">
+                <span className="text-[17px] font-medium">{d.label}</span>
+                <span className="text-right">
+                  <span className="block text-[17px]">{d.shift}</span>
+                  <span className="figures block text-sm text-[var(--muted)]">{d.start} to {d.end}</span>
+                </span>
               </li>
             ))}
           </ul>
         ) : (
           <EmptyState title="No duties in the next seven days" />
         )}
-      </Panel>
+      </section>
       {data.leave && data.leave.length > 0 && (
         <div className="mt-6">
-          <Panel title="Your leave this year">
-            <ul className="text-lg">
+          <section aria-labelledby="leave-h" className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-5">
+            <h2 id="leave-h" className="mb-3 text-base font-semibold">Your leave this year</h2>
+            <ul className="space-y-4">
               {data.leave.map((l) => (
-                <li key={l.type} className="flex justify-between gap-4 py-1">
-                  <span>{l.type}</span>
-                  <span className="figures">{l.remaining} of {l.entitled} days left</span>
+                <li key={l.type}>
+                  <div className="flex justify-between gap-4 text-[17px]">
+                    <span>{l.type}</span>
+                    <span className="figures text-[var(--muted)]">{l.remaining} of {l.entitled} days left</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--surface-2)] ring-1 ring-[var(--border)]" role="img" aria-label={`${l.remaining} of ${l.entitled} days left`}>
+                    <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500" style={{ width: `${l.entitled > 0 ? Math.max(0, Math.min(100, (l.remaining / l.entitled) * 100)) : 0}%` }} />
+                  </div>
                 </li>
               ))}
             </ul>
-          </Panel>
+          </section>
         </div>
       )}
       <div className="mt-6 flex flex-wrap gap-3">
