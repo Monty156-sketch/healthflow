@@ -27,6 +27,3 @@ jobs:
         # does not pay for a cold Worker.
         if: ${{ vars.WEB_URL != '' }}
         run: curl -fsS -o /dev/null "${{ vars.WEB_URL }}/login" || echo "Web ping failed, not failing the job"
-      - name: Ping EduTrack GH API
-        # Keeps the EduTrack GH API (Render free tier) awake too. Public URL, not a secret.
-        run: curl -fsS -m 60 "https://edutrack-api-9ql1.onrender.com/healthz" || echo "EduTrack ping failed (service may be mid-deploy) — not failing the job"
