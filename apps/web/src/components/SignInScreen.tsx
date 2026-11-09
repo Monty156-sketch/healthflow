@@ -133,6 +133,16 @@ export function SignInScreen({ audience }: { audience: Audience }) {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // After a few seconds of waiting, say why: the server is probably waking up after a quiet spell.
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!submitting) return;
+    const t = setTimeout(() => setSlow(true), 5_000);
+    return () => {
+      clearTimeout(t);
+      setSlow(false);
+    };
+  }, [submitting]);
   // Staff are asked to prove they are a person; the box appears once the server asks.
   const [siteKey, setSiteKey] = useState<string | null>(null);
   const [humanToken, setHumanToken] = useState<string | null>(null);
@@ -326,6 +336,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
               <Button type="submit" className="w-full" disabled={submitting || (stage === "credentials" && Boolean(siteKey) && !humanToken)}>
                 {submitting ? "Signing in…" : stage === "code" ? "Verify" : "Continue"}
               </Button>
+              {slow && <p role="status" className="text-center text-sm text-[var(--muted)]">The server is waking up after a quiet spell. This can take up to a minute. Please wait.</p>}
             </form>
 
             <div className="mt-4 text-sm">

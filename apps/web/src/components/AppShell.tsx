@@ -339,7 +339,7 @@ function AccountBlock({
             current ? "bg-[var(--accent-soft)]" : ""
           }`}
         >
-          My account
+          My account and password
         </Link>
         <Button variant="quiet" onClick={onSignOut}>
           Sign out
