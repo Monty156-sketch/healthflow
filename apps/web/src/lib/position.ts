@@ -23,18 +23,24 @@ export function bestPosition(opts: { maxMs?: number; goodEnoughM?: number; onUpd
       else reject(err ?? new Error("no_position"));
     };
     const timer = setTimeout(() => finish(), maxMs);
-    watch = navigator.geolocation.watchPosition(
-      (p) => {
-        const fix = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
-        if (!best || fix.accuracy < best.accuracy) {
-          best = fix;
-          onUpdate?.(fix);
-        }
-        if (fix.accuracy <= goodEnoughM) finish();
-      },
-      (e) => { if (!best) finish(e); },
-      { enableHighAccuracy: true, timeout: maxMs, maximumAge: 0 }
-    );
+    const take = (p: GeolocationPosition) => {
+      const fix = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy };
+      if (!best || fix.accuracy < best.accuracy) {
+        best = fix;
+        onUpdate?.(fix);
+      }
+      if (fix.accuracy <= goodEnoughM) finish();
+    };
+    // Indoors the GPS often gives nothing, so a rough reading from wifi and the mobile network is asked for at the same time.
+    // If both fail, the first error is reported; if either succeeds, the best reading wins.
+    let failed = 0;
+    let firstError: unknown;
+    const failedOne = (e: unknown) => {
+      firstError ??= e;
+      if (++failed >= 2 && !best) finish(firstError);
+    };
+    navigator.geolocation.getCurrentPosition(take, failedOne, { enableHighAccuracy: false, timeout: maxMs, maximumAge: 30_000 });
+    watch = navigator.geolocation.watchPosition(take, failedOne, { enableHighAccuracy: true, timeout: maxMs, maximumAge: 0 });
   });
 }
 

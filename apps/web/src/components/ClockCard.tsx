@@ -44,7 +44,11 @@ export function ClockCard({ compact = false }: { compact?: boolean }) {
     } catch (e) {
       if (e instanceof ApiError) setProblem((e.body as { message?: string } | undefined)?.message ?? "It could not be saved. Try again.");
       else if (e instanceof Error && e.message === "unsupported") setProblem("This phone cannot share its location.");
-      else setProblem("Your location could not be read. Allow location for this site and try again.");
+      else if (typeof e === "object" && e !== null && "code" in e && (e as { code: number }).code === 1)
+        setProblem("Location is turned off for this site. Allow it in your browser's site settings (and turn on your phone's location), then try again.");
+      else if (typeof e === "object" && e !== null && "code" in e)
+        setProblem("Your phone could not find its position. Go near a window or outside, make sure location is on, and try again.");
+      else setProblem("Could not reach HealthFlow. Check your internet and try again.");
     } finally {
       setBusy(false);
     }
