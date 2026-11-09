@@ -367,7 +367,8 @@ meRouter.post("/clock", async (req, res) => {
           .create({
             data: {
               facilityId: who.facilityId, staffId: who.staffId, rosterId: duty.rosterId, rosterAssignmentId: duty.id, dutyDate: startedYesterday ? new Date(today.getTime() - DAY) : today, shiftId: duty.shiftId,
-              status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 15 ? late : null, recordedBy: "Clocked in", note: "Clocked in at the facility.",
+              status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 0 ? late : null, minutesEarly: start !== null && !startedYesterday && nowMin < start ? start - nowMin : null,
+              clockedAt: at, source: "CLOCK", recordedBy: "Clocked in", note: "Clocked in at the facility.",
             },
           })
       }

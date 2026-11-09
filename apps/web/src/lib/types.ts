@@ -296,7 +296,7 @@ export interface AttendanceDay {
       isCover: boolean;
       coverForName: string | null;
       coverState: string | null;
-      record: { status: AttendanceStatus | string; minutesLate: number | null; note: string | null; needsReview: boolean; corrected: boolean; originalStatus: string | null } | null;
+      record: { id: string; status: AttendanceStatus | string; minutesLate: number | null; minutesEarly: number | null; clockedAt: string | null; source: string | null; note: string | null; needsReview: boolean; corrected: boolean; originalStatus: string | null } | null;
     }[];
   }[];
   covered: { absentName: string; coverName: string }[];
@@ -490,4 +490,26 @@ export interface FairnessReport {
   manager: boolean;
   cadres?: { cadre: string; means: FairMeans; sentence: string | null; people: ({ staffId: string; name: string; flags?: string[] } & FairMeans)[] }[];
   mine?: { cadre: string; means: FairMeans; me: FairMeans; peers: number } | null;
+}
+
+export interface AttendanceMonthItem {
+  id: string;
+  date: string;
+  name: string;
+  status: string;
+  minutesLate: number | null;
+  minutesEarly: number | null;
+  clockedAt: string | null;
+  source: string | null;
+  note: string | null;
+  needsReview: boolean;
+  corrected: boolean;
+}
+
+export interface AttendanceMonthCheck {
+  month: string;
+  counts: { total: number; clock: number; book: number; auto: number };
+  toCheck: AttendanceMonthItem[];
+  fromBook: AttendanceMonthItem[];
+  approved: { by: string; at: string; note: string | null } | null;
 }
