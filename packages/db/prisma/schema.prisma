@@ -452,6 +452,8 @@ model Facility {
   supportSessions      SupportSession[]
   refreshTokens        RefreshToken[]
 
+  attendanceApprovals  AttendanceMonthApproval[]
+
   @@index([districtId])
 }
 
@@ -1031,11 +1033,29 @@ model Attendance {
   correctedAt          DateTime?
   correctionReason     String?
   needsReview          Boolean        @default(false)
+  clockedAt            DateTime?      // when the person clocked in, or the arrival time copied from the facility's book
+  minutesEarly         Int?
+  source               String?        // CLOCK (phone), BOOK (typed in from the facility's book) or AUTO (no clock-in: marked absent by the system)
 
   @@index([facilityId])
   @@index([staffId, dutyDate])
   @@index([facilityId, dutyDate])
   @@index([rosterAssignmentId])
+}
+
+/// The administrator's month-end sign-off: the month's attendance has been checked against the facility's book.
+model AttendanceMonthApproval {
+  id         String   @id @default(cuid())
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id])
+  year       Int
+  month      Int
+  approvedBy String
+  approvedAt DateTime @default(now())
+  note       String?
+
+  @@unique([facilityId, year, month])
+  @@index([facilityId])
 }
 
 model DutySwap {

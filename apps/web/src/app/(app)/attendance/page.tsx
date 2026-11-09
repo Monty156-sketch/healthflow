@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import type { AttendanceDay, AttendanceStatus } from "@/lib/types";
@@ -17,6 +19,17 @@ const OPTIONS: { value: AttendanceStatus; label: string }[] = [
 interface Entry {
   status: AttendanceStatus;
   minutes: string;
+  /** Arrival time copied from the facility's book, HH:MM. Only sent when the person typing changed it. */
+  arrival: string;
+  arrivalTouched: boolean;
+}
+
+/** One plain line about when someone arrived: "07:50, 10 min early", "08:12, 12 min late", or that nobody clocked in. */
+function arrivalLine(r: NonNullable<AttendanceDay["shifts"][number]["people"][number]["record"]>): string | null {
+  if (r.source === "AUTO") return "Marked absent automatically. Nobody clocked in.";
+  if (!r.clockedAt) return null;
+  const how = r.minutesLate ? `${r.minutesLate} min late` : r.minutesEarly ? `${r.minutesEarly} min early` : "on time";
+  return `${r.source === "BOOK" ? "From the book" : "Clocked in"} at ${r.clockedAt}, ${how}`;
 }
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
@@ -26,7 +39,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
   for (const s of data.shifts) {
     for (const p of s.people) {
       const st = (p.record?.status ?? "PRESENT") as AttendanceStatus;
-      initial[p.assignmentId] = { status: st, minutes: p.record?.minutesLate ? String(p.record.minutesLate) : "" };
+      initial[p.assignmentId] = { status: st, minutes: p.record?.minutesLate ? String(p.record.minutesLate) : "", arrival: p.record?.clockedAt ?? "", arrivalTouched: false };
     }
   }
   const [entries, setEntries] = useState(initial);
@@ -50,6 +63,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
         assignmentId,
         status: e.status,
         ...(e.status === "LATE" ? { minutesLate: Number(e.minutes) || undefined } : {}),
+        ...(e.arrivalTouched && e.arrival && (e.status === "PRESENT" || e.status === "LATE") ? { arrivalTime: e.arrival } : {}),
       }));
       const r = await api.put<{ saved: number }>("/api/facility/attendance/day", { date: data.date, reason, records });
       setSaved(r.saved);
@@ -108,6 +122,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
                       {p.cadre && <span className="font-normal text-[var(--muted)]"> , {p.cadre}</span>}
                       {p.isCover && <span className="font-normal text-[var(--muted)]"> , cover{p.coverForName ? ` for ${p.coverForName}` : ""}{p.coverState === "AWAITING" ? ", waiting to confirm" : p.coverState === "ESCALATED" ? ", has not confirmed" : ""}</span>}
                     </legend>
+                    {p.record && arrivalLine(p.record) && <p className="mb-2 text-sm text-[var(--muted)]">{arrivalLine(p.record)}</p>}
                     <div className="flex flex-wrap gap-2">
                       {OPTIONS.map((o) => (
                         <label
@@ -121,7 +136,14 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
                         </label>
                       ))}
                     </div>
-                    {e.status === "LATE" && (
+                    {(e.status === "PRESENT" || e.status === "LATE") && (
+                      <div className="mt-2 max-w-[14rem]">
+                        <Field label="Time in the book" optional hint="Fill this from the facility's book. Early or late is worked out for you.">
+                          {(a) => <Input {...a} type="time" value={e.arrival} onChange={(ev) => set(p.assignmentId, { arrival: ev.target.value, arrivalTouched: true })} />}
+                        </Field>
+                      </div>
+                    )}
+                    {e.status === "LATE" && !(e.arrivalTouched && e.arrival) && (
                       <div className="mt-2 max-w-[12rem]">
                         <Field label="Minutes late">{(a) => <Input {...a} inputMode="numeric" value={e.minutes} onChange={(ev) => set(p.assignmentId, { minutes: ev.target.value.replace(/\D/g, "") })} />}</Field>
                       </div>
@@ -134,7 +156,16 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
                         {(e.status !== p.record.status) && <p className="mt-1 text-sm text-[var(--muted)]">Save the change first, then find cover.</p>}
                       </div>
                     )}
-                    {p.record?.needsReview && <p className="mt-1 text-sm text-[var(--status-warning)]">The duty changed after this was recorded. Check it is still right.</p>}
+                    {p.record?.needsReview && p.record.source === "AUTO" ? (
+                      <div className="mt-2">
+                        <p className="text-sm text-[var(--status-warning)]">No clock-in. Look in the facility&apos;s book. If the person signed, enter their time above and save. If not, confirm the absence.</p>
+                        <Button variant="secondary" onClick={() => api.post(`/api/facility/attendance/${p.record!.id}/resolve`).then(reload)}>
+                          Confirm absent
+                        </Button>
+                      </div>
+                    ) : (
+                      p.record?.needsReview && <p className="mt-1 text-sm text-[var(--status-warning)]">The duty changed after this was recorded. Check it is still right.</p>
+                    )}
                     {p.record?.corrected && p.record.originalStatus && <p className="mt-1 text-sm text-[var(--muted)]">Corrected. First recorded as {p.record.originalStatus.toLowerCase().replace("_", " ")}.</p>}
                   </fieldset>
                 </li>
@@ -190,12 +221,21 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
 }
 
 export default function AttendancePage() {
-  const [date, setDate] = useState(todayIso());
+  return (
+    <Suspense fallback={<Loading label="Loading attendance" />}>
+      <AttendanceDayPage />
+    </Suspense>
+  );
+}
+
+function AttendanceDayPage() {
+  const asked = useSearchParams().get("date");
+  const [date, setDate] = useState(asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : todayIso());
   const { data, error, reload } = useResource<AttendanceDay>(`/api/facility/attendance/day?date=${date}`);
 
   return (
     <>
-      <PageHeader title="Daily attendance" description="Everyone starts as present. Change only those who were not." />
+      <PageHeader title="Daily attendance" description="People appear here when they clock in, with the time. Anyone who did not clock in is marked absent when the shift ends. If the network failed, enter the time from the facility's book." actions={<Link href="/attendance/check" className="text-[15px] font-medium text-[var(--accent)] underline">Check the month against the book</Link>} />
       <div className="mb-4 max-w-xs">
         <Field label="Date">{(a) => <Input {...a} type="date" max={todayIso()} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />}</Field>
       </div>
