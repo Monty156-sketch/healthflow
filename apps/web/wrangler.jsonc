@@ -20,6 +20,9 @@
     "API_ORIGIN": "https://healthflow-api-eu.onrender.com"
   },
 
+  // Keeps the API awake: see the scheduled handler in worker.mjs.
+  "triggers": { "crons": ["*/5 * * * *"] },
+
   "observability": {
     "enabled": true
   }

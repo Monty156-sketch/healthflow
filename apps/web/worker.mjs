@@ -19,4 +19,11 @@ export default {
     // Pages get a policy that allows only scripts carrying this view's nonce.
     return withScriptPolicy(await openNext.fetch(request, env, ctx));
   },
+
+  // Runs every 5 minutes from Cloudflare's own clock (see "triggers" in wrangler.jsonc) so the API on Render's free
+  // plan never goes to sleep. GitHub's schedule was running only every few hours.
+  async scheduled(_event, env, ctx) {
+    const origin = (env.API_ORIGIN ?? "").replace(/\/+$/, "");
+    if (origin) ctx.waitUntil(fetch(`${origin}/health`).then((r) => r.arrayBuffer()).catch(() => undefined));
+  },
 };

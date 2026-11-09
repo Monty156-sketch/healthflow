@@ -45,6 +45,23 @@ function visitorIp(request: Request): string {
   );
 }
 
+/**
+ * A sleeping Render server answers with its own "loading" page (a 502 or 503 that is HTML, never JSON) for the
+ * 30 to 60 seconds it takes to wake. That request never reached our code, so it is safe to send it again.
+ * Waiting here means the person sees a slower sign-in, not "the server had a problem".
+ */
+const WAKE_TRIES = 7;
+const WAKE_PAUSE_MS = 8_000;
+async function fetchWhenAwake(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetch(url, init);
+    const waking = [502, 503, 504].includes(res.status) && (res.headers.get("content-type") ?? "").includes("text/html");
+    if (!waking || attempt >= WAKE_TRIES) return res;
+    await res.arrayBuffer().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, WAKE_PAUSE_MS));
+  }
+}
+
 export async function forwardToApi(request: Request, origin: string, secret: string | undefined): Promise<Response> {
   const incoming = new URL(request.url);
   const target = `${origin.replace(/\/+$/, "")}${incoming.pathname}${incoming.search}`;
@@ -64,14 +81,10 @@ export async function forwardToApi(request: Request, origin: string, secret: str
 
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
 
+  const body = hasBody ? await request.arrayBuffer() : undefined;
   let upstream: Response;
   try {
-    upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      body: hasBody ? await request.arrayBuffer() : undefined,
-      redirect: "manual",
-    });
+    upstream = await fetchWhenAwake(target, { method: request.method, headers, body, redirect: "manual" });
   } catch {
     return Response.json({ error: "api_unreachable" }, { status: 502 });
   }
