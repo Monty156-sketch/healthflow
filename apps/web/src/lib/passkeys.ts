@@ -8,13 +8,20 @@ export { browserSupportsWebAuthn };
 
 export type Unlock = "fingerprint" | "face";
 const KEY = "hf-unlock-method";
+const KEY_ID = "hf-passkey-id";
+
+/** The key this device made, so sign-in can go straight to the fingerprint or face prompt. */
+export function rememberCredential(id: string) {
+  try { localStorage.setItem(KEY_ID, id); } catch { /* sign-in then lets the device choose */ }
+}
+const recallCredential = () => { try { return localStorage.getItem(KEY_ID); } catch { return null; } };
 
 /** Which unlock this device uses, remembered here so the sign-in button can name it. The phone itself never tells us. */
 export function rememberUnlock(m: Unlock) {
   try { localStorage.setItem(KEY, m); } catch { /* the button then uses a general label */ }
 }
 export function forgetUnlock() {
-  try { localStorage.removeItem(KEY); } catch { /* nothing to forget */ }
+  try { localStorage.removeItem(KEY); localStorage.removeItem(KEY_ID); } catch { /* nothing to forget */ }
 }
 export function recallUnlock(): Unlock | null {
   try { const v = localStorage.getItem(KEY); return v === "fingerprint" || v === "face" ? v : null; } catch { return null; }
@@ -48,7 +55,7 @@ export function passkeyMessage(e: unknown): string {
 
 /** Asks the phone for a fingerprint or face and signs in with the answer. */
 export async function signInWithPasskey(audience: "facility" | "district" | "platform"): Promise<Session> {
-  const { options, challengeId } = await api.post<{ options: PublicKeyCredentialRequestOptionsJSON; challengeId: string }>("/api/auth/passkey-login/options");
+  const { options, challengeId } = await api.post<{ options: PublicKeyCredentialRequestOptionsJSON; challengeId: string }>("/api/auth/passkey-login/options", { credentialId: recallCredential() ?? undefined });
   const response = await startAuthentication({ optionsJSON: options });
   return api.post<Session>("/api/auth/passkey-login/verify", { challengeId, response, audience });
 }
@@ -57,6 +64,7 @@ export async function signInWithPasskey(audience: "facility" | "district" | "pla
 export async function addPasskey(password: string, deviceName?: string): Promise<PasskeyRow> {
   const { options, challengeId } = await api.post<{ options: PublicKeyCredentialCreationOptionsJSON; challengeId: string }>("/api/auth/account/passkeys/register/options", { password });
   const response = await startRegistration({ optionsJSON: options });
+  rememberCredential(response.id);
   const r = await api.post<{ passkey: PasskeyRow }>("/api/auth/account/passkeys/register/verify", { challengeId, response, ...(deviceName ? { deviceName } : {}) });
   return r.passkey;
 }
