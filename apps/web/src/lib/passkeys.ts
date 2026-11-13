@@ -14,7 +14,6 @@ const KEY_ID = "hf-passkey-id";
 export function rememberCredential(id: string) {
   try { localStorage.setItem(KEY_ID, id); } catch { /* sign-in then lets the device choose */ }
 }
-const recallCredential = () => { try { return localStorage.getItem(KEY_ID); } catch { return null; } };
 
 /** Which unlock this device uses, remembered here so the sign-in button can name it. The phone itself never tells us. */
 export function rememberUnlock(m: Unlock) {
@@ -55,7 +54,7 @@ export function passkeyMessage(e: unknown): string {
 
 /** Asks the phone for a fingerprint or face and signs in with the answer. */
 export async function signInWithPasskey(audience: "facility" | "district" | "platform"): Promise<Session> {
-  const { options, challengeId } = await api.post<{ options: PublicKeyCredentialRequestOptionsJSON; challengeId: string }>("/api/auth/passkey-login/options", { credentialId: recallCredential() ?? undefined });
+  const { options, challengeId } = await api.post<{ options: PublicKeyCredentialRequestOptionsJSON; challengeId: string }>("/api/auth/passkey-login/options");
   const response = await startAuthentication({ optionsJSON: options });
   return api.post<Session>("/api/auth/passkey-login/verify", { challengeId, response, audience });
 }
