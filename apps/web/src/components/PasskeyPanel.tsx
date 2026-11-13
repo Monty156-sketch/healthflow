@@ -5,7 +5,7 @@
 import { FormEvent, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
-import { addPasskey, browserSupportsWebAuthn, passkeyMessage, type PasskeyRow } from "@/lib/passkeys";
+import { addPasskey, browserSupportsWebAuthn, passkeyMessage, rememberUnlock, type PasskeyRow, type Unlock } from "@/lib/passkeys";
 import { showDateTime } from "@/lib/format";
 import { Button, Field, Input, Loading, Notice, Panel } from "@/components/ui";
 
@@ -16,6 +16,7 @@ export function PasskeyPanel() {
   const { data, error, reload } = useResource<{ passkeys: PasskeyRow[] }>("/api/auth/account/passkeys");
   const [adding, setAdding] = useState(false);
   const [password, setPassword] = useState("");
+  const [method, setMethod] = useState<Unlock>("fingerprint");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -26,10 +27,11 @@ export function PasskeyPanel() {
     setProblem(null);
     setDone(null);
     try {
-      await addPasskey(password);
+      await addPasskey(password, `${method === "face" ? "Face ID" : "Fingerprint"}`);
+      rememberUnlock(method);
       setPassword("");
       setAdding(false);
-      setDone("Done. Next time, choose “Sign in with fingerprint or Face ID” on the sign-in page.");
+      setDone(method === "face" ? "Done. Next time, choose “Sign in with Face ID” at the top of the sign-in page." : "Done. Next time, choose “Sign in with fingerprint” at the top of the sign-in page.");
       reload();
     } catch (err) {
       setProblem(passkeyMessage(err));
@@ -81,11 +83,22 @@ export function PasskeyPanel() {
           {problem && <Notice tone="block">{problem}</Notice>}
           {adding ? (
             <form onSubmit={turnOn} className="max-w-sm space-y-3">
+              <fieldset>
+                <legend className="mb-2 text-sm font-medium">What do you use to unlock this phone?</legend>
+                <div className="flex gap-2">
+                  {([["fingerprint", "Fingerprint"], ["face", "Face ID"]] as const).map(([v, l]) => (
+                    <label key={v} className={`flex min-h-11 flex-1 cursor-pointer items-center justify-center rounded-[var(--radius)] border px-3 text-[15px] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-[var(--focus)] ${method === v ? "border-[var(--accent)] bg-[var(--accent)] font-medium text-white" : "border-[var(--border-strong)] bg-[var(--surface)]"}`}>
+                      <input type="radio" className="sr-only" name="unlock" checked={method === v} onChange={() => setMethod(v)} />
+                      {l}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <Field label="Your password" hint="We ask again so nobody else can turn this on for your account.">
                 {(a) => <Input {...a} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
               </Field>
               <div className="flex gap-2">
-                <Button type="submit" disabled={busy || !password}>{busy ? "Waiting for your phone…" : "Turn on for this device"}</Button>
+                <Button type="submit" disabled={busy || !password}>{busy ? (method === "face" ? "Look at your phone…" : "Touch the fingerprint sensor…") : "Turn on for this device"}</Button>
                 <Button type="button" variant="secondary" onClick={() => { setAdding(false); setProblem(null); }}>Cancel</Button>
               </div>
             </form>

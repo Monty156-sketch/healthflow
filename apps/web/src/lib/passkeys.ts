@@ -6,6 +6,19 @@ import { api, ApiError, type Session } from "@/lib/api";
 
 export { browserSupportsWebAuthn };
 
+export type Unlock = "fingerprint" | "face";
+const KEY = "hf-unlock-method";
+
+/** Which unlock this device uses, remembered here so the sign-in button can name it. The phone itself never tells us. */
+export function rememberUnlock(m: Unlock) {
+  try { localStorage.setItem(KEY, m); } catch { /* the button then uses a general label */ }
+}
+export function recallUnlock(): Unlock | null {
+  try { const v = localStorage.getItem(KEY); return v === "fingerprint" || v === "face" ? v : null; } catch { return null; }
+}
+/** The words on the sign-in button. */
+export const signInLabel = (m: Unlock | null) => (m === "fingerprint" ? "Sign in with fingerprint" : m === "face" ? "Sign in with Face ID" : "Sign in with fingerprint or Face ID");
+
 export interface PasskeyRow {
   id: string;
   deviceName: string;
