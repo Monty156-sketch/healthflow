@@ -37,7 +37,7 @@ export async function allowanceSheet(facilityId: string, year: number, month: nu
   const to = new Date(Date.UTC(year, month, 0));
   const rosterIds = rosters.map((r) => r.id);
   const wardOfRoster = new Map(rosters.map((r) => [r.id, r.department?.name ?? null]));
-  const [assignments, attendance, holidays, shifts] = await Promise.all([
+  const [assignments, attendance, holidays, shifts, approval] = await Promise.all([
     prisma.rosterAssignment.findMany({
       where: { rosterId: { in: rosterIds }, shift: { countsAsDuty: true } },
       select: { rosterId: true, staffId: true, shiftId: true, dutyDate: true, staff: { select: { staffNo: true, fullName: true, cadre: { select: { name: true } } } } },
@@ -45,6 +45,7 @@ export async function allowanceSheet(facilityId: string, year: number, month: nu
     prisma.attendance.findMany({ where: { facilityId, rosterId: { in: rosterIds }, dutyDate: { gte: from, lte: to } }, select: { staffId: true, dutyDate: true, status: true } }),
     prisma.publicHoliday.findMany({ where: { OR: [{ facilityId }, { facilityId: null }], date: { gte: from, lte: to } }, select: { date: true } }),
     prisma.shift.findMany({ where: { facilityId, countsAsDuty: true }, orderBy: { sortOrder: "asc" } }),
+    prisma.attendanceMonthApproval.findUnique({ where: { facilityId_year_month: { facilityId, year, month } }, select: { id: true } }),
   ]);
   const shiftBy = new Map(shifts.map((s) => [s.id, s]));
   const holidaySet = new Set(holidays.map((h) => h.date.getTime()));
@@ -89,8 +90,10 @@ export async function allowanceSheet(facilityId: string, year: number, month: nu
   return {
     year, month,
     rosterStatus: furthest.status,
-    /** Every roster is published or approved: only then is the sheet final. */
-    final: rosters.every((r) => r.status === "PUBLISHED" || r.status === "APPROVED"),
+    /** The administrator has checked and approved this month's attendance. */
+    attendanceApproved: Boolean(approval),
+    /** Every roster is published or approved and the month's attendance is approved: only then is the sheet final. */
+    final: Boolean(approval) && rosters.every((r) => r.status === "PUBLISHED" || r.status === "APPROVED"),
     ward: departmentId ? rosters[0].department?.name ?? null : null,
     hasWards: rosters.some((r) => r.department),
     shifts: used.map((s) => ({ id: s.id, name: s.name })),

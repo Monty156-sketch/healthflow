@@ -49,6 +49,7 @@ export const SECTIONS: Section[] = [
     tabs: [
       { href: "/attendance", label: "Daily attendance", roles: READ },
       { href: "/attendance/month", label: "Monthly attendance", roles: READ },
+      { href: "/attendance/check", label: "Check the month", roles: READ },
     ],
   },
   {
@@ -58,6 +59,7 @@ export const SECTIONS: Section[] = [
       { href: "/settings/establishment", label: "Approved posts", roles: ADMIN },
       { href: "/rules", label: "Compliance rules", roles: READ },
       { href: "/my-reports", label: "Reports I sent", roles: EVERYONE },
+      { href: "/feedback", label: "Feedback", roles: EVERYONE },
       { href: "/directorate-access", label: "Directorate access", roles: ADMIN, flag: "district.oversight" },
       { href: "/privacy-and-data", label: "Privacy and data protection", roles: ADMIN },
       { href: "/audit-log", label: "Audit log", roles: ADMIN },

@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
 import { MONTHS } from "@/lib/format";
 import type { AttendanceMonthCheck, AttendanceMonthItem } from "@/lib/types";
-import { Button, EmptyState, Loading, LoadError, Notice, PageHeader, Panel, Select } from "@/components/ui";
+import { Button, EmptyState, Field, Loading, LoadError, Notice, PageHeader, Panel, Select, Textarea } from "@/components/ui";
 
 const say = (i: AttendanceMonthItem) => {
   const status = i.status.toLowerCase().replace("_", " ");
@@ -19,8 +19,6 @@ function Row({ item, children }: { item: AttendanceMonthItem; children?: React.R
     <li className="flex flex-wrap items-center justify-between gap-2 py-2 text-[15px]">
       <span>
         <Link href={`/attendance?date=${item.date}`} className="font-medium underline">{item.date}</Link>, {item.name}, {say(item)}
-        {item.source === "AUTO" && <span className="text-[var(--muted)]"> (no clock-in)</span>}
-        {item.source === "BOOK" && <span className="text-[var(--muted)]"> (from the book)</span>}
       </span>
       {children}
     </li>
@@ -35,7 +33,25 @@ export default function CheckMonthPage() {
   const { data, error, reload } = useResource<AttendanceMonthCheck>(`/api/facility/attendance/month-check?month=${key}`);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const [why, setWhy] = useState("");
   const years = Array.from({ length: 4 }, (_, i) => now.getFullYear() - 2 + i);
+
+  async function reopen() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await api.post("/api/facility/attendance/month-reopen", { month: key, reason: why });
+      setReopening(false);
+      setWhy("");
+      reload();
+    } catch (err) {
+      const b = err instanceof ApiError ? (err.body as { message?: string }) : undefined;
+      setProblem(b?.message ?? "The month was not reopened. Only the administrator can do this.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function approve() {
     setBusy(true);
@@ -53,7 +69,7 @@ export default function CheckMonthPage() {
 
   return (
     <>
-      <PageHeader title="Check the month against the book" description="Go through what the phones and the system recorded, compare it with the facility's attendance book, fix any difference, then approve the month." />
+      <PageHeader title="Check the month" description="At the end of the month, go through the attendance, compare it with the facility's attendance book, fix any difference, then approve the month. An approved month is locked." />
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div>
           <label htmlFor="ck-month" className="mb-1 block text-sm font-medium">Month</label>
@@ -83,17 +99,16 @@ export default function CheckMonthPage() {
           <Panel title="Where the records came from" description={`${data.counts.total} records this month.`}>
             <ul className="text-[15px]">
               <li>{data.counts.clock} clocked in on a phone</li>
-              <li>{data.counts.book} typed in from the book</li>
-              <li>{data.counts.auto} marked absent automatically (no clock-in)</li>
+              <li>{data.counts.manual} marked by the in-charge or administrator</li>
             </ul>
           </Panel>
           {data.toCheck.length > 0 ? (
-            <Panel title={`Look at these first (${data.toCheck.length})`} description="Find each one in the book. If the person signed, open the day and enter their time. If not, confirm the absence.">
+            <Panel title={`Look at these first (${data.toCheck.length})`} description="The duty changed after attendance was recorded. Open the day, check it, and keep or correct it.">
               <ul className="divide-y divide-[var(--border)]">
                 {data.toCheck.map((i) => (
                   <Row key={i.id} item={i}>
                     <Button variant="secondary" onClick={() => api.post(`/api/facility/attendance/${i.id}/resolve`).then(reload)}>
-                      The book agrees
+                      It is still right
                     </Button>
                   </Row>
                 ))}
@@ -102,15 +117,29 @@ export default function CheckMonthPage() {
           ) : (
             <Notice tone="success">Nothing is waiting for a look.</Notice>
           )}
-          {data.fromBook.length > 0 && (
-            <Panel title={`Typed in from the book (${data.fromBook.length})`} description="These came from the book, so they should match it line for line.">
+          {data.marked.length > 0 && (
+            <Panel title={`Marked by hand (${data.marked.length})`} description="These were marked by the in-charge or administrator. Compare them with the facility's attendance book.">
               <ul className="divide-y divide-[var(--border)]">
-                {data.fromBook.map((i) => <Row key={i.id} item={i} />)}
+                {data.marked.map((i) => <Row key={i.id} item={i} />)}
               </ul>
             </Panel>
           )}
           {data.approved ? (
-            <Notice tone="success">Approved by {data.approved.by} on {new Date(data.approved.at).toLocaleDateString("en-GB")}.</Notice>
+            <div className="space-y-3">
+              <Notice tone="success">Approved by {data.approved.by} on {new Date(data.approved.at).toLocaleDateString("en-GB")}. This month is locked and cannot be edited.</Notice>
+              {reopening ? (
+                <div className="max-w-md space-y-2">
+                  <Field label="Why does it need to be reopened?" hint="At least 10 characters. It is kept in the audit log.">{(a) => <Textarea {...a} value={why} onChange={(e) => setWhy(e.target.value)} />}</Field>
+                  {problem && <Notice tone="block">{problem}</Notice>}
+                  <div className="flex gap-2">
+                    <Button disabled={busy || why.trim().length < 10} onClick={reopen}>{busy ? "Reopening…" : "Reopen month"}</Button>
+                    <Button variant="secondary" onClick={() => setReopening(false)}>Cancel</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="secondary" onClick={() => setReopening(true)}>Reopen month</Button>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
               {problem && <Notice tone="block">{problem}</Notice>}

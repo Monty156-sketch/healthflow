@@ -43,6 +43,13 @@ async function leaveOn(facilityId: string, from: number, to: number) {
 
 // ------------------------------------------------------------- month-end check against the book
 
+/** True once an administrator has approved the month this date falls in. Approved months cannot be edited. */
+export async function monthLocked(facilityId: string, date: Date): Promise<boolean> {
+  const row = await prisma.attendanceMonthApproval.findUnique({ where: { facilityId_year_month: { facilityId, year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 } }, select: { id: true } });
+  return Boolean(row);
+}
+const LOCKED = { error: "month_approved", message: "This month has been approved and is locked. The administrator can reopen it if something must change." };
+
 const MONTH = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) });
 const monthRange = (month: string) => {
   const [y, m] = month.split("-").map(Number);
@@ -60,18 +67,18 @@ attendanceRouter.get("/month-check", async (req, res) => {
     prisma.attendance.findMany({ where, include: { staff: { select: { fullName: true } } }, orderBy: [{ dutyDate: "asc" }] }),
     prisma.attendanceMonthApproval.findUnique({ where: { facilityId_year_month: { facilityId: who.facilityId, year: y, month: m } } }),
   ]);
-  const by = (src: string) => rows.filter((r) => (r.source ?? (r.recordedBy === "Clocked in" ? "CLOCK" : "BOOK")) === src).length;
+  const clocked = (r: (typeof rows)[number]) => r.source === "CLOCK" || (r.source === null && r.recordedBy === "Clocked in");
   const item = (r: (typeof rows)[number]) => ({
     id: r.id, date: r.dutyDate.toISOString().slice(0, 10), name: r.staff.fullName, status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly,
     clockedAt: r.clockedAt ? `${String(r.clockedAt.getUTCHours()).padStart(2, "0")}:${String(r.clockedAt.getUTCMinutes()).padStart(2, "0")}` : null, source: r.source, note: r.note, needsReview: r.needsReview, corrected: Boolean(r.correctedAt),
   });
   res.json({
     month: q.data.month,
-    counts: { total: rows.length, clock: by("CLOCK"), book: by("BOOK"), auto: by("AUTO") },
-    // Absences the system marked because nobody clocked in, and anything flagged after a duty changed: these must be looked at before the month is approved.
+    counts: { total: rows.length, clock: rows.filter(clocked).length, manual: rows.filter((r) => !clocked(r)).length },
+    // Anything flagged after a duty changed must be looked at before the month is approved.
     toCheck: rows.filter((r) => r.needsReview).map(item),
-    // Entries typed in from the book, to be compared with the book itself.
-    fromBook: rows.filter((r) => r.source === "BOOK").map(item),
+    // What the in-charge marked by hand (for someone who could not clock in), so it can be compared with the facility's book.
+    marked: rows.filter((r) => !clocked(r)).map(item),
     approved: approval ? { by: approval.approvedBy, at: approval.approvedAt, note: approval.note } : null,
   });
 });
@@ -81,9 +88,9 @@ attendanceRouter.post("/month-approve", allowRoles("FACILITY_ADMIN"), async (req
   const input = parseOr400(MONTH.extend({ note: z.string().trim().max(300).optional().default("") }), req.body, res);
   if (!input) return;
   const { y, m, from, to } = monthRange(input.month);
-  if (from.getTime() > Date.now()) return res.status(409).json({ error: "future", message: "That month has not started yet." });
+  if (to.getTime() >= Math.floor(Date.now() / 86_400_000) * 86_400_000) return res.status(409).json({ error: "not_finished", message: "That month has not finished yet. Approve it after its last day." });
   const open = await prisma.attendance.count({ where: { facilityId: who.facilityId, dutyDate: { gte: from, lte: to }, needsReview: true } });
-  if (open) return res.status(409).json({ error: "needs_review", message: `${open} record(s) still need a look. Check each one against the book, then try again.` });
+  if (open) return res.status(409).json({ error: "needs_review", message: `${open} record(s) still need a look. Look at each one, then try again.` });
   await prisma.attendanceMonthApproval.upsert({
     where: { facilityId_year_month: { facilityId: who.facilityId, year: y, month: m } },
     create: { facilityId: who.facilityId, year: y, month: m, approvedBy: who.displayName, note: input.note || null },
@@ -92,6 +99,21 @@ attendanceRouter.post("/month-approve", allowRoles("FACILITY_ADMIN"), async (req
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "attendance_month_approved", entityType: "AttendanceMonth", entityId: input.month,
     summary: `${who.displayName} checked ${input.month} against the facility's book and approved it.`,
+  });
+  res.json({ ok: true });
+});
+
+/** Unlocks an approved month so something can be corrected. The reason is kept in the audit log. */
+attendanceRouter.post("/month-reopen", allowRoles("FACILITY_ADMIN"), async (req, res) => {
+  const who = caller(req);
+  const input = parseOr400(MONTH.extend({ reason: z.string().trim().min(10, "Give a reason of at least 10 characters.").max(300) }), req.body, res);
+  if (!input) return;
+  const { y, m } = monthRange(input.month);
+  const gone = await prisma.attendanceMonthApproval.deleteMany({ where: { facilityId: who.facilityId, year: y, month: m } });
+  if (!gone.count) return res.status(409).json({ error: "not_approved", message: "That month is not approved." });
+  await writeAuditLog({
+    facilityId: who.facilityId, actorEmail: who.email, action: "attendance_month_reopened", entityType: "AttendanceMonth", entityId: input.month, reason: input.reason,
+    summary: `${who.displayName} reopened ${input.month} for changes. Reason: ${input.reason}`,
   });
   res.json({ ok: true });
 });
@@ -107,7 +129,8 @@ attendanceRouter.get("/day", async (req, res) => {
   const [facility, rosters] = await Promise.all([prisma.facility.findUniqueOrThrow({ where: { id: facilityId }, select: { attendanceCutoffDays: true } }), rostersFor(facilityId, day, who.departmentId)]);
   const future = day > todayDay();
   const late = todayDay() - day > facility.attendanceCutoffDays;
-  const base = { date: q.data.date, cutoffDays: facility.attendanceCutoffDays, needsReason: late };
+  const locked = await monthLocked(facilityId, dateOf(day));
+  const base = { date: q.data.date, cutoffDays: facility.attendanceCutoffDays, needsReason: late, locked };
 
   let blocked: string | null = null;
   if (future) blocked = "This date has not happened yet, so attendance cannot be recorded.";
@@ -154,7 +177,7 @@ attendanceRouter.get("/day", async (req, res) => {
     ...base,
     review: review.map((r) => ({ id: r.id, name: r.staff.fullName, status: r.status, minutesLate: r.minutesLate })),
     covered: accepted.map((c) => ({ absentName: absentNames.get(c.absentStaffId) ?? "", coverName: c.proposedStaff.fullName })),
-    canRecord: !blocked,
+    canRecord: !blocked && !locked,
     blocked,
     shifts: [...shifts.values()],
     onLeave: everyone.filter((p) => leaveOf.has(p.id)).map((p) => ({ staffId: p.id, name: p.fullName, official: leaveOf.get(p.id)!.official, typeName: leaveOf.get(p.id)!.typeName })),
@@ -171,8 +194,6 @@ const recordInput = z.object({
         assignmentId: z.string(),
         status: z.enum(MARKABLE),
         minutesLate: z.number().int().min(1).max(720).nullish(),
-        // The arrival time written in the facility's book, HH:MM. When given, minutes early or late are worked out from it.
-        arrivalTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullish(),
         note: z.string().trim().max(200).optional().default(""),
       }),
     )
@@ -187,6 +208,7 @@ attendanceRouter.put("/day", async (req, res) => {
   if (!input) return;
   const day = dayOf(new Date(`${input.date}T00:00:00Z`));
   if (day > todayDay()) return res.status(409).json({ error: "future", message: "That date has not happened yet." });
+  if (await monthLocked(who.facilityId, dateOf(day))) return res.status(409).json(LOCKED);
   const rosters = await rostersFor(who.facilityId, day, who.departmentId);
   if (!rosters.length) return res.status(409).json({ error: "not_published", message: "There is no published roster for that month." });
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { attendanceCutoffDays: true } });
@@ -210,7 +232,7 @@ attendanceRouter.put("/day", async (req, res) => {
   for (const r of input.records) {
     const a = byId.get(r.assignmentId)!;
     if (onLeave.has(a.staffId)) return res.status(409).json({ error: "on_leave", message: `${a.staff.fullName} is on approved leave on this day and cannot be marked.` });
-    if (r.status === "LATE" && !r.minutesLate && !r.arrivalTime) fields[`late:${r.assignmentId}`] = `Say how many minutes late ${a.staff.fullName} was.`;
+    if (r.status === "LATE" && !r.minutesLate) fields[`late:${r.assignmentId}`] = `Say how many minutes late ${a.staff.fullName} was.`;
     const prev = had.get(r.assignmentId);
     if (prev && prev.status !== r.status) changing = true;
   }
@@ -226,19 +248,8 @@ attendanceRouter.put("/day", async (req, res) => {
   for (const r of input.records) {
     const a = byId.get(r.assignmentId)!;
     const prev = had.get(r.assignmentId);
-    if (prev && prev.status === r.status && (prev.minutesLate ?? null) === (r.minutesLate ?? null) && (prev.note ?? "") === r.note && !r.arrivalTime) continue;
-    // An arrival time from the book decides the minutes and, for present or late, the status (late after 15 minutes).
-    const start = a.shift.startTime ? Number(a.shift.startTime.slice(0, 2)) * 60 + Number(a.shift.startTime.slice(3, 5)) : null;
-    const arrived = r.arrivalTime ? Number(r.arrivalTime.slice(0, 2)) * 60 + Number(r.arrivalTime.slice(3, 5)) : null;
-    const diff = arrived !== null && start !== null ? arrived - start : null;
-    const bookOn = (r.status === "PRESENT" || r.status === "LATE") && diff !== null;
-    const status = bookOn ? (diff > 15 ? "LATE" : "PRESENT") : r.status;
-    const data = {
-      status, minutesLate: bookOn ? (diff > 0 ? diff : null) : status === "LATE" ? (r.minutesLate ?? null) : null,
-      minutesEarly: bookOn && diff < 0 ? -diff : null,
-      clockedAt: bookOn && r.arrivalTime ? new Date(`${input.date}T${r.arrivalTime}:00Z`) : null,
-      source: "BOOK", note: r.note || null,
-    };
+    if (prev && prev.status === r.status && (prev.minutesLate ?? null) === (r.minutesLate ?? null) && (prev.note ?? "") === r.note) continue;
+    const data = { status: r.status, minutesLate: r.status === "LATE" ? (r.minutesLate ?? null) : null, minutesEarly: null, clockedAt: null, source: "MANUAL", note: r.note || null };
     if (!prev) {
       await prisma.attendance.create({
         data: {
@@ -270,6 +281,7 @@ attendanceRouter.post("/:id/resolve", async (req, res) => {
   const who = caller(req);
   const row = await prisma.attendance.findFirst({ where: { id: String(req.params.id), facilityId: who.facilityId }, include: { staff: { select: { fullName: true } } } });
   if (!row || !(await staffInMyWard(who, row.staffId))) return res.status(404).json({ error: "not_found" });
+  if (await monthLocked(who.facilityId, row.dutyDate)) return res.status(409).json(LOCKED);
   await prisma.attendance.update({ where: { id: row.id }, data: { needsReview: false } });
   await writeAuditLog({
     facilityId: who.facilityId, actorEmail: who.email, action: "attendance_review_cleared", entityType: "Attendance", entityId: row.id,

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useEffect, useState, FormEvent } from "react";
+import { Suspense, useEffect, useState, useSyncExternalStore, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { browserSupportsWebAuthn, passkeyMessage, signInWithPasskey } from "@/lib/passkeys";
 import { api, ApiError, type Session } from "@/lib/api";
 import { Button, Card, ErrorText, Field, Input, Notice } from "@/components/ui";
 import { HumanCheck } from "@/components/HumanCheck";
@@ -133,6 +134,8 @@ export function SignInScreen({ audience }: { audience: Audience }) {
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Shown only where the browser can do it; the person turns it on in Security after their first sign-in.
+  const passkeyReady = useSyncExternalStore(() => () => undefined, () => browserSupportsWebAuthn(), () => false);
   // After a few seconds of waiting, say why: the server is probably waking up after a quiet spell.
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -169,6 +172,20 @@ export function SignInScreen({ audience }: { audience: Audience }) {
     const p = await api.post<PendingAuthenticator>("/api/auth/mfa/enrol/start", { enrolmentToken: token });
     setPending(p);
     setStage("enrol");
+  }
+
+  async function handlePasskey() {
+    setError(null);
+    setSubmitting(true);
+    try {
+      adoptSession(await signInWithPasskey(audience));
+      keepChallenge(null);
+      router.push(HOME[audience]);
+    } catch (err) {
+      setError(passkeyMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   async function handleSignIn(e: FormEvent) {
@@ -290,6 +307,15 @@ export function SignInScreen({ audience }: { audience: Audience }) {
             <Suspense fallback={null}>
               <ArrivalNotice />
             </Suspense>
+
+            {stage === "credentials" && passkeyReady && (
+              <div className="mb-5 space-y-3">
+                <Button type="button" className="w-full" disabled={submitting} onClick={handlePasskey}>
+                  Sign in with fingerprint or Face ID
+                </Button>
+                <p className="text-center text-sm text-[var(--muted)]">or use your password</p>
+              </div>
+            )}
 
             <form onSubmit={handleSignIn} noValidate className="space-y-4">
               {stage === "credentials" && (

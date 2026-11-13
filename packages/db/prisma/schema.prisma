@@ -667,6 +667,7 @@ model UserProfile {
 
   refreshTokens RefreshToken[]
   feedback      Feedback[]
+  passkeys      Passkey[]
 
   @@index([facilityId])
 }
@@ -1913,4 +1914,32 @@ model ScorecardSnapshot {
   takenAt    DateTime @default(now())
 
   @@unique([facilityId, year, month])
+}
+
+/// A fingerprint or face sign-in the person turned on for one device. Only the public key is kept; the biometric never leaves the phone.
+model Passkey {
+  id            String      @id @default(cuid())
+  userProfileId String
+  user          UserProfile @relation(fields: [userProfileId], references: [id], onDelete: Cascade)
+  credentialId  String      @unique
+  publicKey     Bytes
+  counter       Int         @default(0)
+  transports    String[]
+  deviceName    String
+  createdAt     DateTime    @default(now())
+  lastUsedAt    DateTime?
+
+  @@index([userProfileId])
+}
+
+/// One-time challenge handed to the browser during passkey set-up or sign-in. Deleted when used or expired.
+model PasskeyChallenge {
+  id            String   @id @default(cuid())
+  challenge     String
+  userProfileId String?
+  kind          String   // REGISTER or SIGN_IN
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([expiresAt])
 }

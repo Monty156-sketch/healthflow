@@ -96,6 +96,7 @@ const NAV: { href: string; label: string; roles: string[]; flag?: string; sectio
   { href: "/my-data", label: "My data", roles: ["STAFF"] },
   { href: "/attendance", label: "Attendance", roles: READ_ROLES, section: "attendance" },
   { href: "/my-reports", label: "Reports I sent", roles: ["STAFF"], section: "settings" },
+  { href: "/feedback", label: "Feedback", roles: ["STAFF"], section: "settings" },
   { href: "/departments-and-cadres", label: "Departments and cadres", roles: READ_ROLES },
   { href: "/duty-patterns", label: "Duty patterns", roles: READ_ROLES },
   { href: "/rules", label: "Compliance rules", roles: ["ROSTER_MANAGER", "SUPERVISOR"], section: "settings" },
@@ -339,7 +340,7 @@ function AccountBlock({
             current ? "bg-[var(--accent-soft)]" : ""
           }`}
         >
-          My account and password
+          Security and password
         </Link>
         <Button variant="quiet" onClick={onSignOut}>
           Sign out

@@ -54,6 +54,7 @@ const NO_REFRESH = [
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
   "/api/auth/mfa/enrol",
+  "/api/auth/passkey-login",
 ];
 
 async function request<T>(
