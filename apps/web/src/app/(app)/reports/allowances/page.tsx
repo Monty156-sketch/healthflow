@@ -8,7 +8,7 @@ import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeade
 
 interface Row { staffId: string; staffNo: string; name: string; cadre: string | null; ward: string | null; duties: number; byShift: Record<string, number>; nights: number; weekends: number; holidays: number; hours: number; present: number; late: number; absent: number; excused: number; onLeave: number; official: number; unrecorded: number }
 interface Totals extends Omit<Row, "staffId" | "staffNo" | "name" | "cadre" | "ward" | "byShift"> { byShift: Record<string, number> }
-interface Sheet { rosterStatus: string; final: boolean; ward: string | null; hasWards: boolean; shifts: { id: string; name: string }[]; rows: Row[]; totals: Totals }
+interface Sheet { rosterStatus: string; final: boolean; attendanceApproved: boolean; ward: string | null; hasWards: boolean; shifts: { id: string; name: string }[]; rows: Row[]; totals: Totals }
 
 const lastMonth = () => { const d = new Date(); d.setUTCMonth(d.getUTCMonth() - 1); return d.toISOString().slice(0, 7); };
 
@@ -53,7 +53,7 @@ export default function AllowancesPage() {
         <EmptyState title="No roster for this month">Choose a month that has a roster.</EmptyState>
       ) : (
         <div className="space-y-4">
-          {!sheet.final && <Notice tone="warning"><strong className="block">Draft figures.</strong>Some rosters for this month are not yet approved or published. Do not pay from this sheet until they are.</Notice>}
+          {!sheet.final && <Notice tone="warning"><strong className="block">Draft figures.</strong>{sheet.attendanceApproved ? "Some rosters for this month are not yet approved or published." : "The administrator has not yet approved this month's attendance (Attendance, Check the month)."} Do not pay from this sheet until that is done.</Notice>}
           {sheet.totals.unrecorded > 0 && <Notice tone="neutral">{sheet.totals.unrecorded} rostered {sheet.totals.unrecorded === 1 ? "duty has" : "duties have"} no attendance record. Have attendance completed before the sheet is signed.</Notice>}
           <Panel title={`${sheet.rows.length} ${sheet.rows.length === 1 ? "person" : "people"}`}>
             <div className="overflow-x-auto">

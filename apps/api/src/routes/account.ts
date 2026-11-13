@@ -25,7 +25,7 @@ accountRouter.use(requireAuth, requireLiveUser);
  * Checks the current password. On a mismatch it answers the request itself
  * (field error, or 423 once locked) and returns false.
  */
-async function confirmPassword(req: Request, res: Response, given: unknown): Promise<boolean> {
+export async function confirmPassword(req: Request, res: Response, given: unknown): Promise<boolean> {
   const me = liveUser(req);
   const user = await prisma.userProfile.findUniqueOrThrow({ where: { id: me.id } });
   if (user.lockedUntil && user.lockedUntil > new Date()) {

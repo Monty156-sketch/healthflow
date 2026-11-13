@@ -39,7 +39,7 @@ myDutiesRouter.get("/", async (req, res) => {
         date: d.dutyDate.toISOString().slice(0, 10),
         shift: { name: d.shift.name, code: d.shift.code, startTime: d.shift.startTime, endTime: d.shift.endTime, colour: d.shift.colour },
         past: d.dutyDate.getTime() <= Math.floor(Date.now() / DAY) * DAY,
-        attendance: r ? { status: r.status, minutesLate: r.minutesLate, corrected: Boolean(r.correctedAt) } : null,
+        attendance: r ? { status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.clockedAt ? `${String(r.clockedAt.getUTCHours()).padStart(2, "0")}:${String(r.clockedAt.getUTCMinutes()).padStart(2, "0")}` : null, corrected: Boolean(r.correctedAt) } : null,
       };
     }),
   });

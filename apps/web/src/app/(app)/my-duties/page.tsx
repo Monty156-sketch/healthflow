@@ -151,6 +151,12 @@ export default function MyDutiesPage() {
                   <span className="text-sm text-[var(--muted)]">{d.past ? "Not recorded" : "Coming up"}</span>
                 )}
               </div>
+              {d.attendance?.clockedAt && (
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  Clocked in at {d.attendance.clockedAt}
+                  {d.attendance.minutesLate ? `, ${d.attendance.minutesLate} min late` : d.attendance.minutesEarly ? `, ${d.attendance.minutesEarly} min early` : ", on time"}
+                </p>
+              )}
               {d.attendance?.corrected && <p className="mt-1 text-sm text-[var(--muted)]">This record was corrected.</p>}
               {d.attendance && open !== d.assignmentId && (
                 <button type="button" onClick={() => { setOpen(d.assignmentId); setSent(false); }} className="mt-1 inline-flex min-h-11 items-center text-sm font-medium text-[var(--accent-text)] underline-offset-4 hover:underline">

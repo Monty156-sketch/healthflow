@@ -18,6 +18,7 @@ import {
   SaveStatus,
   StatusBadge,
 } from "@/components/ui";
+import { PasskeyPanel } from "@/components/PasskeyPanel";
 import { AuthenticatorSetup, RecoveryCodes, type PendingAuthenticator } from "@/components/TwoStep";
 
 interface Account {
@@ -517,7 +518,7 @@ export default function AccountPage() {
   return (
     <>
       <PageHeader
-        title="My account"
+        title="Security"
         description={
           <>
             {a.displayName !== a.email && <>{a.displayName}, </>}
@@ -527,6 +528,7 @@ export default function AccountPage() {
       />
       <div className="grid items-start gap-6 xl:grid-cols-2">
         <div className="space-y-6">
+          <PasskeyPanel />
           <TwoStepPanel account={a} onChanged={reload} />
           <PasswordPanel />
           {a.role !== "PLATFORM_ADMIN" && a.role !== "DISTRICT_OFFICER" && <NotificationsPanel />}

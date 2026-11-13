@@ -14,7 +14,7 @@ export async function allowanceWorkbook(sheet: AllowanceSheet, facilityName: str
   ws.getCell("A1").value = facilityName;
   ws.getCell("A1").font = { bold: true, size: 14 };
   ws.getCell("A2").value = `Duty days and allowance sheet, ${title}`;
-  ws.getCell("A3").value = sheet.final ? "From published or approved rosters." : "DRAFT: some rosters are not yet approved or published. Do not pay from this sheet.";
+  ws.getCell("A3").value = sheet.final ? "From published or approved rosters and approved attendance." : "DRAFT: the rosters are not all approved or published, or the month's attendance has not been approved. Do not pay from this sheet.";
   ws.getCell("A3").font = { bold: !sheet.final, color: { argb: sheet.final ? "FF555555" : "FFB00020" } };
   ws.getCell("A4").value = `Counts and hours only. Rates and amounts are set by the accounts office. Prepared ${printedOn}.`;
   ws.getCell("A4").font = { size: 9, color: { argb: "FF555555" } };

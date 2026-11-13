@@ -282,6 +282,7 @@ export interface AttendanceDay {
   needsReason: boolean;
   canRecord: boolean;
   blocked: string | null;
+  locked: boolean;
   shifts: {
     id: string;
     name: string;
@@ -333,7 +334,7 @@ export interface MyDuties {
     date: string;
     shift: { name: string; code: string; startTime: string | null; endTime: string | null; colour: string | null };
     past: boolean;
-    attendance: { status: string; minutesLate: number | null; corrected: boolean } | null;
+    attendance: { status: string; minutesLate: number | null; minutesEarly: number | null; clockedAt: string | null; corrected: boolean } | null;
   }[];
 }
 
@@ -508,8 +509,8 @@ export interface AttendanceMonthItem {
 
 export interface AttendanceMonthCheck {
   month: string;
-  counts: { total: number; clock: number; book: number; auto: number };
+  counts: { total: number; clock: number; manual: number };
   toCheck: AttendanceMonthItem[];
-  fromBook: AttendanceMonthItem[];
+  marked: AttendanceMonthItem[];
   approved: { by: string; at: string; note: string | null } | null;
 }

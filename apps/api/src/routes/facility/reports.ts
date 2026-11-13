@@ -146,7 +146,7 @@ reportsRouter.get("/allowances.csv", allowRoles(...READ_ROLES), async (req, res)
   for (const p of sheet.rows) lines.push([p.staffNo, p.name, p.cadre, ...(sheet.hasWards ? [p.ward] : []), p.duties, ...sheet.shifts.map((s) => p.byShift[s.id] ?? 0), p.nights, p.weekends, p.holidays, p.hours, p.present, p.late, p.absent, p.excused, p.onLeave, p.official, p.unrecorded]);
   const t = sheet.totals;
   lines.push(["Total", "", "", ...(sheet.hasWards ? [""] : []), t.duties, ...sheet.shifts.map((s) => t.byShift[s.id] ?? 0), t.nights, t.weekends, t.holidays, t.hours, t.present, t.late, t.absent, t.excused, t.onLeave, t.official, t.unrecorded]);
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a CSV${sheet.final ? "" : " while some rosters were still drafts"}.` });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a CSV${sheet.final ? "" : " before the month's attendance was approved"}.` });
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="duty-days-${q.data.month}.csv"`);
   res.setHeader("Cache-Control", "no-store");
@@ -161,7 +161,7 @@ reportsRouter.get("/allowances.xlsx", allowRoles(...READ_ROLES), async (req, res
   if (!sheet) return res.status(404).json({ error: "not_found", message: "There is no roster for that month." });
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { name: true } });
   const buf = await allowanceWorkbook(sheet, facility.name, who.displayName, new Date().toISOString().slice(0, 10));
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a workbook${sheet.final ? "" : " while some rosters were still drafts"}.` });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "allowance_sheet_downloaded", entityType: "Roster", entityId: null, summary: `${who.displayName} downloaded the ${title(sheet.year, sheet.month)} duty days sheet as a workbook${sheet.final ? "" : " before the month's attendance was approved"}.` });
   res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   res.setHeader("Content-Disposition", `attachment; filename="duty-days-${q.data.month}.xlsx"`);
   res.setHeader("Cache-Control", "no-store");
