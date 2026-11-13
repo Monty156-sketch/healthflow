@@ -5,7 +5,7 @@
 import { FormEvent, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
-import { addPasskey, browserSupportsWebAuthn, passkeyMessage, rememberUnlock, type PasskeyRow, type Unlock } from "@/lib/passkeys";
+import { addPasskey, browserSupportsWebAuthn, passkeyMessage, forgetUnlock, rememberUnlock, type PasskeyRow, type Unlock } from "@/lib/passkeys";
 import { showDateTime } from "@/lib/format";
 import { Button, Field, Input, Loading, Notice, Panel } from "@/components/ui";
 
@@ -45,6 +45,8 @@ export function PasskeyPanel() {
     setDone(null);
     try {
       await api.delete(`/api/auth/account/passkeys/${id}`);
+      // Nothing left on this account: the sign-in page stops offering it on this device.
+      if ((data?.passkeys.length ?? 0) <= 1) forgetUnlock();
       reload();
     } catch (err) {
       setProblem(passkeyMessage(err));
