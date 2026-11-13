@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useState, useSyncExternalStore, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { browserSupportsWebAuthn, passkeyMessage, recallUnlock, signInLabel, signInWithPasskey } from "@/lib/passkeys";
+import { browserSupportsWebAuthn, passkeyMessage, forgetUnlock, recallUnlock, signInLabel, signInWithPasskey } from "@/lib/passkeys";
 import { api, ApiError, type Session } from "@/lib/api";
 import { Button, Card, ErrorText, Field, Input, Notice } from "@/components/ui";
 import { HumanCheck } from "@/components/HumanCheck";
@@ -184,6 +184,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
       keepChallenge(null);
       router.push(HOME[audience]);
     } catch (err) {
+      if (err instanceof ApiError && err.message === "passkey_unknown") forgetUnlock();
       setError(passkeyMessage(err));
     } finally {
       setSubmitting(false);
@@ -310,7 +311,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
               <ArrivalNotice />
             </Suspense>
 
-            {stage === "credentials" && passkeyReady && (
+            {stage === "credentials" && passkeyReady && unlock && (
               <div className="mb-5 space-y-3">
                 <Button type="button" className="w-full" disabled={submitting} onClick={handlePasskey}>
                   {signInLabel(unlock)}

@@ -13,6 +13,9 @@ const KEY = "hf-unlock-method";
 export function rememberUnlock(m: Unlock) {
   try { localStorage.setItem(KEY, m); } catch { /* the button then uses a general label */ }
 }
+export function forgetUnlock() {
+  try { localStorage.removeItem(KEY); } catch { /* nothing to forget */ }
+}
 export function recallUnlock(): Unlock | null {
   try { const v = localStorage.getItem(KEY); return v === "fingerprint" || v === "face" ? v : null; } catch { return null; }
 }
