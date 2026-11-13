@@ -63,9 +63,7 @@ passkeyAccountRouter.post("/register/options", async (req, res) => {
     userID: new TextEncoder().encode(user.id),
     attestationType: "none",
     excludeCredentials: user.passkeys.map((p) => ({ id: p.credentialId, transports: p.transports as AuthenticatorTransportFuture[] })),
-    // This phone or computer only, and no passkey-manager picker: the device goes straight to the fingerprint or face prompt.
-    authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "discouraged", userVerification: "required" },
-    preferredAuthenticatorType: "localDevice",
+    authenticatorSelection: { residentKey: "required", userVerification: "required" },
   });
   res.json({ options, challengeId: await newChallenge("REGISTER", options.challenge, user.id) });
 });
@@ -123,15 +121,8 @@ passkeyAccountRouter.delete("/:id", async (req, res) => {
 export const passkeyLoginRouter = Router();
 
 /** No email is asked: the device offers the passkeys it holds for this site. */
-passkeyLoginRouter.post("/options", loginLimiter, async (req, res) => {
-  // The device remembers which key it made and says so, so the phone goes straight to the fingerprint or face prompt.
-  // Nothing is looked up here, so this reveals nothing about who has an account.
-  const known = typeof req.body?.credentialId === "string" && req.body.credentialId.length < 512 ? req.body.credentialId : null;
-  const options = await generateAuthenticationOptions({
-    rpID: relyingParty().id,
-    userVerification: "required",
-    ...(known ? { allowCredentials: [{ id: known, transports: ["internal" as const] }] } : {}),
-  });
+passkeyLoginRouter.post("/options", loginLimiter, async (_req, res) => {
+  const options = await generateAuthenticationOptions({ rpID: relyingParty().id, userVerification: "required" });
   res.json({ options, challengeId: await newChallenge("SIGN_IN", options.challenge, null) });
 });
 
