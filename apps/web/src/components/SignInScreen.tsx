@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useState, useSyncExternalStore, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { browserSupportsWebAuthn, passkeyMessage, signInWithPasskey } from "@/lib/passkeys";
+import { browserSupportsWebAuthn, passkeyMessage, recallUnlock, signInLabel, signInWithPasskey } from "@/lib/passkeys";
 import { api, ApiError, type Session } from "@/lib/api";
 import { Button, Card, ErrorText, Field, Input, Notice } from "@/components/ui";
 import { HumanCheck } from "@/components/HumanCheck";
@@ -174,6 +174,8 @@ export function SignInScreen({ audience }: { audience: Audience }) {
     setStage("enrol");
   }
 
+  const unlock = useSyncExternalStore(() => () => undefined, recallUnlock, () => null);
+
   async function handlePasskey() {
     setError(null);
     setSubmitting(true);
@@ -311,7 +313,7 @@ export function SignInScreen({ audience }: { audience: Audience }) {
             {stage === "credentials" && passkeyReady && (
               <div className="mb-5 space-y-3">
                 <Button type="button" className="w-full" disabled={submitting} onClick={handlePasskey}>
-                  Sign in with fingerprint or Face ID
+                  {signInLabel(unlock)}
                 </Button>
                 <p className="text-center text-sm text-[var(--muted)]">or use your password</p>
               </div>
