@@ -96,7 +96,7 @@ export function PasskeyPanel() {
                   ))}
                 </div>
               </fieldset>
-              <Field label="Your password" hint="We ask again so nobody else can turn this on for your account.">
+              <Field label="Your HealthFlow password" hint="The password you use to sign in to HealthFlow, not your phone passcode. We ask again so nobody else can turn this on for your account.">
                 {(a) => <Input {...a} type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
               </Field>
               <div className="flex gap-2">
