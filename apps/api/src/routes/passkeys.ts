@@ -65,7 +65,7 @@ passkeyAccountRouter.post("/register/options", async (req, res) => {
     excludeCredentials: user.passkeys.map((p) => ({ id: p.credentialId, transports: p.transports as AuthenticatorTransportFuture[] })),
     // This phone or computer only, and no passkey-manager picker: the device goes straight to the fingerprint or face prompt.
     authenticatorSelection: { authenticatorAttachment: "platform", residentKey: "discouraged", userVerification: "required" },
-    preferredAuthenticatorType: "client-device",
+    preferredAuthenticatorType: "localDevice",
   });
   res.json({ options, challengeId: await newChallenge("REGISTER", options.challenge, user.id) });
 });
