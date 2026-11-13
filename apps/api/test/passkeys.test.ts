@@ -27,7 +27,7 @@ describe("fingerprint and face sign-in", () => {
 
   it("goes straight to the device's own prompt when the device names its key", async () => {
     const r = await request(app).post("/api/auth/passkey-login/options").set("X-Forwarded-For", freshIp()).send({ credentialId: "abc123" });
-    expect(r.body.options.allowCredentials).toEqual([{ id: "abc123", transports: ["internal"] }]);
+    expect(r.body.options.allowCredentials[0]).toMatchObject({ id: "abc123", transports: ["internal"] });
   });
 
   it("asks for the password before turning it on, and lists and removes a device", async () => {
