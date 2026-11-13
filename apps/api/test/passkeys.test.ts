@@ -25,13 +25,18 @@ describe("fingerprint and face sign-in", () => {
     expect(again.body.error).toBe("challenge_expired");
   });
 
+  it("goes straight to the device's own prompt when the device names its key", async () => {
+    const r = await request(app).post("/api/auth/passkey-login/options").set("X-Forwarded-For", freshIp()).send({ credentialId: "abc123" });
+    expect(r.body.options.allowCredentials).toEqual([{ id: "abc123", transports: ["internal"] }]);
+  });
+
   it("asks for the password before turning it on, and lists and removes a device", async () => {
     const { api, user } = await setup();
     expect((await api.get("/api/auth/account/passkeys")).body.passkeys).toEqual([]);
     expect((await api.post("/api/auth/account/passkeys/register/options", { password: "wrong password" })).status).not.toBe(200);
     const ok = await api.post("/api/auth/account/passkeys/register/options", { password: PASSWORD });
     expect(ok.status).toBe(200);
-    expect(ok.body.options.authenticatorSelection).toMatchObject({ residentKey: "required", userVerification: "required" });
+    expect(ok.body.options.authenticatorSelection).toMatchObject({ authenticatorAttachment: "platform", userVerification: "required" });
     const key = await prisma.passkey.create({ data: { userProfileId: user.id, credentialId: "abc", publicKey: Buffer.from([1, 2, 3]), transports: ["internal"], deviceName: "Ama's phone" } });
     expect((await api.get("/api/auth/account/passkeys")).body.passkeys).toHaveLength(1);
     expect((await api.delete(`/api/auth/account/passkeys/${key.id}`)).status).toBe(200);
