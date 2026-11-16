@@ -121,8 +121,15 @@ passkeyAccountRouter.delete("/:id", async (req, res) => {
 export const passkeyLoginRouter = Router();
 
 /** No email is asked: the device offers the passkeys it holds for this site. */
-passkeyLoginRouter.post("/options", loginLimiter, async (_req, res) => {
-  const options = await generateAuthenticationOptions({ rpID: relyingParty().id, userVerification: "required" });
+passkeyLoginRouter.post("/options", loginLimiter, async (req, res) => {
+  // A phone that made its key remembers which one, and says so: it then goes straight to Face ID or fingerprint
+  // instead of showing a list of passkeys. Nothing is looked up here, so this reveals nothing about who has an account.
+  const known = typeof req.body?.credentialId === "string" && /^[A-Za-z0-9_-]{16,512}$/.test(req.body.credentialId) ? req.body.credentialId : null;
+  const options = await generateAuthenticationOptions({
+    rpID: relyingParty().id,
+    userVerification: "required",
+    ...(known ? { allowCredentials: [{ id: known, transports: ["internal" as const] }] } : {}),
+  });
   res.json({ options, challengeId: await newChallenge("SIGN_IN", options.challenge, null) });
 });
 
