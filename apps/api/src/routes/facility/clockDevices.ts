@@ -1,13 +1,12 @@
 // Clock devices: a facility's own clocking machine feeds attendance.
 // The administrator registers the machine, gives each person their number on it, and imports its punches file.
-import { Router } from "express";
+import express, { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../lib/prisma.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { parseOr400 } from "../../lib/validate.js";
 import { allowRoles, caller, ADMIN_ROLES } from "../../middleware/facilityAccess.js";
-import { normalisePin, parsePunches } from "../../lib/clockImport.js";
-import { monthLocked } from "./attendance.js";
+import { normalisePin, pairVisits, parsePunches, sameName, type Punch } from "../../lib/clockImport.js";
 
 export const clockDevicesRouter = Router();
 clockDevicesRouter.use(allowRoles(...ADMIN_ROLES));
@@ -110,9 +109,10 @@ clockDevicesRouter.delete("/:id", async (req, res) => {
 
 // ---------------------------------------------------------------- importing punches
 
-const importInput = z.object({ text: z.string().min(1, "Paste or choose the punches file.").max(90_000), apply: z.boolean() });
+const importInput = z.object({ text: z.string().min(1, "Choose the punches file.").max(12_000_000), apply: z.boolean() });
+const TEN_MB = express.json({ limit: "12mb" });
 
-clockDevicesRouter.post("/:id/import", async (req, res) => {
+clockDevicesRouter.post("/:id/import", TEN_MB, async (req, res) => {
   const who = caller(req);
   const body = parseOr400(importInput, req.body, res);
   if (!body) return;
@@ -120,98 +120,135 @@ clockDevicesRouter.post("/:id/import", async (req, res) => {
   if (!device) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
 
   const { punches, skipped } = parsePunches(body.text);
-  if (!punches.length) return res.status(400).json({ error: "no_punches", message: "No punches were found in that file. It should have one punch per line: the person's number, then the date and time." });
+  if (!punches.length) return res.status(400).json({ error: "no_punches", message: "No punches were found in that file. Export the Transaction report from ZKBio Time as CSV or Excel, or use the machine's attendance file." });
 
-  const people = await prisma.staff.findMany({ where: { facilityId: who.facilityId, clockNumber: { not: null } }, select: { id: true, fullName: true, clockNumber: true } });
-  const byPin = new Map(people.map((p) => [normalisePin(p.clockNumber!), p]));
-  const unknown = new Map<string, number>();
-  const known: { staffId: string; at: Date }[] = [];
+  const everyone = await prisma.staff.findMany({ where: { facilityId: who.facilityId, archivedAt: null }, select: { id: true, fullName: true, clockNumber: true } });
+  const byPin = new Map(everyone.filter((p) => p.clockNumber).map((p) => [normalisePin(p.clockNumber!), p]));
+  const nameOf = new Map(everyone.map((p) => [p.id, p.fullName]));
+
+  // Punches from people with no number here are listed, with a suggested match by name when the file carries names.
+  const unknown = new Map<string, { count: number; name?: string; dept?: string }>();
+  const mine = new Map<string, Punch[]>();
   for (const p of punches) {
     const s = byPin.get(normalisePin(p.pin));
-    if (!s) { unknown.set(p.pin, (unknown.get(p.pin) ?? 0) + 1); continue; }
-    known.push({ staffId: s.id, at: p.at });
+    if (!s) { const u = unknown.get(p.pin) ?? { count: 0, name: p.name, dept: p.dept }; u.count++; unknown.set(p.pin, u); continue; }
+    mine.set(s.id, [...(mine.get(s.id) ?? []), p]);
+  }
+  const free = everyone.filter((p) => !p.clockNumber);
+  const notOnStaffList = [...unknown].map(([pin, u]) => {
+    const hits = u.name ? free.filter((f) => sameName(f.fullName, u.name!)) : [];
+    return { pin, count: u.count, name: u.name ?? null, department: u.dept ?? null, suggestion: hits.length === 1 ? { staffId: hits[0].id, fullName: hits[0].fullName } : null };
+  });
+
+  // Each person's punches become visits (arrival, departure). The machine's own Check In / Check Out words are used when the file has them.
+  type Visit = { staffId: string; arrived: Date; left: Date | null; fixedWindow?: Win };
+  type Win = { d: DutyRow; s: number; e: number };
+  const visits: Visit[] = [];
+  const orphanOuts: { staffId: string; at: Date }[] = [];
+  const stateless: { staffId: string; at: Date }[] = [];
+  for (const [staffId, list] of mine) {
+    const withState = list.filter((p) => p.state);
+    if (withState.length) {
+      const r = pairVisits(withState.map((p) => ({ at: p.at, state: p.state! })));
+      visits.push(...r.visits.map((v) => ({ staffId, ...v })));
+      orphanOuts.push(...r.orphanOuts.map((at) => ({ staffId, at })));
+    }
+    stateless.push(...list.filter((p) => !p.state).map((p) => ({ staffId, at: p.at })));
   }
 
-  // Match each person's punches to the duty they were rostered for: arrival is the first punch, departure the last.
-  const staffIds = [...new Set(known.map((k) => k.staffId))];
-  const times = known.map((k) => k.at.getTime());
-  const from = Math.floor(Math.min(...times, Infinity) / DAY) - 1;
-  const to = Math.floor(Math.max(...times, -Infinity) / DAY);
-  const duties = staffIds.length
+  const staffIds = [...mine.keys()];
+  const allTimes = [...visits.map((v) => v.arrived.getTime()), ...stateless.map((x) => x.at.getTime())];
+  const duties = staffIds.length && allTimes.length
     ? await prisma.rosterAssignment.findMany({
-        where: { facilityId: who.facilityId, staffId: { in: staffIds }, roster: { status: "PUBLISHED" }, shift: { countsAsDuty: true }, dutyDate: { gte: new Date(from * DAY), lte: new Date(to * DAY) } },
+        where: { facilityId: who.facilityId, staffId: { in: staffIds }, roster: { status: "PUBLISHED" }, shift: { countsAsDuty: true }, dutyDate: { gte: new Date((Math.floor(Math.min(...allTimes) / DAY) - 1) * DAY), lte: new Date(Math.floor(Math.max(...allTimes) / DAY) * DAY) } },
         include: { shift: { select: { startTime: true, endTime: true } } },
       })
     : [];
-  const windows = duties.flatMap((d) => {
+  type DutyRow = (typeof duties)[number];
+  const windows: Win[] = duties.flatMap((d) => {
     if (!d.shift.startTime || !d.shift.endTime) return [];
     const base = Math.floor(d.dutyDate.getTime() / DAY) * DAY;
-    const s = base + hhmm(d.shift.startTime) * MIN;
+    const st = base + hhmm(d.shift.startTime) * MIN;
     let e = base + hhmm(d.shift.endTime) * MIN;
-    if (e <= s) e += DAY;
-    return [{ d, s, e }];
+    if (e <= st) e += DAY;
+    return [{ d, s: st, e }];
   });
+  // A punch belongs to the duty it falls in, allowing three hours before the start and four after the end.
+  const windowFor = (staffId: string, t: number) => windows.filter((x) => x.d.staffId === staffId && t >= x.s - 180 * MIN && t <= x.e + 240 * MIN).sort((a, b) => Math.abs(a.s - t) - Math.abs(b.s - t))[0];
 
-  type Out = { staffId: string; name: string; dutyDate: string; arrived: Date; left: Date | null; status: string; minutesLate: number | null; minutesEarly: number | null; action: "new" | "already_recorded" | "month_locked"; assignment: (typeof duties)[number] };
-  const nameOf = new Map(people.map((p) => [p.id, p.fullName]));
-  const groups = new Map<string, { w: (typeof windows)[number]; ats: Date[] }>();
+  // Without Check In / Check Out words, the first punch in a duty is the arrival and the last (30+ minutes later) the departure.
+  const loose = new Map<string, { w: Win; ats: Date[] }>();
   let noDuty = 0;
-  for (const k of known) {
-    const t = k.at.getTime();
-    // A punch belongs to the duty it falls in, allowing three hours before the start and four after the end.
-    const w = windows.filter((x) => x.d.staffId === k.staffId && t >= x.s - 180 * MIN && t <= x.e + 240 * MIN).sort((a, b) => Math.abs(a.s - t) - Math.abs(b.s - t))[0];
+  for (const x of stateless) {
+    const w = windowFor(x.staffId, x.at.getTime());
     if (!w) { noDuty++; continue; }
-    const g = groups.get(w.d.id) ?? { w, ats: [] };
-    g.ats.push(k.at);
-    groups.set(w.d.id, g);
+    const g = loose.get(w.d.id) ?? { w, ats: [] };
+    g.ats.push(x.at);
+    loose.set(w.d.id, g);
+  }
+  for (const { w, ats } of loose.values()) {
+    ats.sort((a, b) => a.getTime() - b.getTime());
+    const last = ats[ats.length - 1];
+    visits.push({ staffId: w.d.staffId, arrived: ats[0], left: last.getTime() - ats[0].getTime() >= 30 * MIN ? last : null, fixedWindow: w });
   }
 
-  const results: Out[] = [];
-  for (const { w, ats } of groups.values()) {
-    ats.sort((a, b) => a.getTime() - b.getTime());
-    const arrived = ats[0];
-    const last = ats[ats.length - 1];
-    const left = last.getTime() - arrived.getTime() >= 30 * MIN ? last : null;
-    const diff = Math.round((arrived.getTime() - w.s) / MIN);
-    const late = diff > 0 ? diff : 0;
-    const exists = await prisma.attendance.findFirst({ where: { staffId: w.d.staffId, rosterAssignmentId: w.d.id }, select: { id: true } });
-    const locked = await monthLocked(who.facilityId, w.d.dutyDate);
-    results.push({
-      staffId: w.d.staffId, name: nameOf.get(w.d.staffId) ?? "", dutyDate: w.d.dutyDate.toISOString().slice(0, 10), arrived, left,
-      status: late > 15 ? "LATE" : "PRESENT", minutesLate: late > 0 ? late : null, minutesEarly: diff < 0 ? -diff : null,
-      action: locked ? "month_locked" : exists ? "already_recorded" : "new", assignment: w.d,
-    });
+  // Pair each visit with its duty; a second visit in the same duty (a double tap) is folded into the first.
+  const byDuty = new Map<string, { w: Win; v: Visit }>();
+  for (const v of visits) {
+    const w = v.fixedWindow ?? windowFor(v.staffId, v.arrived.getTime());
+    if (!w) { noDuty++; continue; }
+    const cur = byDuty.get(w.d.id);
+    if (!cur) byDuty.set(w.d.id, { w, v });
+    else if (v.arrived < cur.v.arrived || (v.left && (!cur.v.left || v.left > cur.v.left))) {
+      cur.v = { staffId: v.staffId, arrived: v.arrived < cur.v.arrived ? v.arrived : cur.v.arrived, left: v.left && (!cur.v.left || v.left > cur.v.left) ? v.left : cur.v.left };
+    }
   }
-  results.sort((a, b) => a.dutyDate.localeCompare(b.dutyDate) || a.name.localeCompare(b.name));
+
+  const ids = [...byDuty.keys()];
+  const [existing, approvals] = await Promise.all([
+    ids.length ? prisma.attendance.findMany({ where: { facilityId: who.facilityId, rosterAssignmentId: { in: ids } }, select: { rosterAssignmentId: true } }) : [],
+    prisma.attendanceMonthApproval.findMany({ where: { facilityId: who.facilityId }, select: { year: true, month: true } }),
+  ]);
+  const have = new Set(existing.map((e) => e.rosterAssignmentId));
+  const locked = new Set(approvals.map((a) => `${a.year}-${a.month}`));
+
+  const results = [...byDuty.values()].map(({ w, v }) => {
+    const diff = Math.round((v.arrived.getTime() - w.s) / MIN);
+    const late = diff > 0 ? diff : 0;
+    const dd = w.d.dutyDate;
+    return {
+      assignment: w.d, name: nameOf.get(w.d.staffId) ?? "", dutyDate: dd.toISOString().slice(0, 10), arrived: v.arrived, left: v.left,
+      status: late > 15 ? ("LATE" as const) : ("PRESENT" as const), minutesLate: late > 0 ? late : null, minutesEarly: diff < 0 ? -diff : null,
+      action: locked.has(`${dd.getUTCFullYear()}-${dd.getUTCMonth() + 1}`) ? ("month_locked" as const) : have.has(w.d.id) ? ("already_recorded" as const) : ("new" as const),
+    };
+  }).sort((a, b) => a.dutyDate.localeCompare(b.dutyDate) || a.name.localeCompare(b.name));
 
   const summary = {
-    punchesRead: punches.length, unreadableLines: skipped, notOnStaffList: [...unknown].map(([pin, count]) => ({ pin, count })),
-    punchesWithNoDuty: noDuty, people: staffIds.length,
+    punchesRead: punches.length, unreadableLines: skipped, notOnStaffList, punchesWithNoDuty: noDuty, people: staffIds.length,
     attendanceNew: results.filter((r) => r.action === "new").length,
     alreadyRecorded: results.filter((r) => r.action === "already_recorded").length,
     monthLocked: results.filter((r) => r.action === "month_locked").length,
+    noCheckOut: results.filter((r) => r.action === "new" && !r.left).length,
+    checkOutWithoutCheckIn: orphanOuts.length,
   };
-  const rows = results.map((r) => ({ name: r.name, dutyDate: r.dutyDate, arrived: r.arrived.toISOString().slice(11, 16), left: r.left ? r.left.toISOString().slice(11, 16) : null, status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, action: r.action }));
-  if (!body.apply) return res.json({ applied: false, summary, rows });
+  const rows = results.slice(0, 1500).map((r) => ({ name: r.name, dutyDate: r.dutyDate, arrived: r.arrived.toISOString().slice(11, 16), left: r.left ? r.left.toISOString().slice(11, 16) : null, status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, action: r.action }));
+  const toCheck = orphanOuts.slice(0, 300).map((o) => ({ name: nameOf.get(o.staffId) ?? "", date: o.at.toISOString().slice(0, 10), time: o.at.toISOString().slice(11, 16) }));
+  if (!body.apply) return res.json({ applied: false, summary, rows, toCheck });
 
-  let made = 0;
+  const fresh = results.filter((r) => r.action === "new");
   await prisma.$transaction(async (tx) => {
     // Every punch is kept as the machine reported it, once.
-    await tx.devicePunch.createMany({ data: known.map((k) => ({ facilityId: who.facilityId, deviceId: device.id, staffId: k.staffId, at: k.at })), skipDuplicates: true });
-    for (const r of results) {
-      if (r.action !== "new") continue;
-      const a = r.assignment;
-      await tx.attendance.create({
-        data: {
-          facilityId: who.facilityId, staffId: a.staffId, rosterId: a.rosterId, rosterAssignmentId: a.id, dutyDate: a.dutyDate, shiftId: a.shiftId,
-          status: r.status as "PRESENT" | "LATE", minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.arrived, source: "DEVICE", recordedBy: `Clock device: ${device.name}`,
-          note: r.left ? `Clocked on the facility's machine. Left at ${r.left.toISOString().slice(11, 16)}.` : "Clocked on the facility's machine.",
-        },
-      });
-      made++;
-    }
+    const kept = [...mine].flatMap(([staffId, list]) => list.map((p) => ({ facilityId: who.facilityId, deviceId: device.id, staffId, at: p.at })));
+    for (let i = 0; i < kept.length; i += 2000) await tx.devicePunch.createMany({ data: kept.slice(i, i + 2000), skipDuplicates: true });
+    await tx.attendance.createMany({
+      data: fresh.map((r) => ({
+        facilityId: who.facilityId, staffId: r.assignment.staffId, rosterId: r.assignment.rosterId, rosterAssignmentId: r.assignment.id, dutyDate: r.assignment.dutyDate, shiftId: r.assignment.shiftId,
+        status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.arrived, source: "DEVICE", recordedBy: `Clock device: ${device.name}`,
+        note: r.left ? `Clocked on the facility's machine. Left at ${r.left.toISOString().slice(11, 16)}.` : "Clocked on the facility's machine. No check-out was recorded.",
+      })),
+    });
     await tx.clockDevice.update({ where: { id: device.id }, data: { lastImportAt: new Date() } });
-  });
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_import", entityType: "ClockDevice", entityId: device.id, summary: `${who.displayName} imported ${punches.length} punches from "${device.name}" and made ${made} attendance records.` });
-  res.json({ applied: true, summary: { ...summary, attendanceNew: made }, rows });
+  }, { timeout: 60_000, maxWait: 15_000 });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_import", entityType: "ClockDevice", entityId: device.id, summary: `${who.displayName} imported ${punches.length} punches from "${device.name}" and made ${fresh.length} attendance records.` });
+  res.json({ applied: true, summary, rows, toCheck });
 });

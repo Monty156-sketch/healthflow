@@ -10,8 +10,9 @@ import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeade
 interface Device { id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
 interface Person { id: string; fullName: string; staffNo: string; clockNumber: string | null }
 interface Row { name: string; dutyDate: string; arrived: string; left: string | null; status: string; minutesLate: number | null; minutesEarly: number | null; action: "new" | "already_recorded" | "month_locked" }
-interface Summary { punchesRead: number; unreadableLines: number; notOnStaffList: { pin: string; count: number }[]; punchesWithNoDuty: number; people: number; attendanceNew: number; alreadyRecorded: number; monthLocked: number }
-interface Result { applied: boolean; summary: Summary; rows: Row[] }
+interface Unknown { pin: string; count: number; name: string | null; department: string | null; suggestion: { staffId: string; fullName: string } | null }
+interface Summary { punchesRead: number; unreadableLines: number; notOnStaffList: Unknown[]; punchesWithNoDuty: number; people: number; attendanceNew: number; alreadyRecorded: number; monthLocked: number; noCheckOut: number; checkOutWithoutCheckIn: number }
+interface Result { applied: boolean; summary: Summary; rows: Row[]; toCheck: { name: string; date: string; time: string }[] }
 
 const say = (e: unknown, fallback: string) => (e instanceof ApiError ? ((e.body as { message?: string } | undefined)?.message ?? fallback) : fallback);
 
@@ -108,9 +109,18 @@ function ImportPunches({ device, onDone }: { device: Device; onDone: () => void 
     setText(await file.text());
   }
   const s = res?.summary;
+  async function useSuggestions() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const numbers = res!.summary.notOnStaffList.filter((u) => u.suggestion).map((u) => ({ staffId: u.suggestion!.staffId, clockNumber: u.pin }));
+      await api.put("/api/facility/clock-devices/people", { numbers });
+      await run(false);
+    } catch (x) { setErr(say(x, "The numbers were not saved.")); } finally { setBusy(false); }
+  }
   return (
     <div className="mt-4 space-y-3 border-t border-[var(--border)] pt-4">
-      <p className="text-sm text-[var(--muted)]">On the machine, copy the attendance log to a USB drive (Data Management, Download Attendance Data). Then choose that file here. Import a week or two at a time.</p>
+      <p className="text-sm text-[var(--muted)]">In ZKBio Time, open the Transaction report, set the dates, and export it as CSV or Excel saved as CSV. Then choose that file here. (The machine\u2019s own USB file also works.) A month at a time works.</p>
       <input type="file" accept=".dat,.txt,.csv,.log" aria-label="Punches file" onChange={(e) => pick(e.target.files?.[0])} />
       <Field label="Or paste the punches here">{(a) => <Textarea {...a} rows={4} value={text} onChange={(e) => { setText(e.target.value); setRes(null); }} />}</Field>
       <div className="flex flex-wrap gap-2">
@@ -128,7 +138,33 @@ function ImportPunches({ device, onDone }: { device: Device; onDone: () => void 
             {s.unreadableLines > 0 && ` ${s.unreadableLines} lines could not be read.`}
           </Notice>
           {s.notOnStaffList.length > 0 && (
-            <Notice tone="warning">These machine numbers match nobody: {s.notOnStaffList.map((u) => `${u.pin} (${u.count})`).join(", ")}. Give each person their number above, then check again.</Notice>
+            <div className="space-y-2">
+              <Notice tone="warning">These people in the file are not matched to anyone yet. Matching uses the employee ID, so confirm each match, then check the file again.</Notice>
+              <TableScroll label="People not matched">
+                <table className="w-full text-sm">
+                  <thead><tr><th className={TH}>ID in the file</th><th className={TH}>Name in the file</th><th className={TH}>Punches</th><th className={TH}>Suggested staff</th></tr></thead>
+                  <tbody>
+                    {s.notOnStaffList.slice(0, 200).map((u) => (
+                      <tr key={u.pin}><td className={TD}>{u.pin}</td><td className={TD}>{u.name ?? "-"}{u.department ? ` (${u.department})` : ""}</td><td className={TD}>{u.count}</td><td className={TD}>{u.suggestion?.fullName ?? "No match by name"}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableScroll>
+              {s.notOnStaffList.some((u) => u.suggestion) && (
+                <Button variant="secondary" disabled={busy} onClick={useSuggestions}>Use the {s.notOnStaffList.filter((u) => u.suggestion).length} suggested matches</Button>
+              )}
+            </div>
+          )}
+          {(s.noCheckOut > 0 || s.checkOutWithoutCheckIn > 0) && (
+            <Notice tone="warning">
+              {s.noCheckOut > 0 && `${s.noCheckOut} days have a check-in but no check-out; they are recorded as present with no departure time. `}
+              {s.checkOutWithoutCheckIn > 0 && `${s.checkOutWithoutCheckIn} check-outs have no check-in, so we cannot tell when the person arrived. They are not recorded; the in-charge can mark those days. `}
+            </Notice>
+          )}
+          {res!.toCheck.length > 0 && (
+            <details className="text-sm"><summary className="cursor-pointer font-medium">Check-outs with no check-in ({res!.toCheck.length})</summary>
+              <ul className="mt-2 list-disc pl-5">{res!.toCheck.map((c, i) => <li key={i}>{c.name}, {c.date} at {c.time}</li>)}</ul>
+            </details>
           )}
           {res!.rows.length > 0 && (
             <TableScroll label="Attendance from the punches">
