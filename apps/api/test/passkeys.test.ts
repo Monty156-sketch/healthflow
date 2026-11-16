@@ -17,6 +17,11 @@ describe("fingerprint and face sign-in", () => {
     expect(first.status).toBe(200);
     expect(first.body.options.challenge).toBeTruthy();
     expect(first.body.options.userVerification).toBe("required");
+    expect(first.body.options.allowCredentials ?? []).toHaveLength(0);
+    const named = await request(app).post("/api/auth/passkey-login/options").set("X-Forwarded-For", freshIp()).send({ credentialId: "abcdefghijklmnopqrstuvwxyz012345" });
+    expect(named.body.options.allowCredentials).toEqual([expect.objectContaining({ id: "abcdefghijklmnopqrstuvwxyz012345" })]);
+    const odd = await request(app).post("/api/auth/passkey-login/options").set("X-Forwarded-For", freshIp()).send({ credentialId: "bad id!" });
+    expect(odd.body.options.allowCredentials ?? []).toHaveLength(0);
     const bogus = { id: "unknown-credential", rawId: "unknown-credential", type: "public-key", response: {}, clientExtensionResults: {} };
     const a = await request(app).post("/api/auth/passkey-login/verify").set("X-Forwarded-For", ip).send({ challengeId: first.body.challengeId, response: bogus });
     expect(a.status).toBe(401);
