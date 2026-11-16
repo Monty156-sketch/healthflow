@@ -117,3 +117,12 @@ export function sameName(a: string, b: string) {
   const [small, big] = x.length <= y.length ? [x, y] : [y, x];
   return small.length >= 2 && small.every((t) => big.includes(t));
 }
+
+/** One transaction as ZKBio Time's own API reports it: employee code, "YYYY-MM-DD HH:MM:SS" and "Check In" / "Check Out". Null for breaks and anything unreadable. */
+export function punchFrom(code: string, time: string, state: string, name?: string, dept?: string): Punch | null {
+  const m = DT.exec(time.trim());
+  const st = /(in|out)$/i.test(state.trim()) ? stateOf(state.trim()) : null;
+  if (!m || !st || st === "BREAK" || !/^[A-Za-z0-9-]+$/.test(code)) return null;
+  const at = make(m[1], m[2], m[3], m[4], m[5], m[6]);
+  return at ? { pin: code, at, name: name || undefined, dept: dept || undefined, state: st } : null;
+}

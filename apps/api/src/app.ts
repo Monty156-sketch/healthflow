@@ -10,6 +10,7 @@ import { authRouter } from "./routes/auth.js";
 import { passkeyAccountRouter, passkeyLoginRouter } from "./routes/passkeys.js";
 import { accountRouter } from "./routes/account.js";
 import { facilityRouter } from "./routes/facility/index.js";
+import { clockLinkRouter } from "./routes/clockLink.js";
 import { invitationRouter } from "./routes/invitations.js";
 import { errorReportRouter, platformRouter, recordServerError } from "./routes/errors.js";
 import { internalRouter } from "./routes/internal.js";
@@ -57,6 +58,7 @@ export function createApp() {
   app.use("/api/auth/account", systemScope, accountRouter);
   app.use("/api/auth/passkey-login", systemScope, passkeyLoginRouter);
   app.use("/api/auth", systemScope, authRouter);
+  app.use("/api/clock-link", systemScope, clockLinkRouter);
   app.use("/api/facility", facilityRouter);
   app.use("/api/invitations", systemScope, invitationRouter);
   app.use("/api/errors", systemScope, errorReportRouter);

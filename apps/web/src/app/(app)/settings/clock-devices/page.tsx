@@ -5,9 +5,10 @@
 import { FormEvent, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useResource } from "@/lib/useApi";
+import { zkLinkScript } from "@/lib/zkLinkScript";
 import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, TD, TH, TableScroll, Textarea } from "@/components/ui";
 
-interface Device { id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
+interface Device { linked?: boolean; lastPushAt?: string | null; lastPushCount?: number | null; id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
 interface Person { id: string; fullName: string; staffNo: string; clockNumber: string | null; officeHours: boolean }
 interface Row { name: string; dutyDate: string; arrived: string; left: string | null; status: string; minutesLate: number | null; minutesEarly: number | null; action: "new" | "already_recorded" | "month_locked" }
 interface Unknown { pin: string; count: number; name: string | null; department: string | null; suggestion: { staffId: string; fullName: string } | null }
@@ -194,6 +195,44 @@ function ImportPunches({ device, onDone }: { device: Device; onDone: () => void 
   );
 }
 
+function AutoLink({ d, onChanged }: { d: Device; onChanged: () => void }) {
+  const [key, setKey] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  async function make() {
+    setErr(null);
+    try { setKey((await api.post<{ key: string }>(`/api/facility/clock-devices/${d.id}/link-key`)).key); onChanged(); } catch (x) { setErr(say(x, "The key was not made.")); }
+  }
+  async function off() {
+    try { await api.delete(`/api/facility/clock-devices/${d.id}/link-key`); setKey(null); onChanged(); } catch (x) { setErr(say(x, "It was not turned off.")); }
+  }
+  function download() {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([zkLinkScript(window.location.origin, key!)], { type: "text/plain" }));
+    a.download = "HealthFlowLink.ps1";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  return (
+    <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+      <p className="text-sm font-medium">Automatic link from ZKBio Time</p>
+      <p className="text-sm text-[var(--muted)]">
+        {d.linked ? (d.lastPushAt ? `Linked. Last punches received ${d.lastPushAt.slice(0, 16).replace("T", " ")} (${d.lastPushCount ?? 0} read).` : "Key made. Nothing received yet: run the downloaded file on the ZKBio Time PC.") : "Not linked. A small program on the hospital PC that has ZKBio Time sends new punches here every 10 minutes."}
+      </p>
+      {key && (
+        <Notice tone="warning">
+          Download the file now. The key inside it is shown only once. On the ZKBio Time PC, open the folder with the file, hold Shift and right-click empty space, choose Open PowerShell window here, and type: powershell -ExecutionPolicy Bypass -File .\\HealthFlowLink.ps1 (add -Test at the end to check without sending). It asks three questions: the address of ZKBio Time, its user name and password. They stay on that PC.
+          <div className="mt-2"><Button onClick={download}>Download HealthFlowLink.ps1</Button></div>
+        </Notice>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={make}>{d.linked ? "Make a new key" : "Set up the link"}</Button>
+        {d.linked && <Button variant="secondary" onClick={off}>Turn the link off</Button>}
+      </div>
+      {err && <Notice tone="warning">{err}</Notice>}
+    </div>
+  );
+}
+
 function DeviceCard({ d, onChanged }: { d: Device; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -214,6 +253,7 @@ function DeviceCard({ d, onChanged }: { d: Device; onChanged: () => void }) {
           )}
         </div>
       </div>
+      <AutoLink d={d} onChanged={onChanged} />
       {open && <ImportPunches device={d} onDone={onChanged} />}
     </li>
   );

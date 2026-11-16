@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
+import request from "supertest";
+import { app, as, makeFacility, makeUser, prisma, resetDatabase } from "./helpers.js";
 import { pairVisits, parsePunches, sameName } from "../src/lib/clockImport.js";
 
 beforeEach(resetDatabase);
@@ -180,4 +181,37 @@ describe("clock devices", () => {
     expect(again.body.summary.attendanceNew).toBe(0);
     expect(await prisma.attendance.count()).toBe(expected);
   }, 180_000);
+
+  it("takes punches from the ZKBio Time link with its key, adds a later check-out, and refuses a wrong key", async () => {
+    const { facility, admin, staff } = await setup();
+    const dev = (await admin.post("/api/facility/clock-devices", { name: "ZKBio Time" })).body;
+    await admin.put("/api/facility/clock-devices/people", { numbers: [{ staffId: staff.id, clockNumber: "AMHK-N1" }] });
+    const shift = (await admin.post("/api/facility/shifts", { name: "Morning", code: "A", startTime: "07:00", endTime: "14:00", isOvernight: false, minStaff: 1, colour: "#25619f" })).body.shift;
+    const day = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000);
+    const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: day.getUTCMonth() + 1, year: day.getUTCFullYear(), status: "PUBLISHED" } });
+    await prisma.rosterAssignment.create({ data: { rosterId: roster.id, facilityId: facility.id, staffId: staff.id, shiftId: shift.id, dutyDate: day } });
+    const d = day.toISOString().slice(0, 10);
+
+    expect((await request(app).post("/api/clock-link/punches").set("Authorization", "Bearer hfk_wrongwrongwrongwrongwrong").send({ punches: [{ code: "AMHK-N1", time: `${d} 07:05:00`, state: "Check In" }] })).status).toBe(401);
+    expect((await admin.get("/api/facility/clock-devices")).body.devices[0].linked).toBe(false);
+    const key = (await admin.post(`/api/facility/clock-devices/${dev.id}/link-key`)).body.key as string;
+    expect((await admin.get("/api/facility/clock-devices")).body.devices[0]).toMatchObject({ linked: true });
+    expect(JSON.stringify((await admin.get("/api/facility/clock-devices")).body)).not.toContain("apiKeyHash");
+
+    const push = (punches: object[]) => request(app).post("/api/clock-link/punches").set("Authorization", `Bearer ${key}`).send({ punches });
+    const first = await push([{ code: "AMHK-N1", time: `${d} 07:05:00`, state: "Check In", name: "AMA DERY" }, { code: "AMHK-N1", time: `${d} 09:00:00`, state: "Break Out" }]);
+    expect(first.status).toBe(200);
+    expect(first.body).toMatchObject({ received: 1, newAttendance: 1 });
+    expect(await prisma.attendance.findFirstOrThrow()).toMatchObject({ status: "PRESENT", minutesLate: 5, source: "DEVICE" });
+    expect((await prisma.attendance.findFirstOrThrow()).note).toContain("No check-out");
+
+    const second = await push([{ code: "AMHK-N1", time: `${d} 07:05:00`, state: "Check In" }, { code: "AMHK-N1", time: `${d} 14:02:00`, state: "Check Out" }]);
+    expect(second.body).toMatchObject({ newAttendance: 0, departuresAdded: 1 });
+    expect((await prisma.attendance.findFirstOrThrow()).note).toContain("Left at 14:02");
+    expect(await prisma.attendance.count()).toBe(1);
+    expect((await admin.get("/api/facility/clock-devices")).body.devices[0].lastPushAt).not.toBeNull();
+
+    await admin.delete(`/api/facility/clock-devices/${dev.id}/link-key`);
+    expect((await push([{ code: "AMHK-N1", time: `${d} 07:05:00`, state: "Check In" }])).status).toBe(401);
+  });
 });
