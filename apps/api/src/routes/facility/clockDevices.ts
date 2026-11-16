@@ -53,12 +53,12 @@ clockDevicesRouter.post("/", async (req, res) => {
 
 clockDevicesRouter.get("/people", async (req, res) => {
   const { facilityId } = caller(req);
-  const staff = await prisma.staff.findMany({ where: { facilityId, archivedAt: null }, select: { id: true, fullName: true, staffNo: true, clockNumber: true }, orderBy: { fullName: "asc" } });
+  const staff = await prisma.staff.findMany({ where: { facilityId, archivedAt: null }, select: { id: true, fullName: true, staffNo: true, clockNumber: true, officeHours: true }, orderBy: { fullName: "asc" } });
   res.json({ staff });
 });
 
 const numbersInput = z.object({
-  numbers: z.array(z.object({ staffId: z.string().min(1), clockNumber: z.string().trim().max(20).regex(/^[A-Za-z0-9-]*$/, "Use letters, digits or a dash only.").nullable() })).min(1).max(2000),
+  numbers: z.array(z.object({ staffId: z.string().min(1), clockNumber: z.string().trim().max(20).regex(/^[A-Za-z0-9-]*$/, "Use letters, digits or a dash only.").nullable(), officeHours: z.boolean().optional() })).min(1).max(2000),
 });
 clockDevicesRouter.put("/people", async (req, res) => {
   const who = caller(req);
@@ -82,6 +82,7 @@ clockDevicesRouter.put("/people", async (req, res) => {
     // Clear first so two people can swap numbers in one save.
     for (const w of wanted) await tx.staff.update({ where: { id: w.staffId }, data: { clockNumber: null } });
     for (const w of wanted) if (w.no) await tx.staff.update({ where: { id: w.staffId }, data: { clockNumber: w.no } });
+    for (const n of body.numbers) if (n.officeHours !== undefined) await tx.staff.update({ where: { id: n.staffId }, data: { officeHours: n.officeHours } });
   });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_numbers_set", entityType: "Staff", entityId: who.facilityId, summary: `${who.displayName} set clock numbers for ${wanted.length} staff.` });
   res.json({ saved: wanted.length });
@@ -122,7 +123,7 @@ clockDevicesRouter.post("/:id/import", TEN_MB, async (req, res) => {
   const { punches, skipped } = parsePunches(body.text);
   if (!punches.length) return res.status(400).json({ error: "no_punches", message: "No punches were found in that file. Export the Transaction report from ZKBio Time as CSV or Excel, or use the machine's attendance file." });
 
-  const everyone = await prisma.staff.findMany({ where: { facilityId: who.facilityId, archivedAt: null }, select: { id: true, fullName: true, clockNumber: true } });
+  const everyone = await prisma.staff.findMany({ where: { facilityId: who.facilityId, archivedAt: null }, select: { id: true, fullName: true, clockNumber: true, officeHours: true } });
   const byPin = new Map(everyone.filter((p) => p.clockNumber).map((p) => [normalisePin(p.clockNumber!), p]));
   const nameOf = new Map(everyone.map((p) => [p.id, p.fullName]));
 
@@ -164,17 +165,32 @@ clockDevicesRouter.post("/:id/import", TEN_MB, async (req, res) => {
         include: { shift: { select: { startTime: true, endTime: true } } },
       })
     : [];
-  type DutyRow = (typeof duties)[number];
+  type DutyRow = { id: string; staffId: string; rosterId: string | null; shiftId: string | null; dutyDate: Date; office: boolean };
   const windows: Win[] = duties.flatMap((d) => {
     if (!d.shift.startTime || !d.shift.endTime) return [];
     const base = Math.floor(d.dutyDate.getTime() / DAY) * DAY;
     const st = base + hhmm(d.shift.startTime) * MIN;
     let e = base + hhmm(d.shift.endTime) * MIN;
     if (e <= st) e += DAY;
-    return [{ d, s: st, e }];
+    return [{ d: { id: d.id, staffId: d.staffId, rosterId: d.rosterId, shiftId: d.shiftId, dutyDate: d.dutyDate, office: false }, s: st, e }];
   });
+  // Office staff have no roster: 08:00 to 17:00 on weekdays that are not public holidays.
+  const office = staffIds.filter((id) => everyone.find((p) => p.id === id)?.officeHours);
+  if (office.length && allTimes.length) {
+    const first = Math.floor(Math.min(...allTimes) / DAY) - 1;
+    const last = Math.floor(Math.max(...allTimes) / DAY);
+    const hols = await prisma.publicHoliday.findMany({ where: { OR: [{ facilityId: who.facilityId }, { facilityId: null }], date: { gte: new Date(first * DAY), lte: new Date(last * DAY) } }, select: { date: true } });
+    const off = new Set(hols.map((h) => Math.floor(h.date.getTime() / DAY)));
+    for (let day = first; day <= last; day++) {
+      const dow = new Date(day * DAY).getUTCDay();
+      if (dow === 0 || dow === 6 || off.has(day)) continue;
+      for (const staffId of office) windows.push({ d: { id: `office:${staffId}:${day}`, staffId, rosterId: null, shiftId: null, dutyDate: new Date(day * DAY), office: true }, s: day * DAY + 8 * 60 * MIN, e: day * DAY + 17 * 60 * MIN });
+    }
+  }
   // A punch belongs to the duty it falls in, allowing three hours before the start and four after the end.
-  const windowFor = (staffId: string, t: number) => windows.filter((x) => x.d.staffId === staffId && t >= x.s - 180 * MIN && t <= x.e + 240 * MIN).sort((a, b) => Math.abs(a.s - t) - Math.abs(b.s - t))[0];
+  const winBy = new Map<string, Win[]>();
+  for (const w of windows) winBy.set(w.d.staffId, [...(winBy.get(w.d.staffId) ?? []), w]);
+  const windowFor = (staffId: string, t: number) => (winBy.get(staffId) ?? []).filter((x) => t >= x.s - 180 * MIN && t <= x.e + 240 * MIN).sort((a, b) => Math.abs(a.s - t) - Math.abs(b.s - t))[0];
 
   // Without Check In / Check Out words, the first punch in a duty is the arrival and the last (30+ minutes later) the departure.
   const loose = new Map<string, { w: Win; ats: Date[] }>();
@@ -204,12 +220,14 @@ clockDevicesRouter.post("/:id/import", TEN_MB, async (req, res) => {
     }
   }
 
-  const ids = [...byDuty.keys()];
-  const [existing, approvals] = await Promise.all([
+  const ids = [...byDuty.values()].filter((x) => !x.w.d.office).map((x) => x.w.d.id);
+  const officeDays = [...byDuty.values()].filter((x) => x.w.d.office);
+  const [existing, existingOffice, approvals] = await Promise.all([
     ids.length ? prisma.attendance.findMany({ where: { facilityId: who.facilityId, rosterAssignmentId: { in: ids } }, select: { rosterAssignmentId: true } }) : [],
+    officeDays.length ? prisma.attendance.findMany({ where: { facilityId: who.facilityId, rosterAssignmentId: null, staffId: { in: [...new Set(officeDays.map((x) => x.w.d.staffId))] }, dutyDate: { in: officeDays.map((x) => x.w.d.dutyDate) } }, select: { staffId: true, dutyDate: true } }) : [],
     prisma.attendanceMonthApproval.findMany({ where: { facilityId: who.facilityId }, select: { year: true, month: true } }),
   ]);
-  const have = new Set(existing.map((e) => e.rosterAssignmentId));
+  const have = new Set([...existing.map((e) => e.rosterAssignmentId as string), ...existingOffice.map((e) => `office:${e.staffId}:${Math.floor(e.dutyDate.getTime() / DAY)}`)]);
   const locked = new Set(approvals.map((a) => `${a.year}-${a.month}`));
 
   const results = [...byDuty.values()].map(({ w, v }) => {
@@ -242,7 +260,7 @@ clockDevicesRouter.post("/:id/import", TEN_MB, async (req, res) => {
     for (let i = 0; i < kept.length; i += 2000) await tx.devicePunch.createMany({ data: kept.slice(i, i + 2000), skipDuplicates: true });
     await tx.attendance.createMany({
       data: fresh.map((r) => ({
-        facilityId: who.facilityId, staffId: r.assignment.staffId, rosterId: r.assignment.rosterId, rosterAssignmentId: r.assignment.id, dutyDate: r.assignment.dutyDate, shiftId: r.assignment.shiftId,
+        facilityId: who.facilityId, staffId: r.assignment.staffId, rosterId: r.assignment.rosterId, rosterAssignmentId: r.assignment.office ? null : r.assignment.id, dutyDate: r.assignment.dutyDate, shiftId: r.assignment.shiftId,
         status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.arrived, source: "DEVICE", recordedBy: `Clock device: ${device.name}`,
         note: r.left ? `Clocked on the facility's machine. Left at ${r.left.toISOString().slice(11, 16)}.` : "Clocked on the facility's machine. No check-out was recorded.",
       })),

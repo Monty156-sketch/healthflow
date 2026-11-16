@@ -120,4 +120,64 @@ describe("clock devices", () => {
     expect(rows[0]).toMatchObject({ status: "PRESENT", minutesLate: 10, source: "DEVICE" });
     expect(rows[1]).toMatchObject({ status: "LATE", minutesLate: 20 });
   });
+
+  it("marks office staff from the machine alone: weekdays 8 to 5, nothing on weekends or public holidays", async () => {
+    const { facility, admin, staff } = await setup();
+    const dev = (await admin.post("/api/facility/clock-devices", { name: "ZKBio Time" })).body;
+    await admin.put("/api/facility/clock-devices/people", { numbers: [{ staffId: staff.id, clockNumber: "AMHK-F001", officeHours: true }] });
+    await prisma.publicHoliday.create({ data: { facilityId: facility.id, date: new Date("2026-03-04T00:00:00Z"), name: "Test holiday", year: 2026 } });
+    const csv = ["Employee ID,First Name,Department,Date,Time,Punch State,Work Code,Data Sources",
+      "AMHK-F001,AMA DERY,Finance,2026-03-02,08:20,Check In,0,Device", "AMHK-F001,AMA DERY,Finance,2026-03-02,17:05,Check Out,0,Device",
+      "AMHK-F001,AMA DERY,Finance,2026-03-04,08:00,Check In,0,Device", "AMHK-F001,AMA DERY,Finance,2026-03-04,17:00,Check Out,0,Device",
+      "AMHK-F001,AMA DERY,Finance,2026-03-07,09:00,Check In,0,Device", "AMHK-F001,AMA DERY,Finance,2026-03-07,12:00,Check Out,0,Device"].join("\n");
+    const done = await admin.post(`/api/facility/clock-devices/${dev.id}/import`, { text: csv, apply: true });
+    expect(done.body.summary).toMatchObject({ attendanceNew: 1, punchesWithNoDuty: 2 });
+    expect(await prisma.attendance.findFirstOrThrow()).toMatchObject({ status: "LATE", minutesLate: 20, rosterAssignmentId: null, source: "DEVICE" });
+    const again = await admin.post(`/api/facility/clock-devices/${dev.id}/import`, { text: csv, apply: true });
+    expect(again.body.summary).toMatchObject({ attendanceNew: 0, alreadyRecorded: 1 });
+    expect(await prisma.attendance.count()).toBe(1);
+  });
+
+  it("copes with a whole hospital month: 146 people, three shifts, missing punches", async () => {
+    const { facility, admin } = await setup();
+    const dev = (await admin.post("/api/facility/clock-devices", { name: "ZKBio Time" })).body;
+    const mk = async (name: string, code: string, startTime: string, endTime: string, isOvernight: boolean) => (await admin.post("/api/facility/shifts", { name, code, startTime, endTime, isOvernight, minStaff: 1, colour: "#25619f" })).body.shift;
+    const shifts = [await mk("Morning", "M", "07:00", "14:00", false), await mk("Afternoon", "A", "14:00", "19:00", false), await mk("Night", "N", "19:00", "07:00", true)];
+    const starts = [7, 14, 19];
+    const ends = [14, 19, 7];
+    await prisma.staff.createMany({ data: Array.from({ length: 146 }, (_, i) => ({ facilityId: facility.id, staffNo: `S${i}`, fullName: `Person${String.fromCharCode(65 + (i % 26))} Surname${i}`, clockNumber: `AMHK-X${String(i).padStart(3, "0")}`, status: "ACTIVE" as const })) });
+    const people = await prisma.staff.findMany({ where: { staffNo: { startsWith: "S" } }, orderBy: { staffNo: "asc" } });
+    const roster = await prisma.roster.create({ data: { facilityId: facility.id, month: 3, year: 2026, status: "PUBLISHED" } });
+    const dayAt = (d: number) => new Date(Date.UTC(2026, 2, d));
+    const rows: string[] = ["Employee ID,First Name,Department,Date,Time,Punch State,Work Code,Data Sources"];
+    const duties: { rosterId: string; facilityId: string; staffId: string; shiftId: string; dutyDate: Date }[] = [];
+    let expected = 0;
+    const iso = (d: number) => `2026-03-${String(d).padStart(2, "0")}`;
+    const hm = (h: number, m: number) => `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    people.forEach((p, i) => {
+      const k = people.indexOf(p) % 3;
+      for (let d = 1; d <= 27; d++) {
+        if ((d + i) % 4 === 0) continue;
+        duties.push({ rosterId: roster.id, facilityId: facility.id, staffId: p.id, shiftId: shifts[k].id, dutyDate: dayAt(d) });
+        const pin = p.clockNumber!;
+        const missingIn = (d * 7 + i) % 29 === 0;
+        const missingOut = (d * 3 + i) % 17 === 0;
+        if (!missingIn) { rows.push(`${pin},NAME,Ward,${iso(d)},${hm(starts[k] - ((d + i) % 2), (d * 5 + i) % 40)},Check In,0,Device`); expected++; }
+        if (!missingOut) rows.push(`${pin},NAME,Ward,${k === 2 ? iso(d + 1) : iso(d)},${hm(ends[k], (i + d) % 30)},Check Out,0,Device`);
+      }
+    });
+    for (let i = 0; i < duties.length; i += 1000) await prisma.rosterAssignment.createMany({ data: duties.slice(i, i + 1000) });
+    const text = rows.join("\n");
+    const t0 = Date.now();
+    const preview = await admin.post(`/api/facility/clock-devices/${dev.id}/import`, { text, apply: false });
+    expect(preview.status).toBe(200);
+    expect(preview.body.summary.attendanceNew).toBe(expected);
+    const done = await admin.post(`/api/facility/clock-devices/${dev.id}/import`, { text, apply: true });
+    expect(done.status).toBe(200);
+    console.log(`146-person month: ${rows.length - 1} punches, ${expected} attendance records, ${Date.now() - t0} ms for preview and import`);
+    expect(await prisma.attendance.count()).toBe(expected);
+    const again = await admin.post(`/api/facility/clock-devices/${dev.id}/import`, { text, apply: true });
+    expect(again.body.summary.attendanceNew).toBe(0);
+    expect(await prisma.attendance.count()).toBe(expected);
+  }, 180_000);
 });
