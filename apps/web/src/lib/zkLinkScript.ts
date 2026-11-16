@@ -1,5 +1,5 @@
 // The small program for the hospital PC that has ZKBio Time on it. It reads new punches from ZKBio Time's own
-// web interface (on that PC) and sends them to HealthFlow every 10 minutes. Windows PowerShell only; nothing to install.
+// web interface (on that PC) and sends them to HealthFlow every minute. Windows PowerShell only; nothing to install.
 export function zkLinkScript(healthflowUrl: string, key: string): string {
   return String.raw`# HealthFlow link for ZKBio Time
 # Run this once on the PC that has ZKBio Time, in a PowerShell window opened in this folder:
@@ -13,6 +13,7 @@ $KEY  = '${key}'
 $dir  = Join-Path $env:LOCALAPPDATA 'HealthFlowLink'
 $cfg  = Join-Path $dir 'zkbio.json'
 $self = Join-Path $dir 'HealthFlowLink.ps1'
+$stateFile = Join-Path $dir 'state.json'
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
 
 function Ask-Settings {
@@ -49,32 +50,43 @@ function To-Punch($t) {
   @{ code = [string]$t.emp_code; time = [string]$t.punch_time; state = [string]$t.punch_state_display; name = (($t.first_name + ' ' + $t.last_name).Trim()); dept = [string]$dept }
 }
 
-# The last three days every time: the same punch is never counted twice, and a check-out that arrives later is added to its visit.
+# The last 20 hours every time (a night shift is 12 or 13), so a check-out always arrives with its check-in.
+# Nothing is sent unless something new has happened: HealthFlow is only bothered when a punch actually arrives.
 $to   = (Get-Date).AddDays(1).ToString('yyyy-MM-dd 00:00:00')
-$from = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd 00:00:00')
+$from = (Get-Date).AddHours(-20).ToString('yyyy-MM-dd HH:mm:ss')
 $token = Get-Token
-$tx = Get-Transactions $token $from $to
-Write-Host ('ZKBio Time gave ' + $tx.Count + ' punches for the last three days.')
+$tx = @(Get-Transactions $token $from $to)
+$newest = ($tx | ForEach-Object { [string]$_.punch_time } | Sort-Object | Select-Object -Last 1)
+$sig = [string]$tx.Count + '|' + $newest
+Write-Host ('ZKBio Time gave ' + $tx.Count + ' punches for the last 20 hours.')
 if ($Test) {
   $tx | Select-Object -First 5 | ForEach-Object { Write-Host ((To-Punch $_) | ConvertTo-Json -Compress) }
   Write-Host 'Test only: nothing was sent to HealthFlow.'
   return
 }
-$punches = @($tx | ForEach-Object { To-Punch $_ })
-for ($i = 0; $i -lt $punches.Count; $i += 500) {
-  $chunk = @($punches[$i..([Math]::Min($i + 499, $punches.Count - 1))])
-  $body = @{ punches = $chunk } | ConvertTo-Json -Depth 4
-  $res = Invoke-RestMethod -Method Post -Uri ($HF + '/api/clock-link/punches') -Headers @{ Authorization = ('Bearer ' + $KEY) } -ContentType 'application/json' -Body $body
-  Write-Host ('Sent ' + $res.received + ' punches. New attendance records: ' + $res.newAttendance)
+$last = $null
+if (Test-Path $stateFile) { $last = (Get-Content $stateFile -Raw | ConvertFrom-Json).sig }
+if ($tx.Count -gt 0 -and $sig -ne $last) {
+  $punches = @($tx | ForEach-Object { To-Punch $_ })
+  for ($i = 0; $i -lt $punches.Count; $i += 500) {
+    $chunk = @($punches[$i..([Math]::Min($i + 499, $punches.Count - 1))])
+    $body = @{ punches = $chunk } | ConvertTo-Json -Depth 4
+    $res = Invoke-RestMethod -Method Post -Uri ($HF + '/api/clock-link/punches') -Headers @{ Authorization = ('Bearer ' + $KEY) } -ContentType 'application/json' -Body $body
+    Write-Host ('Sent ' + $res.received + ' punches. New attendance records: ' + $res.newAttendance)
+  }
+  @{ sig = $sig } | ConvertTo-Json | Set-Content -Path $stateFile
+} else {
+  Write-Host 'Nothing new to send.'
 }
 
-# First run by hand: keep a copy here and ask Windows to run it every 10 minutes.
+# First run by hand: keep a copy here and ask Windows to run it every minute.
 if (-not $Run -and $MyInvocation.MyCommand.Path -ne $self) {
   Copy-Item -Path $MyInvocation.MyCommand.Path -Destination $self -Force
   $action  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument ('-NoProfile -ExecutionPolicy Bypass -File "' + $self + '" -Run')
-  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 10) -RepetitionDuration (New-TimeSpan -Days 3650)
-  Register-ScheduledTask -TaskName 'HealthFlow link' -Action $action -Trigger $trigger -Force | Out-Null
-  Write-Host 'Done. This PC will now send new punches to HealthFlow every 10 minutes while it is on and you are signed in.'
+  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
+  $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
+  Register-ScheduledTask -TaskName 'HealthFlow link' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
+  Write-Host 'Done. This PC will now send new punches to HealthFlow every minute while it is on and you are signed in.'
   Read-Host 'Press Enter to close'
 }
 `;

@@ -216,7 +216,7 @@ function AutoLink({ d, onChanged }: { d: Device; onChanged: () => void }) {
     <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
       <p className="text-sm font-medium">Automatic link from ZKBio Time</p>
       <p className="text-sm text-[var(--muted)]">
-        {d.linked ? (d.lastPushAt ? `Linked. Last punches received ${d.lastPushAt.slice(0, 16).replace("T", " ")} (${d.lastPushCount ?? 0} read).` : "Key made. Nothing received yet: run the downloaded file on the ZKBio Time PC.") : "Not linked. A small program on the hospital PC that has ZKBio Time sends new punches here every 10 minutes."}
+        {d.linked ? (d.lastPushAt ? `Linked. Last punches received ${d.lastPushAt.slice(0, 16).replace("T", " ")} (${d.lastPushCount ?? 0} read).` : "Key made. Nothing received yet: run the downloaded file on the ZKBio Time PC.") : "Not linked. A small program on the hospital PC that has ZKBio Time sends new punches here every minute."}
       </p>
       {key && (
         <Notice tone="warning">
