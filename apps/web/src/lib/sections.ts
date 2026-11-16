@@ -57,6 +57,7 @@ export const SECTIONS: Section[] = [
     tabs: [
       { href: "/settings", label: "Facility settings", roles: ADMIN },
       { href: "/settings/establishment", label: "Approved posts", roles: ADMIN },
+      { href: "/settings/clock-devices", label: "Clock devices", roles: ADMIN },
       { href: "/rules", label: "Compliance rules", roles: READ },
       { href: "/my-reports", label: "Reports I sent", roles: EVERYONE },
       { href: "/feedback", label: "Feedback", roles: EVERYONE },

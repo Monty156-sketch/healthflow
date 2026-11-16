@@ -62,6 +62,7 @@ import { approvalsRouter } from "./approvals.js";
 import { approvalModeOf } from "../../lib/approvalMode.js";
 import { meRouter } from "./me.js";
 import { geofenceRouter } from "./geofence.js";
+import { clockDevicesRouter } from "./clockDevices.js";
 import { directorateRouter } from "./directorate.js";
 import { smsRouter } from "./sms.js";
 import { joinAdminRouter } from "./join.js";
@@ -108,6 +109,7 @@ facilityRouter.use("/directorate", systemScope, requireFlag("district.oversight"
 facilityRouter.use("/dashboard", dashboardRouter);
 facilityRouter.use("/me", meRouter);
 facilityRouter.use("/geofence", geofenceRouter);
+facilityRouter.use("/clock-devices", clockDevicesRouter);
 // Billing stays system work: invoice numbers run in one sequence across all facilities.
 facilityRouter.use("/billing", systemScope, billingRouter);
 facilityRouter.use("/access", accessRouter);
