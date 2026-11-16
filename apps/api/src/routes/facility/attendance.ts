@@ -134,14 +134,14 @@ attendanceRouter.get("/day", async (req, res) => {
 
   let blocked: string | null = null;
   if (future) blocked = "This date has not happened yet, so attendance cannot be recorded.";
-  else if (!rosters.length) blocked = "There is no published roster for this month. Attendance is recorded against a published roster.";
+  const noRoster = !future && !rosters.length ? "There is no published roster for this month, so only office-hours staff are listed." : null;
 
   const [leave, assignments, everyone] = await Promise.all([
     leaveOn(facilityId, day, day),
     rosters.length
       ? prisma.rosterAssignment.findMany({
           where: { rosterId: { in: rosters.map((r) => r.id) }, dutyDate: dateOf(day), shift: { countsAsDuty: true } },
-          include: { staff: { select: { id: true, fullName: true, cadre: { select: { name: true } } } }, shift: true },
+          include: { staff: { select: { id: true, fullName: true, cadre: { select: { name: true } }, department: { select: { name: true } } } }, shift: true },
           orderBy: [{ shift: { sortOrder: "asc" } }, { staff: { fullName: "asc" } }],
         })
       : Promise.resolve([]),
@@ -164,10 +164,37 @@ attendanceRouter.get("/day", async (req, res) => {
     const s = shifts.get(a.shiftId) ?? { id: a.shift.id, name: a.shift.name, code: a.shift.code, startTime: a.shift.startTime, endTime: a.shift.endTime, people: [] };
     const r = byAssignment.get(a.id);
     s.people.push({
-      assignmentId: a.id, staffId: a.staffId, name: a.staff.fullName, cadre: a.staff.cadre?.name ?? null, isCover: a.isCover, coverForName: coverFor.get(a.id) ?? null, coverState: a.isCover ? a.acknowledgementState : null,
+      assignmentId: a.id, staffId: a.staffId, name: a.staff.fullName, cadre: a.staff.cadre?.name ?? null, department: a.staff.department?.name ?? null, isCover: a.isCover, coverForName: coverFor.get(a.id) ?? null, coverState: a.isCover ? a.acknowledgementState : null,
       record: r ? { id: r.id, status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.clockedAt ? `${String(r.clockedAt.getUTCHours()).padStart(2, "0")}:${String(r.clockedAt.getUTCMinutes()).padStart(2, "0")}` : null, source: r.source, note: r.note, needsReview: r.needsReview, corrected: Boolean(r.correctedAt), originalStatus: r.originalStatus } : null,
     });
     shifts.set(a.shiftId, s);
+  }
+  // Office-hours staff (08:00 to 17:00, Monday to Friday, not public holidays) have no roster; they are listed on the days they are expected.
+  if (!future) {
+    const dow = dateOf(day).getUTCDay();
+    const holiday = await prisma.publicHoliday.findFirst({ where: { OR: [{ facilityId }, { facilityId: null }], date: dateOf(day) }, select: { id: true } });
+    if (dow >= 1 && dow <= 5 && !holiday) {
+      const office = await prisma.staff.findMany({
+        where: { facilityId, status: "ACTIVE", officeHours: true, ...wardStaffFilter(who) },
+        select: { id: true, fullName: true, cadre: { select: { name: true } }, department: { select: { name: true } } }, orderBy: { fullName: "asc" },
+      });
+      const here = office.filter((p) => !leaveOf.has(p.id));
+      const recs = here.length ? await prisma.attendance.findMany({ where: { facilityId, dutyDate: dateOf(day), rosterAssignmentId: null, staffId: { in: here.map((p) => p.id) } } }) : [];
+      const recOf = new Map(recs.map((r) => [r.staffId, r]));
+      if (here.length) {
+        shifts.set("office", {
+          id: "office", name: "Office hours", code: "OFF", startTime: "08:00", endTime: "17:00",
+          people: here.map((p) => {
+            const r = recOf.get(p.id);
+            return {
+              assignmentId: `office:${p.id}`, staffId: p.id, name: p.fullName, cadre: p.cadre?.name ?? null, department: p.department?.name ?? null, isCover: false, coverForName: null, coverState: null,
+              record: r ? { id: r.id, status: r.status, minutesLate: r.minutesLate, minutesEarly: r.minutesEarly, clockedAt: r.clockedAt ? `${String(r.clockedAt.getUTCHours()).padStart(2, "0")}:${String(r.clockedAt.getUTCMinutes()).padStart(2, "0")}` : null, source: r.source, note: r.note, needsReview: r.needsReview, corrected: Boolean(r.correctedAt), originalStatus: r.originalStatus } : null,
+            };
+          }),
+        });
+        for (const p of here) assigned.add(p.id);
+      }
+    }
   }
   const review = await prisma.attendance.findMany({
     where: { facilityId, dutyDate: dateOf(day), needsReview: true, rosterAssignmentId: null },
@@ -177,8 +204,9 @@ attendanceRouter.get("/day", async (req, res) => {
     ...base,
     review: review.map((r) => ({ id: r.id, name: r.staff.fullName, status: r.status, minutesLate: r.minutesLate })),
     covered: accepted.map((c) => ({ absentName: absentNames.get(c.absentStaffId) ?? "", coverName: c.proposedStaff.fullName })),
-    canRecord: !blocked && !locked,
+    canRecord: !blocked && !locked && shifts.size > 0,
     blocked,
+    noRoster,
     shifts: [...shifts.values()],
     onLeave: everyone.filter((p) => leaveOf.has(p.id)).map((p) => ({ staffId: p.id, name: p.fullName, official: leaveOf.get(p.id)!.official, typeName: leaveOf.get(p.id)!.typeName })),
     offDuty: everyone.filter((p) => !assigned.has(p.id) && !leaveOf.has(p.id)).map((p) => ({ staffId: p.id, name: p.fullName })),
@@ -209,31 +237,47 @@ attendanceRouter.put("/day", async (req, res) => {
   const day = dayOf(new Date(`${input.date}T00:00:00Z`));
   if (day > todayDay()) return res.status(409).json({ error: "future", message: "That date has not happened yet." });
   if (await monthLocked(who.facilityId, dateOf(day))) return res.status(409).json(LOCKED);
-  const rosters = await rostersFor(who.facilityId, day, who.departmentId);
-  if (!rosters.length) return res.status(409).json({ error: "not_published", message: "There is no published roster for that month." });
+  const officeRecs = input.records.filter((r) => r.assignmentId.startsWith("office:"));
+  const rosterRecs = input.records.filter((r) => !r.assignmentId.startsWith("office:"));
+  const rosters = rosterRecs.length ? await rostersFor(who.facilityId, day, who.departmentId) : [];
+  if (rosterRecs.length && !rosters.length) return res.status(409).json({ error: "not_published", message: "There is no published roster for that month." });
   const facility = await prisma.facility.findUniqueOrThrow({ where: { id: who.facilityId }, select: { attendanceCutoffDays: true } });
   const late = todayDay() - day > facility.attendanceCutoffDays;
 
   const assignments = await prisma.rosterAssignment.findMany({
-    where: { id: { in: input.records.map((r) => r.assignmentId) }, rosterId: { in: rosters.map((r) => r.id) }, dutyDate: dateOf(day) },
+    where: { id: { in: rosterRecs.map((r) => r.assignmentId) }, rosterId: { in: rosters.map((r) => r.id) }, dutyDate: dateOf(day) },
     include: { staff: { select: { fullName: true } }, shift: { select: { startTime: true } } },
   });
-  if (assignments.length !== new Set(input.records.map((r) => r.assignmentId)).size) {
+  if (assignments.length !== new Set(rosterRecs.map((r) => r.assignmentId)).size) {
     return res.status(400).json({ error: "invalid_input", message: "Some of those duties are not on this day's roster. Reload the page and try again." });
   }
   const leave = await leaveOn(who.facilityId, day, day);
   const onLeave = new Set(leave.map((l) => l.staffId));
-  const existing = await prisma.attendance.findMany({ where: { rosterAssignmentId: { in: assignments.map((a) => a.id) } } });
+  const existing = assignments.length ? await prisma.attendance.findMany({ where: { rosterAssignmentId: { in: assignments.map((a) => a.id) } } }) : [];
   const had = new Map(existing.map((e) => [e.rosterAssignmentId, e]));
   const byId = new Map(assignments.map((a) => [a.id, a]));
 
   const fields: Record<string, string> = {};
   let changing = false;
-  for (const r of input.records) {
+  for (const r of rosterRecs) {
     const a = byId.get(r.assignmentId)!;
     if (onLeave.has(a.staffId)) return res.status(409).json({ error: "on_leave", message: `${a.staff.fullName} is on approved leave on this day and cannot be marked.` });
     if (r.status === "LATE" && !r.minutesLate) fields[`late:${r.assignmentId}`] = `Say how many minutes late ${a.staff.fullName} was.`;
     const prev = had.get(r.assignmentId);
+    if (prev && prev.status !== r.status) changing = true;
+  }
+  // Office-hours people: no roster, a weekday, not a public holiday, and not on leave.
+  const officeIds = officeRecs.map((r) => r.assignmentId.slice(7));
+  const officeStaff = officeIds.length ? await prisma.staff.findMany({ where: { id: { in: officeIds }, facilityId: who.facilityId, officeHours: true, status: "ACTIVE", ...wardStaffFilter(who) }, select: { id: true, fullName: true } }) : [];
+  if (officeStaff.length !== new Set(officeIds).size) return res.status(400).json({ error: "invalid_input", message: "Some people are not on office hours. Reload the page and try again." });
+  const officeName = new Map(officeStaff.map((p) => [p.id, p.fullName]));
+  const officeRows = officeIds.length ? await prisma.attendance.findMany({ where: { facilityId: who.facilityId, dutyDate: dateOf(day), rosterAssignmentId: null, staffId: { in: officeIds } } }) : [];
+  const officeHad = new Map(officeRows.map((e) => [e.staffId, e]));
+  for (const r of officeRecs) {
+    const id = r.assignmentId.slice(7);
+    if (onLeave.has(id)) return res.status(409).json({ error: "on_leave", message: `${officeName.get(id)} is on approved leave on this day and cannot be marked.` });
+    if (r.status === "LATE" && !r.minutesLate) fields[`late:${r.assignmentId}`] = `Say how many minutes late ${officeName.get(id)} was.`;
+    const prev = officeHad.get(id);
     if (prev && prev.status !== r.status) changing = true;
   }
   if (Object.keys(fields).length) return res.status(400).json({ error: "invalid_input", fields, message: "Some people marked late have no minutes." });
@@ -245,7 +289,7 @@ attendanceRouter.put("/day", async (req, res) => {
   }
 
   let written = 0;
-  for (const r of input.records) {
+  for (const r of rosterRecs) {
     const a = byId.get(r.assignmentId)!;
     const prev = had.get(r.assignmentId);
     if (prev && prev.status === r.status && (prev.minutesLate ?? null) === (r.minutesLate ?? null) && (prev.note ?? "") === r.note) continue;
@@ -270,6 +314,23 @@ attendanceRouter.put("/day", async (req, res) => {
       summary: prev
         ? `${who.displayName} changed ${a.staff.fullName}'s attendance on ${sayDay(day)} from ${prev.status.toLowerCase().replace("_", " ")} to ${r.status.toLowerCase()}. Reason: ${input.reason}`
         : `${who.displayName} recorded ${a.staff.fullName} as ${r.status.toLowerCase()} on ${sayDay(day)}.`,
+    });
+  }
+  for (const r of officeRecs) {
+    const id = r.assignmentId.slice(7);
+    const prev = officeHad.get(id);
+    if (prev && prev.status === r.status && (prev.minutesLate ?? null) === (r.minutesLate ?? null) && (prev.note ?? "") === r.note) continue;
+    const data = { status: r.status, minutesLate: r.status === "LATE" ? (r.minutesLate ?? null) : null, minutesEarly: null, clockedAt: null, source: "MANUAL", note: r.note || null };
+    if (!prev) {
+      await prisma.attendance.create({ data: { facilityId: who.facilityId, staffId: id, dutyDate: dateOf(day), ...data, recordedBy: who.email, ...(late ? { correctedBy: who.email, correctedAt: new Date(), correctionReason: input.reason } : {}) } });
+    } else {
+      await prisma.attendance.update({ where: { id: prev.id }, data: { ...data, originalStatus: prev.originalStatus ?? prev.status, correctedBy: who.email, correctedAt: new Date(), correctionReason: input.reason, needsReview: false } });
+    }
+    written++;
+    await writeAuditLog({
+      facilityId: who.facilityId, actorEmail: who.email, action: prev ? "attendance_corrected" : "attendance_recorded", entityType: "Attendance", entityId: prev?.id ?? id,
+      before: prev ? { status: prev.status, minutesLate: prev.minutesLate } : undefined, after: data, reason: prev ? input.reason : null,
+      summary: prev ? `${who.displayName} changed ${officeName.get(id)}'s attendance on ${sayDay(day)} from ${prev.status.toLowerCase().replace("_", " ")} to ${r.status.toLowerCase()}. Reason: ${input.reason}` : `${who.displayName} recorded ${officeName.get(id)} as ${r.status.toLowerCase()} on ${sayDay(day)}.`,
     });
   }
   for (const id of new Set(assignments.map((a) => a.rosterId))) await refreshCompleteness(id, who.facilityId, day);

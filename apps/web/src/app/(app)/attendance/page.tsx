@@ -46,6 +46,25 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
   const [finding, setFinding] = useState<{ id: string; name: string } | null>(null);
   const today = data.date === todayIso();
   const locked = data.locked;
+  const [dept, setDept] = useState("");
+  const [cadre, setCadre] = useState("");
+  const [find, setFind] = useState("");
+  const everyone = data.shifts.flatMap((s) => s.people);
+  const departments = [...new Set(everyone.map((p) => p.department).filter((x): x is string => Boolean(x)))].sort();
+  const cadres = [...new Set(everyone.map((p) => p.cadre).filter((x): x is string => Boolean(x)))].sort();
+  const shown = (p: (typeof everyone)[number]) => (!dept || p.department === dept) && (!cadre || p.cadre === cadre) && (!find.trim() || p.name.toLowerCase().includes(find.trim().toLowerCase()));
+  const words = (st: string | null | undefined) => (st ? st.toLowerCase().replace("_", " ") : "Not recorded");
+  const lines = data.shifts.flatMap((s) => s.people.filter(shown).map((p) => [p.name, p.cadre ?? "", p.department ?? "", `${s.name}${s.startTime && s.endTime ? ` ${s.startTime}-${s.endTime}` : ""}`, words(entries[p.assignmentId]?.status ?? p.record?.status), p.record?.clockedAt ?? "", p.record?.minutesLate ? String(p.record.minutesLate) : p.record?.minutesEarly ? `${p.record.minutesEarly} early` : "", p.record ? (p.record.source === "DEVICE" ? "Clock machine" : p.record.source === "CLOCK" ? "Phone" : "Marked by in-charge") : ""]));
+  const HEAD = ["Name", "Cadre", "Department", "Shift", "Status", "Arrived", "Minutes late / early", "How recorded"];
+  function download() {
+    const q = (v: string) => `"${v.replace(/"/g, '""')}"`;
+    const csv = "\uFEFF" + [HEAD, ...lines].map((r) => r.map(q).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `attendance-${data.date}${dept ? `-${dept}` : ""}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   const set = (id: string, patch: Partial<Entry>) => setEntries((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
   const anyRecorded = data.shifts.some((s) => s.people.some((p) => p.record));
@@ -72,6 +91,24 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
 
   return (
     <div className="space-y-6">
+      <div className="print:hidden flex flex-wrap items-end gap-3">
+        <div><label htmlFor="f-dept" className="mb-1 block text-sm font-medium">Department</label>
+          <select id="f-dept" className="min-h-11 rounded-[var(--radius)] border border-[var(--border-strong)] bg-[var(--surface)] px-3" value={dept} onChange={(e) => setDept(e.target.value)}><option value="">All departments</option>{departments.map((d) => <option key={d}>{d}</option>)}</select></div>
+        <div><label htmlFor="f-cadre" className="mb-1 block text-sm font-medium">Cadre</label>
+          <select id="f-cadre" className="min-h-11 rounded-[var(--radius)] border border-[var(--border-strong)] bg-[var(--surface)] px-3" value={cadre} onChange={(e) => setCadre(e.target.value)}><option value="">All cadres</option>{cadres.map((d) => <option key={d}>{d}</option>)}</select></div>
+        <div><label htmlFor="f-find" className="mb-1 block text-sm font-medium">Find a name</label>
+          <Input id="f-find" value={find} onChange={(e) => setFind(e.target.value)} /></div>
+        <Button variant="secondary" onClick={() => window.print()}>Print</Button>
+        <Button variant="secondary" onClick={download}>Download for Excel</Button>
+      </div>
+      <div id="print-area" className="hidden print:block">
+        <h2 className="mb-2 text-lg font-semibold">Daily attendance, {data.date}{dept ? `, ${dept}` : ""}{cadre ? `, ${cadre}` : ""}</h2>
+        <table className="w-full border-collapse text-[12px]">
+          <thead><tr>{HEAD.map((h) => <th key={h} className="border border-black px-1 py-0.5 text-left">{h}</th>)}</tr></thead>
+          <tbody>{lines.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j} className="border border-black px-1 py-0.5">{c}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+      <div className="space-y-6 print:hidden">
       {data.review.length > 0 && (
         <Panel title="Check these" description="The duty changed after this was recorded.">
           <ul className="divide-y divide-[var(--border)]">
@@ -101,11 +138,12 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
           </ul>
         </Panel>
       )}
-      {data.shifts.length === 0 && <EmptyState title="Nobody was on duty">The published roster has no duties on this date.</EmptyState>}
+      {data.shifts.length === 0 && <EmptyState title="Nobody was on duty">{data.noRoster ?? "The published roster has no duties on this date."}</EmptyState>}
+      {data.shifts.length > 0 && data.noRoster && <Notice tone="warning">{data.noRoster}</Notice>}
       {data.shifts.map((shift) => (
         <Panel key={shift.id} title={`${shift.name} (${shift.code})`} description={shift.startTime && shift.endTime ? `${shift.startTime} to ${shift.endTime}` : undefined}>
           <ul className="divide-y divide-[var(--border)]">
-            {shift.people.map((p) => {
+            {shift.people.filter(shown).map((p) => {
               const e = entries[p.assignmentId];
               return (
                 <li key={p.assignmentId} className="py-3">
@@ -198,6 +236,7 @@ function Sheet({ data, reload }: { data: AttendanceDay; reload: () => void }) {
           </Button>
         </div>
       )}
+      </div>
     </div>
   );
 }
