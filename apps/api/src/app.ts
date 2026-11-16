@@ -37,7 +37,9 @@ export function createApp() {
     })
   );
   // The raw bytes are kept for the payment webhook, whose signature is over them.
-  app.use(express.json({ limit: "100kb", verify: (req, _res, buf) => { (req as unknown as { rawBody?: Buffer }).rawBody = buf; } }));
+  // The clock-device import carries a month of punches, so it has its own larger limit (set on the route, after the role check).
+  const isClockImport = (req: { url?: string }) => /\/api\/facility\/clock-devices\/[^/?]+\/import/.test(req.url ?? "");
+  app.use(express.json({ limit: "100kb", type: (req) => !isClockImport(req) && /json/i.test(req.headers["content-type"] ?? ""), verify: (req, _res, buf) => { (req as unknown as { rawBody?: Buffer }).rawBody = buf; } }));
   app.use(cookieParser());
   if (process.env.NODE_ENV !== "test") {
     app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie"] }));
