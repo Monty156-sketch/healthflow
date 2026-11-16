@@ -117,8 +117,8 @@ export async function runPunchImport(o: ImportOptions) {
     prisma.attendanceMonthApproval.findMany({ where: { facilityId: o.facilityId }, select: { year: true, month: true } }),
   ]);
   const have = new Map([
-    ...existing.map((e) => [e.rosterAssignmentId as string, e] as const),
-    ...existingOffice.map((e) => [`office:${e.staffId}:${Math.floor(e.dutyDate.getTime() / DAY)}`, e] as const),
+    ...existing.map((e) => [e.rosterAssignmentId as string, { id: e.id, source: e.source, note: e.note }] as const),
+    ...existingOffice.map((e) => [`office:${e.staffId}:${Math.floor(e.dutyDate.getTime() / DAY)}`, { id: e.id, source: e.source, note: e.note }] as const),
   ]);
   const locked = new Set(approvals.map((a) => `${a.year}-${a.month}`));
 
