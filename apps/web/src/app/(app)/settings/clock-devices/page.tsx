@@ -8,7 +8,7 @@ import { useResource } from "@/lib/useApi";
 import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, TD, TH, TableScroll, Textarea } from "@/components/ui";
 
 interface Device { id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
-interface Person { id: string; fullName: string; staffNo: string; clockNumber: string | null }
+interface Person { id: string; fullName: string; staffNo: string; clockNumber: string | null; officeHours: boolean }
 interface Row { name: string; dutyDate: string; arrived: string; left: string | null; status: string; minutesLate: number | null; minutesEarly: number | null; action: "new" | "already_recorded" | "month_locked" }
 interface Unknown { pin: string; count: number; name: string | null; department: string | null; suggestion: { staffId: string; fullName: string } | null }
 interface Summary { punchesRead: number; unreadableLines: number; notOnStaffList: Unknown[]; punchesWithNoDuty: number; people: number; attendanceNew: number; alreadyRecorded: number; monthLocked: number; noCheckOut: number; checkOutWithoutCheckIn: number }
@@ -50,31 +50,36 @@ function AddDevice({ onAdded }: { onAdded: () => void }) {
 function Numbers() {
   const { data, error, reload } = useResource<{ staff: Person[] }>("/api/facility/clock-devices/people");
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [office, setOffice] = useState<Record<string, boolean>>({});
   const [msg, setMsg] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
   if (error && !data) return <LoadError onRetry={reload} />;
   if (!data) return <Loading label="Loading staff" />;
   const value = (p: Person) => edits[p.id] ?? p.clockNumber ?? "";
   async function save() {
-    const numbers = data!.staff.filter((p) => edits[p.id] !== undefined && edits[p.id] !== (p.clockNumber ?? "")).map((p) => ({ staffId: p.id, clockNumber: edits[p.id].trim() || null }));
+    const numbers = data!.staff
+      .filter((p) => (edits[p.id] !== undefined && edits[p.id] !== (p.clockNumber ?? "")) || (office[p.id] !== undefined && office[p.id] !== p.officeHours))
+      .map((p) => ({ staffId: p.id, clockNumber: (edits[p.id] ?? p.clockNumber ?? "").trim() || null, ...(office[p.id] !== undefined ? { officeHours: office[p.id] } : {}) }));
     if (!numbers.length) return setMsg({ tone: "warning", text: "Nothing has changed." });
     try {
       await api.put("/api/facility/clock-devices/people", { numbers });
       setEdits({});
+      setOffice({});
       setMsg({ tone: "success", text: "Saved." });
       reload();
     } catch (x) { setMsg({ tone: "warning", text: say(x, "It was not saved. Try again.") }); }
   }
   return (
-    <Panel title="Each person's number on the machine" description="Type the number (user ID) each person has on the clock. This is how punches are matched to people.">
+    <Panel title="Each person's number on the machine" description="Type the number (user ID) each person has on the clock. This is how punches are matched to people. Tick Office hours for staff who work 8:00 to 17:00, Monday to Friday (no public holidays) instead of rostered shifts. The machine alone marks their attendance.">
       <TableScroll label="Staff clock numbers">
         <table className="w-full text-sm">
-          <thead><tr><th className={TH}>Name</th><th className={TH}>Staff number</th><th className={TH}>Number on the machine</th></tr></thead>
+          <thead><tr><th className={TH}>Name</th><th className={TH}>Staff number</th><th className={TH}>Number on the machine</th><th className={TH}>Office hours</th></tr></thead>
           <tbody>
             {data.staff.map((p) => (
               <tr key={p.id}>
                 <td className={TD}>{p.fullName}</td>
                 <td className={TD}>{p.staffNo}</td>
                 <td className={TD}><Input aria-label={`Clock number for ${p.fullName}`} className="max-w-[8rem]" value={value(p)} onChange={(e) => setEdits({ ...edits, [p.id]: e.target.value })} /></td>
+                <td className={TD}><input type="checkbox" aria-label={`${p.fullName} works office hours`} checked={office[p.id] ?? p.officeHours} onChange={(e) => setOffice({ ...office, [p.id]: e.target.checked })} /></td>
               </tr>
             ))}
           </tbody>

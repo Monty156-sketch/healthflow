@@ -1,0 +1,1 @@
+ALTER TABLE "Staff" ADD COLUMN "officeHours" BOOLEAN NOT NULL DEFAULT false;
