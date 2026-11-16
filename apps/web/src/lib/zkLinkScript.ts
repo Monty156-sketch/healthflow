@@ -52,20 +52,29 @@ function To-Punch($t) {
 
 # The last 20 hours every time (a night shift is 12 or 13), so a check-out always arrives with its check-in.
 # Nothing is sent unless something new has happened: HealthFlow is only bothered when a punch actually arrives.
+# If this PC was off or offline, it goes back 20 hours before the last time it ran, so nothing from the gap is missed (up to 31 days).
+$state = $null
+if (Test-Path $stateFile) { $state = Get-Content $stateFile -Raw | ConvertFrom-Json }
+$start = (Get-Date).AddHours(-20)
+if ($state -and $state.lastRun) {
+  $back = ([datetime]::Parse($state.lastRun)).AddHours(-20)
+  if ($back -lt $start) { $start = $back }
+}
+if ($start -lt (Get-Date).AddDays(-31)) { $start = (Get-Date).AddDays(-31) }
 $to   = (Get-Date).AddDays(1).ToString('yyyy-MM-dd 00:00:00')
-$from = (Get-Date).AddHours(-20).ToString('yyyy-MM-dd HH:mm:ss')
+$from = $start.ToString('yyyy-MM-dd HH:mm:ss')
 $token = Get-Token
 $tx = @(Get-Transactions $token $from $to)
 $newest = ($tx | ForEach-Object { [string]$_.punch_time } | Sort-Object | Select-Object -Last 1)
 $sig = [string]$tx.Count + '|' + $newest
-Write-Host ('ZKBio Time gave ' + $tx.Count + ' punches for the last 20 hours.')
+Write-Host ('ZKBio Time gave ' + $tx.Count + ' punches since ' + $from + '.')
 if ($Test) {
   $tx | Select-Object -First 5 | ForEach-Object { Write-Host ((To-Punch $_) | ConvertTo-Json -Compress) }
   Write-Host 'Test only: nothing was sent to HealthFlow.'
   return
 }
 $last = $null
-if (Test-Path $stateFile) { $last = (Get-Content $stateFile -Raw | ConvertFrom-Json).sig }
+if ($state) { $last = $state.sig }
 if ($tx.Count -gt 0 -and $sig -ne $last) {
   $punches = @($tx | ForEach-Object { To-Punch $_ })
   for ($i = 0; $i -lt $punches.Count; $i += 500) {
@@ -74,9 +83,10 @@ if ($tx.Count -gt 0 -and $sig -ne $last) {
     $res = Invoke-RestMethod -Method Post -Uri ($HF + '/api/clock-link/punches') -Headers @{ Authorization = ('Bearer ' + $KEY) } -ContentType 'application/json' -Body $body
     Write-Host ('Sent ' + $res.received + ' punches. New attendance records: ' + $res.newAttendance)
   }
-  @{ sig = $sig } | ConvertTo-Json | Set-Content -Path $stateFile
+  @{ sig = $sig; lastRun = (Get-Date).ToString('o') } | ConvertTo-Json | Set-Content -Path $stateFile
 } else {
   Write-Host 'Nothing new to send.'
+  @{ sig = $last; lastRun = (Get-Date).ToString('o') } | ConvertTo-Json | Set-Content -Path $stateFile
 }
 
 # First run by hand: keep a copy here and ask Windows to run it every minute.
