@@ -282,6 +282,7 @@ export interface AttendanceDay {
   needsReason: boolean;
   canRecord: boolean;
   blocked: string | null;
+  noRoster?: string | null;
   locked: boolean;
   shifts: {
     id: string;
@@ -294,6 +295,7 @@ export interface AttendanceDay {
       staffId: string;
       name: string;
       cadre: string | null;
+      department?: string | null;
       isCover: boolean;
       coverForName: string | null;
       coverState: string | null;
