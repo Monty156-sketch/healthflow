@@ -79,10 +79,11 @@ clockDevicesRouter.put("/people", async (req, res) => {
   // Numbers held by people not in this request must not clash either.
   const others = await prisma.staff.findMany({ where: { facilityId: who.facilityId, clockNumber: { not: null }, id: { notIn: wanted.map((w) => w.staffId) } }, select: { clockNumber: true } });
   for (const o of others) if (seen.has(normalisePin(o.clockNumber!))) return res.status(409).json({ error: "duplicate_number", message: `The number ${o.clockNumber} already belongs to someone else.` });
-  await prisma.$transaction([
-    ...wanted.map((w) => prisma.staff.update({ where: { id: w.staffId }, data: { clockNumber: null } })),
-    ...wanted.filter((w) => w.no).map((w) => prisma.staff.update({ where: { id: w.staffId }, data: { clockNumber: w.no } })),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    // Clear first so two people can swap numbers in one save.
+    for (const w of wanted) await tx.staff.update({ where: { id: w.staffId }, data: { clockNumber: null } });
+    for (const w of wanted) if (w.no) await tx.staff.update({ where: { id: w.staffId }, data: { clockNumber: w.no } });
+  });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_numbers_set", entityType: "Staff", entityId: who.facilityId, summary: `${who.displayName} set clock numbers for ${wanted.length} staff.` });
   res.json({ saved: wanted.length });
 });
