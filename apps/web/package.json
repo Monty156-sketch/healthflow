@@ -15,26 +15,26 @@
   "dependencies": {
     "@healthflow/shared": "workspace:*",
     "@simplewebauthn/browser": "^13.3.0",
-    "motion": "^14.10.1",
-    "next": "16.4.1",
+    "motion": "^14.13.0",
+    "next": "16.4.6",
     "qrcode": "1.5.4",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.10.2",
-    "@opennextjs/cloudflare": "^1.20.13",
-    "@playwright/test": "1.56.1",
+    "@axe-core/playwright": "4.14.0",
+    "@opennextjs/cloudflare": "^1.20.17",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
-    "@types/qrcode": "1.5.5",
+    "@types/qrcode": "1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.8",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5",
-    "wrangler": "^4.0.0"
+    "wrangler": "^4.161.0"
   },
   "packageManager": "pnpm@10.28.0"
 }
