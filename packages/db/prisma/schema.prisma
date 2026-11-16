@@ -563,6 +563,8 @@ model Staff {
   facilityId           String
   facility             Facility         @relation(fields: [facilityId], references: [id])
   staffNo              String
+  /// The number this person has on the facility's clock device (its user ID / PIN). Blank when they are not on a device.
+  clockNumber          String?
   fullName             String
   /// Set when this person asked not to be texted, or an administrator was told so.
   /// How this record came to exist when it was not typed in: "CODE" for someone who registered with the access code.
@@ -631,6 +633,7 @@ model Staff {
   coverProposals     CoverProposal[]      @relation("CoverCandidate")
 
   @@unique([facilityId, staffNo])
+  @@unique([facilityId, clockNumber])
   @@index([facilityId])
   @@index([cadreId])
   @@index([departmentId])
@@ -1036,7 +1039,7 @@ model Attendance {
   needsReview          Boolean        @default(false)
   clockedAt            DateTime?      // when the person clocked in, or the arrival time copied from the facility's book
   minutesEarly         Int?
-  source               String?        // CLOCK (phone), BOOK (typed in from the facility's book) or AUTO (no clock-in: marked absent by the system)
+  source               String?        // CLOCK (phone), DEVICE (the facility's own clocking machine) or MANUAL (marked by the in-charge)
 
   @@index([facilityId])
   @@index([staffId, dutyDate])
@@ -1942,4 +1945,34 @@ model PasskeyChallenge {
   createdAt     DateTime @default(now())
 
   @@index([expiresAt])
+}
+
+/// A clock-in/clock-out machine (fingerprint, face, card) that a facility already owns. The administrator registers it here and imports its punches.
+model ClockDevice {
+  id           String   @id @default(cuid())
+  facilityId   String
+  name         String
+  brand        String?
+  model        String?
+  serialNumber String?
+  ipAddress    String?
+  notes        String?
+  active       Boolean  @default(true)
+  lastImportAt DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([facilityId])
+}
+
+/// One punch read from a clock device. Kept as the machine reported it; the same punch is never stored twice.
+model DevicePunch {
+  id         String   @id @default(cuid())
+  facilityId String
+  deviceId   String
+  staffId    String
+  at         DateTime
+  createdAt  DateTime @default(now())
+
+  @@unique([deviceId, staffId, at])
+  @@index([facilityId, at])
 }
