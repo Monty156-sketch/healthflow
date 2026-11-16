@@ -17,7 +17,7 @@ const make = (y: string, mo: string, d: string, h: string, mi: string, s?: strin
 export function parsePunches(text: string): ParsedPunches {
   const punches: Punch[] = [];
   let skipped = 0;
-  for (const raw of text.replace(/^﻿/, "").split(/\r?\n/)) {
+  for (const raw of (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
     const f = (line.includes("\t") ? line.split("\t") : line.includes(",") ? line.split(",") : line.split(/\s+/)).map((x) => x.trim().replace(/^"|"$/g, ""));
