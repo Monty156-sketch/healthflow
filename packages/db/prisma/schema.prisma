@@ -1961,6 +1961,11 @@ model ClockDevice {
   notes        String?
   active       Boolean  @default(true)
   lastImportAt DateTime?
+  /// Only a fingerprint of the key the ZKBio Time link signs in with; the key itself is shown once.
+  apiKeyHash      String?   @unique
+  apiKeyCreatedAt DateTime?
+  lastPushAt      DateTime?
+  lastPushCount   Int?
   createdAt    DateTime @default(now())
 
   @@index([facilityId])
