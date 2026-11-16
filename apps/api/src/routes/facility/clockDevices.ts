@@ -50,26 +50,6 @@ clockDevicesRouter.post("/", async (req, res) => {
   res.status(201).json(d);
 });
 
-clockDevicesRouter.put("/:id", async (req, res) => {
-  const who = caller(req);
-  const body = parseOr400(deviceInput, req.body, res);
-  if (!body) return;
-  const found = await prisma.clockDevice.findFirst({ where: { id: req.params.id, facilityId: who.facilityId }, select: { id: true } });
-  if (!found) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
-  const d = await prisma.clockDevice.update({ where: { id: found.id }, data: data(body) });
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_changed", entityType: "ClockDevice", entityId: d.id, summary: `${who.displayName} changed the clock device "${d.name}".` });
-  res.json(d);
-});
-
-clockDevicesRouter.delete("/:id", async (req, res) => {
-  const who = caller(req);
-  const found = await prisma.clockDevice.findFirst({ where: { id: req.params.id, facilityId: who.facilityId } });
-  if (!found) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
-  await prisma.clockDevice.delete({ where: { id: found.id } });
-  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_removed", entityType: "ClockDevice", entityId: found.id, summary: `${who.displayName} removed the clock device "${found.name}". Attendance already made from it is kept.` });
-  res.json({ ok: true });
-});
-
 // ---------------------------------------------------------------- each person's number on the machine
 
 clockDevicesRouter.get("/people", async (req, res) => {
@@ -105,6 +85,26 @@ clockDevicesRouter.put("/people", async (req, res) => {
   ]);
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_numbers_set", entityType: "Staff", entityId: who.facilityId, summary: `${who.displayName} set clock numbers for ${wanted.length} staff.` });
   res.json({ saved: wanted.length });
+});
+
+clockDevicesRouter.put("/:id", async (req, res) => {
+  const who = caller(req);
+  const body = parseOr400(deviceInput, req.body, res);
+  if (!body) return;
+  const found = await prisma.clockDevice.findFirst({ where: { id: req.params.id, facilityId: who.facilityId }, select: { id: true } });
+  if (!found) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
+  const d = await prisma.clockDevice.update({ where: { id: found.id }, data: data(body) });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_changed", entityType: "ClockDevice", entityId: d.id, summary: `${who.displayName} changed the clock device "${d.name}".` });
+  res.json(d);
+});
+
+clockDevicesRouter.delete("/:id", async (req, res) => {
+  const who = caller(req);
+  const found = await prisma.clockDevice.findFirst({ where: { id: req.params.id, facilityId: who.facilityId } });
+  if (!found) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
+  await prisma.clockDevice.delete({ where: { id: found.id } });
+  await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_removed", entityType: "ClockDevice", entityId: found.id, summary: `${who.displayName} removed the clock device "${found.name}". Attendance already made from it is kept.` });
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------- importing punches
