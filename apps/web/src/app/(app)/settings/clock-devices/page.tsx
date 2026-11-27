@@ -8,7 +8,7 @@ import { useResource } from "@/lib/useApi";
 import { zkLinkScript } from "@/lib/zkLinkScript";
 import { Button, EmptyState, Field, Input, Loading, LoadError, Notice, PageHeader, Panel, TD, TH, TableScroll, Textarea } from "@/components/ui";
 
-interface Device { linked?: boolean; lastPushAt?: string | null; lastPushCount?: number | null; id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
+interface Device { linked?: boolean; lastPushAt?: string | null; lastPushCount?: number | null; lastSeenAt?: string | null; id: string; name: string; brand: string | null; model: string | null; serialNumber: string | null; ipAddress: string | null; notes: string | null; active: boolean; lastImportAt: string | null }
 interface Person { id: string; fullName: string; staffNo: string; clockNumber: string | null; officeHours: boolean }
 interface Row { name: string; dutyDate: string; arrived: string; left: string | null; status: string; minutesLate: number | null; minutesEarly: number | null; action: "new" | "already_recorded" | "month_locked" }
 interface Unknown { pin: string; count: number; name: string | null; department: string | null; suggestion: { staffId: string; fullName: string } | null }
@@ -233,7 +233,48 @@ function AutoLink({ d, onChanged }: { d: Device; onChanged: () => void }) {
   );
 }
 
-function DeviceCard({ d, onChanged }: { d: Device; onChanged: () => void }) {
+function DirectFeed({ d, address, onChanged }: { d: Device; address: string | null; onChanged: () => void }) {
+  const [serial, setSerial] = useState(d.serialNumber ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  async function save() {
+    setErr(null);
+    setSaved(false);
+    try {
+      await api.put(`/api/facility/clock-devices/${d.id}`, { name: d.name, brand: d.brand, model: d.model, serialNumber: serial.trim() || null, ipAddress: d.ipAddress, notes: d.notes, active: d.active });
+      setSaved(true);
+      onChanged();
+    } catch (x) { setErr(say(x, "The serial number was not saved.")); }
+  }
+  const when = (t?: string | null) => (t ? t.slice(0, 16).replace("T", " ") : null);
+  return (
+    <div className="mt-3 space-y-2 border-t border-[var(--border)] pt-3">
+      <p className="text-sm font-medium">Direct from the machine (no computer needed)</p>
+      <p className="text-sm text-[var(--muted)]">
+        {d.lastSeenAt ? `The machine last connected ${when(d.lastSeenAt)}.${d.lastPushAt ? ` Last punches received ${when(d.lastPushAt)} (${d.lastPushCount ?? 0}).` : ""}` : "The machine has not connected yet."}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Machine serial number (Menu, System Info, Device Info)">{(a) => <Input {...a} value={serial} onChange={(e) => { setSerial(e.target.value); setSaved(false); }} />}</Field>
+        <Button variant="secondary" onClick={save}>Save serial number</Button>
+      </div>
+      {saved && <p className="text-sm text-[var(--muted)]">Saved.</p>}
+      {err && <Notice tone="warning">{err}</Notice>}
+      {d.serialNumber ? (
+        address ? (
+          <Notice tone="neutral">
+            On the machine open Menu, Comm., Cloud Server Setting and set: Server Mode ADMS; Enable Domain Name ON; Server Address {address}; Server Port 80; Enable Proxy Server OFF. Then press OK and wait a minute. A machine can send to one place only, so ZKBio Time stops receiving its punches. Write down the old settings first, so you can put them back.
+          </Notice>
+        ) : (
+          <Notice tone="warning">The web address for machines is not set up yet, so there is nothing to type on the machine. Ask PS Tech to finish that step.</Notice>
+        )
+      ) : (
+        <p className="text-sm text-[var(--muted)]">Type the machine&apos;s serial number and save it. HealthFlow recognises the machine by it.</p>
+      )}
+    </div>
+  );
+}
+
+function DeviceCard({ d, address, onChanged }: { d: Device; address: string | null; onChanged: () => void }) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   return (
@@ -253,6 +294,7 @@ function DeviceCard({ d, onChanged }: { d: Device; onChanged: () => void }) {
           )}
         </div>
       </div>
+      <DirectFeed d={d} address={address} onChanged={onChanged} />
       <AutoLink d={d} onChanged={onChanged} />
       {open && <ImportPunches device={d} onDone={onChanged} />}
     </li>
@@ -260,7 +302,7 @@ function DeviceCard({ d, onChanged }: { d: Device; onChanged: () => void }) {
 }
 
 export default function ClockDevicesPage() {
-  const { data, error, reload } = useResource<{ devices: Device[]; numbered: number; total: number }>("/api/facility/clock-devices");
+  const { data, error, reload } = useResource<{ devices: Device[]; numbered: number; total: number; machineAddress: string | null }>("/api/facility/clock-devices");
   return (
     <>
       <PageHeader title="Clock devices" description="Use the clocking machine your facility already has. Its punches become attendance here, and phone clock-in keeps working for anyone not on the machine." />
@@ -270,7 +312,7 @@ export default function ClockDevicesPage() {
             {data.devices.length === 0 ? (
               <EmptyState title="No clock device yet">Add the machine below.</EmptyState>
             ) : (
-              <ul className="divide-y divide-[var(--border)]">{data.devices.map((d) => <DeviceCard key={d.id} d={d} onChanged={reload} />)}</ul>
+              <ul className="divide-y divide-[var(--border)]">{data.devices.map((d) => <DeviceCard key={d.id} d={d} address={data.machineAddress} onChanged={reload} />)}</ul>
             )}
           </Panel>
           <AddDevice onAdded={reload} />

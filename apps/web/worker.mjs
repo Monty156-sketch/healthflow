@@ -12,7 +12,17 @@ export * from "./.open-next/worker.js";
 
 export default {
   async fetch(request, env, ctx) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
+    // A clocking machine (ZKTeco, "ADMS") calls /iclock/... and many cannot use https. Only those calls are answered over plain http;
+    // every other address, the API and the sign-in page included, is sent to https first so no password ever travels in the clear.
+    if (pathname.startsWith("/iclock/")) {
+      return forwardToApi(request, env.API_ORIGIN ?? "", env.PROXY_SHARED_SECRET, "/api");
+    }
+    if (url.protocol === "http:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
+      url.protocol = "https:";
+      return Response.redirect(url.toString(), 301);
+    }
     if (pathname === "/api" || pathname.startsWith("/api/")) {
       return forwardToApi(request, env.API_ORIGIN ?? "", env.PROXY_SHARED_SECRET);
     }

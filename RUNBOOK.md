@@ -33,6 +33,31 @@ The API and the database should sit in the same region (both in Frankfurt). A Re
 7. In GitHub, Settings, Variables, set `RENDER_API_URL` to the new address.
 8. Watch System health for a day. Then suspend (do not delete) the old service, and delete it a week later.
 
+## Clock machines that send punches themselves (ADMS)
+
+A ZKTeco machine set to ADMS (Menu, Comm., Cloud Server Setting) can send each punch to HealthFlow with no PC and no ZKBio Time. The receiver is `/api/iclock` on the API. The Worker answers `/iclock/...` on the website's domain and forwards it there. Tested against the MB460 menu only through photos; no real machine has been connected yet.
+
+**One-time setup (PS Tech)**
+
+1. In Cloudflare, Workers & Pages, healthflow, Settings, Domains & Routes, add a **custom domain** on a domain you own, for example `clock.yourdomain.com`. Many of these machines cannot use https, and our own `workers.dev` address is https only.
+2. For that one name only, allow plain http: Rules, Configuration Rules, "Hostname equals `clock.yourdomain.com`", set **Always Use HTTPS: Off**. Do not turn it off for the whole zone. The Worker sends every address other than `/iclock/...` to https by itself, so no password travels in the clear even on that name.
+3. On Render, healthflow-api, Environment: add `CLOCK_HOST=clock.yourdomain.com`. The Clock devices page then shows what to type on the machine.
+4. Once the domain is chosen, add it to `apps/web/wrangler.jsonc` under `routes` (`custom_domain: true`) so a deploy never drops it.
+
+**Per machine**
+
+1. Clock devices page: type the machine's serial number (Menu, System Info, Device Info) on its card and save it. Each serial number can be registered once, across all facilities.
+2. Write down the machine's old settings. On the machine: Server Mode ADMS, Enable Domain Name ON, Server Address `clock.yourdomain.com`, Server Port 80, Enable Proxy Server OFF. The machine needs a working gateway and DNS (Menu, Comm., Ethernet).
+3. Within a minute the card shows "The machine last connected ...". Punch once and watch the attendance appear.
+4. **A machine sends to one place only.** Pointing it here stops ZKBio Time receiving its punches. To go back, restore the old address and port.
+
+**What the receiver does and does not do**
+
+- It asks the machine for punches only (never fingerprints, faces or photos) and sends it no commands.
+- A punch is trusted only because the machine's serial number is registered. The machine sends no password. The worst a forged request can do is record a punch for someone who has that machine's number, on a duty they are rostered for, never over a day already recorded or approved.
+- Punches older than 45 days are left out; import them from a file.
+- Status 0 and 4 are a check-in, 1 and 5 a check-out. If a machine sends every punch as 0, the arrival is right but no departure is recorded; say so and we will switch that machine to first-and-last-punch.
+
 ## Never change these without a plan
 
 - **`MFA_ENCRYPTION_KEY`.** Every authenticator secret is encrypted with it. A different key makes every administrator's two-step sign-in unreadable and locks them out. Local development and production share one Neon database today, so the key must be the same in both.

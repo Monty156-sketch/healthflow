@@ -11,6 +11,7 @@ import { passkeyAccountRouter, passkeyLoginRouter } from "./routes/passkeys.js";
 import { accountRouter } from "./routes/account.js";
 import { facilityRouter } from "./routes/facility/index.js";
 import { clockLinkRouter } from "./routes/clockLink.js";
+import { iclockRouter } from "./routes/iclock.js";
 import { invitationRouter } from "./routes/invitations.js";
 import { errorReportRouter, platformRouter, recordServerError } from "./routes/errors.js";
 import { internalRouter } from "./routes/internal.js";
@@ -45,6 +46,9 @@ export function createApp() {
   if (process.env.NODE_ENV !== "test") {
     app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie"] }));
   }
+  // The clock machines' own feed has its own limit, counted per machine; it is mounted before the general one so a hospital's
+  // staff using HealthFlow on the same network cannot use up the machine's allowance, or the reverse.
+  app.use("/api/iclock", systemScope, iclockRouter);
   app.use(apiLimiter);
 
   // Pinged by the keep-awake workflow so the free Render instance stays warm.

@@ -1966,9 +1966,12 @@ model ClockDevice {
   apiKeyCreatedAt DateTime?
   lastPushAt      DateTime?
   lastPushCount   Int?
+  /// The last time the machine itself contacted us (its own feed, no PC in between).
+  lastSeenAt      DateTime?
   createdAt    DateTime @default(now())
 
   @@index([facilityId])
+  @@index([serialNumber])
 }
 
 /// One punch read from a clock device. Kept as the machine reported it; the same punch is never stored twice.
@@ -1978,6 +1981,8 @@ model DevicePunch {
   deviceId   String
   staffId    String
   at         DateTime
+  /// "IN" or "OUT" when the machine said so; empty when it did not.
+  state      String?
   createdAt  DateTime @default(now())
 
   @@unique([deviceId, staffId, at])

@@ -62,9 +62,9 @@ async function fetchWhenAwake(url: string, init: RequestInit): Promise<Response>
   }
 }
 
-export async function forwardToApi(request: Request, origin: string, secret: string | undefined): Promise<Response> {
+export async function forwardToApi(request: Request, origin: string, secret: string | undefined, pathPrefix = ""): Promise<Response> {
   const incoming = new URL(request.url);
-  const target = `${origin.replace(/\/+$/, "")}${incoming.pathname}${incoming.search}`;
+  const target = `${origin.replace(/\/+$/, "")}${pathPrefix}${incoming.pathname}${incoming.search}`;
 
   const headers = new Headers();
   request.headers.forEach((value, key) => {
