@@ -153,7 +153,7 @@ export async function runPunchImport(o: ImportOptions) {
   const fresh = results.filter((r) => r.action === "new");
   await prisma.$transaction(async (tx) => {
     // Every punch is kept as the machine reported it, once.
-    const kept = [...mine].flatMap(([staffId, list]) => list.map((p) => ({ facilityId: o.facilityId, deviceId: o.device.id, staffId, at: p.at })));
+    const kept = [...mine].flatMap(([staffId, list]) => list.map((p) => ({ facilityId: o.facilityId, deviceId: o.device.id, staffId, at: p.at, state: p.state ?? null })));
     for (let i = 0; i < kept.length; i += 2000) await tx.devicePunch.createMany({ data: kept.slice(i, i + 2000), skipDuplicates: true });
     await tx.attendance.createMany({
       data: fresh.map((r) => ({

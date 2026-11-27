@@ -10,6 +10,7 @@ import { allowRoles, caller, ADMIN_ROLES } from "../../middleware/facilityAccess
 import { normalisePin, parsePunches } from "../../lib/clockImport.js";
 import { runPunchImport } from "../../lib/clockPipeline.js";
 import { hashKey } from "../../lib/clockLink.js";
+import { asSystem } from "../../lib/tenant.js";
 
 export const clockDevicesRouter = Router();
 clockDevicesRouter.use(allowRoles(...ADMIN_ROLES));
@@ -30,6 +31,14 @@ const data = (b: z.infer<typeof deviceInput>) => ({
   ...(b.active === undefined ? {} : { active: b.active }),
 });
 
+/** A machine is found by its serial number, so the same number cannot be registered twice, even by another facility. */
+async function serialTaken(serial: string | null, exceptId?: string) {
+  if (!serial) return false;
+  const n = await asSystem(() => prisma.clockDevice.count({ where: { serialNumber: { equals: serial, mode: "insensitive" }, ...(exceptId ? { NOT: { id: exceptId } } : {}) } }));
+  return n > 0;
+}
+const SERIAL_TAKEN = { error: "serial_taken", message: "That serial number is already registered. Check it on the machine itself: Menu, System Info, Device Info." };
+
 clockDevicesRouter.get("/", async (req, res) => {
   const { facilityId } = caller(req);
   const [devices, numbered, total] = await Promise.all([
@@ -37,13 +46,15 @@ clockDevicesRouter.get("/", async (req, res) => {
     prisma.staff.count({ where: { facilityId, archivedAt: null, clockNumber: { not: null } } }),
     prisma.staff.count({ where: { facilityId, archivedAt: null } }),
   ]);
-  res.json({ devices: devices.map(({ apiKeyHash, ...d }) => ({ ...d, linked: Boolean(apiKeyHash) })), numbered, total });
+  // machineAddress: the web name the machines are told to send to (set once, when it exists); empty until then.
+  res.json({ devices: devices.map(({ apiKeyHash, ...d }) => ({ ...d, linked: Boolean(apiKeyHash) })), numbered, total, machineAddress: process.env.CLOCK_HOST?.trim() || null });
 });
 
 clockDevicesRouter.post("/", async (req, res) => {
   const who = caller(req);
   const body = parseOr400(deviceInput, req.body, res);
   if (!body) return;
+  if (await serialTaken(clean(body.serialNumber))) return res.status(409).json(SERIAL_TAKEN);
   const d = await prisma.clockDevice.create({ data: { facilityId: who.facilityId, ...data(body) } });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_added", entityType: "ClockDevice", entityId: d.id, summary: `${who.displayName} added the clock device "${d.name}".` });
   res.status(201).json(d);
@@ -94,6 +105,7 @@ clockDevicesRouter.put("/:id", async (req, res) => {
   if (!body) return;
   const found = await prisma.clockDevice.findFirst({ where: { id: req.params.id, facilityId: who.facilityId }, select: { id: true } });
   if (!found) return res.status(404).json({ error: "not_found", message: "That clock device was not found." });
+  if (await serialTaken(clean(body.serialNumber), found.id)) return res.status(409).json(SERIAL_TAKEN);
   const d = await prisma.clockDevice.update({ where: { id: found.id }, data: data(body) });
   await writeAuditLog({ facilityId: who.facilityId, actorEmail: who.email, action: "clock_device_changed", entityType: "ClockDevice", entityId: d.id, summary: `${who.displayName} changed the clock device "${d.name}".` });
   res.json(d);

@@ -76,6 +76,30 @@ export function parsePunches(text: string): ParsedPunches {
   return { punches, skipped };
 }
 
+/**
+ * What the machine itself sends as it is used (the ADMS feed): one punch per line, tab-separated, as
+ * number, date and time, status, how it was verified, work code. Status 0 and 4 are a check-in, 1 and 5 a check-out,
+ * 2 and 3 are breaks (ignored). Any other status (a machine that does not say) leaves the punch without a word,
+ * so the first and last punch of a duty are used, the same as for a USB file.
+ */
+export function parseAdmsAttlog(text: string): ParsedPunches {
+  const punches: Punch[] = [];
+  let skipped = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const f = (line.includes("\t") ? line.split("\t") : line.split(/\s+/)).map((x) => x.trim());
+    const joined = DT.exec(f[1] ?? "");
+    const at = joined ? make(joined[1], joined[2], joined[3], joined[4], joined[5], joined[6]) : when(f[1] ?? "", f[2] ?? "");
+    const status = joined ? f[2] : f[3];
+    if (!f[0] || !/^[A-Za-z0-9-]+$/.test(f[0]) || !at) { skipped++; continue; }
+    const n = status !== undefined && /^\d+$/.test(status) ? Number(status) : NaN;
+    if (n === 2 || n === 3) continue;
+    punches.push({ pin: f[0], at, ...(n === 0 || n === 4 ? { state: "IN" as const } : n === 1 || n === 5 ? { state: "OUT" as const } : {}) });
+  }
+  return { punches, skipped };
+}
+
 /** "007" and "7" are the same person on most machines. */
 export const normalisePin = (p: string) => p.replace(/^0+(?=.)/, "").toLowerCase();
 
